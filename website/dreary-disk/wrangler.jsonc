@@ -1,12 +1,14 @@
 {
-	"$schema": "./node_modules/wrangler/config-schema.json",
-	"compatibility_date": "2026-06-30",
-	"compatibility_flags": ["global_fetch_strictly_public"],
-	"name": "dreary-disk",
+	"name": "mahoon-art-magazine",
 	"main": "@astrojs/cloudflare/entrypoints/server",
+	"compatibility_date": "2026-06-30",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
 	"assets": {
+		"binding": "ASSETS",
 		"directory": "./dist",
-		"binding": "ASSETS"
+		"not_found_handling": "404-page"
 	},
 	"observability": {
 		"enabled": true
