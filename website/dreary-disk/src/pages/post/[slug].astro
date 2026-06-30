@@ -1,0 +1,400 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { SITE } from "../../config";
+import { getPostBySlug, getPosts, parsePostContent, makeExcerpt, formatDate } from "../../lib/posts";
+
+const { slug } = Astro.params;
+
+const post = slug ? await getPostBySlug(slug) : null;
+const parsedPost = post ? parsePostContent(post.text) : null;
+
+const allPosts = await getPosts();
+
+function formatFileSize(value?: number | null) {
+  if (!value) return "";
+
+  if (value < 1024 * 1024) {
+    return `${Math.round(value / 1024)} KB`;
+  }
+
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDuration(value?: number | null) {
+  if (!value) return "";
+
+  const minutes = Math.floor(value / 60);
+  const seconds = value % 60;
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function mediaLabel(type?: string | null) {
+  if (type === "video") return "ویدیو";
+  if (type === "audio") return "فایل صوتی";
+  if (type === "voice") return "فایل صوتی";
+  if (type === "document") return "فایل پیوست";
+  if (type === "photo") return "تصویر";
+  return "رسانه";
+}
+
+const relatedPosts = post
+  ? allPosts
+      .filter(item => item.slug !== post.slug)
+      .slice(0, 3)
+      .map(item => {
+        const parsed = parsePostContent(item.text);
+
+        return {
+          ...item,
+          title: parsed.title,
+          excerpt: makeExcerpt(item.text, 120),
+          hashtags: parsed.hashtags,
+          date: formatDate(item.created_at),
+          mediaLabel: mediaLabel(item.media_type)
+        };
+      })
+  : [];
+
+const visibleTitle = parsedPost ? parsedPost.title : "پست پیدا نشد";
+const seoTitle = post?.seo_title || visibleTitle;
+const description = post?.seo_description || (parsedPost ? parsedPost.excerpt : SITE.description);
+const date = post ? formatDate(post.created_at) : "";
+const mediaType = post?.media_type || null;
+const mediaUrl = post?.media_url || post?.photo_url || null;
+const pageImage = mediaType === "photo" && mediaUrl ? mediaUrl : SITE.defaultImage;
+
+const isVideo = mediaType === "video";
+const isAudio = mediaType === "audio" || mediaType === "voice";
+const isDocument = mediaType === "document";
+const mediaSize = formatFileSize(post?.media_size || null);
+const mediaDuration = formatDuration(post?.media_duration || null);
+const currentMediaLabel = mediaLabel(mediaType);
+---
+
+<BaseLayout title={seoTitle} description={description} image={pageImage} type="article" canonical={Astro.url.href}>
+  <main class="page-section">
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="/">خانه</a>
+        <span> / </span>
+        <span>{post ? "مطلب ماهون" : "یافت نشد"}</span>
+      </div>
+
+      {post && parsedPost ? (
+        <article class="article">
+          <header class="article-head">
+            <div class="article-head-content">
+              <span class="label">منتشر شده در مجله هنری ماهون</span>
+
+              <h1 class="article-title">{visibleTitle}</h1>
+
+              <div class="article-meta">
+                <span>تاریخ انتشار: {date}</span>
+                <span>شناسه مطلب: #{post.id}</span>
+                <span>بازدید: {post.view_count || 0}</span>
+                {mediaType && <span>{currentMediaLabel}</span>}
+              </div>
+            </div>
+          </header>
+
+          {mediaType === "photo" && mediaUrl && (
+            <figure class="media-stage photo-stage">
+              <img class="article-image" src={mediaUrl} alt={visibleTitle} loading="eager" />
+            </figure>
+          )}
+
+          {isVideo && mediaUrl && (
+            <section class="media-stage video-stage">
+              <div class="media-stage-head">
+                <div>
+                  <span class="media-kicker">ویدیو ماهون</span>
+                  <strong>{visibleTitle}</strong>
+                </div>
+
+                <div class="media-actions">
+                  {mediaDuration && <span class="media-pill">{mediaDuration}</span>}
+                  {mediaSize && <span class="media-pill">{mediaSize}</span>}
+                </div>
+              </div>
+
+              <video class="mahoon-video" src={mediaUrl} controls playsinline preload="metadata"></video>
+
+              <div class="media-bottom-actions">
+                <a class="btn btn-gold" href={mediaUrl} target="_blank" rel="noopener">باز کردن فایل</a>
+              </div>
+            </section>
+          )}
+
+          {isAudio && mediaUrl && (
+            <section class="media-stage audio-stage">
+              <div class="audio-art">
+                <div class="audio-mark">♫</div>
+                <div>
+                  <span class="media-kicker">پخش صوتی ماهون</span>
+                  <strong>{post.media_file_name || visibleTitle}</strong>
+                  <small>
+                    {[mediaDuration, mediaSize].filter(Boolean).join(" · ")}
+                  </small>
+                </div>
+              </div>
+
+              <div class="mahoon-audio-player" data-audio-player>
+                <audio id="mainAudio" src={mediaUrl} preload="metadata"></audio>
+
+                <div class="audio-controls-row">
+                  <button class="audio-main-btn" id="audioPlayBtn" type="button">پخش</button>
+
+                  <div class="audio-time">
+                    <span id="audioCurrent">00:00</span>
+                    <span>/</span>
+                    <span id="audioDuration">00:00</span>
+                  </div>
+                </div>
+
+                <input class="audio-range" id="audioProgress" type="range" min="0" max="1000" value="0" />
+
+                <div class="audio-secondary-row">
+                  <button class="audio-mini-btn" id="audioBackBtn" type="button">۱۰ ثانیه عقب</button>
+                  <button class="audio-mini-btn" id="audioForwardBtn" type="button">۱۰ ثانیه جلو</button>
+                  <button class="audio-mini-btn" id="audioSpeedBtn" type="button">1x</button>
+                  <a class="audio-mini-link" href={mediaUrl} target="_blank" rel="noopener">باز کردن فایل</a>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {isDocument && mediaUrl && (
+            <section class="media-stage document-stage">
+              <div class="file-box pro-file-box">
+                <div class="file-icon">↧</div>
+
+                <div class="file-info">
+                  <strong>{post.media_file_name || "فایل پیوست"}</strong>
+                  <span>{post.media_mime_type || "فایل"}</span>
+                  {mediaSize && <small>{mediaSize}</small>}
+                </div>
+
+                <a class="btn btn-primary" href={mediaUrl} target="_blank" rel="noopener">مشاهده / دریافت فایل</a>
+              </div>
+            </section>
+          )}
+
+          <div class="article-body">
+            <div class="content clean-content">{parsedPost.content}</div>
+
+            {(parsedPost.hashtags.length > 0 || parsedPost.urls.length > 0) && (
+              <div class="telegram-details">
+                {parsedPost.hashtags.length > 0 && (
+                  <div class="detail-group">
+                    <strong>برچسب‌ها</strong>
+
+                    <div class="article-tags">
+                      {parsedPost.hashtags.map(tag => (
+                        <a class="hash-chip large" href={`/tag/${encodeURIComponent(tag)}`}>
+                          #{tag}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {parsedPost.urls.length > 0 && (
+                  <div class="detail-group">
+                    <strong>لینک‌ها</strong>
+
+                    <div class="source-links">
+                      {parsedPost.urls.map(url => (
+                        <a href={url} target="_blank" rel="noopener">
+                          مشاهده لینک
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div class="tools">
+              <div class="tool-buttons">
+                <button class="btn btn-primary" id="shareBtn">اشتراک‌گذاری</button>
+                <button class="btn btn-gold" id="copyBtn">کپی لینک</button>
+              </div>
+
+              <div class="post-info">
+                {SITE.name}
+              </div>
+            </div>
+          </div>
+        </article>
+      ) : (
+        <section class="not-found">
+          <h1>پست پیدا نشد</h1>
+          <p>این مطلب وجود ندارد، حذف شده یا آدرس آن اشتباه است.</p>
+          <a class="btn btn-primary" href="/">بازگشت به خانه</a>
+        </section>
+      )}
+
+      {relatedPosts.length > 0 && (
+        <section class="related">
+          <div class="section-head">
+            <div>
+              <h2>مطالب دیگر</h2>
+              <p>چند مطلب دیگر از مجله هنری ماهون</p>
+            </div>
+          </div>
+
+          <div class="posts-grid">
+            {relatedPosts.map(item => (
+              <a class="post-card" href={`/post/${encodeURIComponent(item.slug)}`}>
+                {item.photo_url ? (
+                  <div class="post-media">
+                    <img src={item.photo_url} alt={item.title} loading="lazy" />
+                  </div>
+                ) : item.media_type ? (
+                  <div class="post-media media-visual media-generic">
+                    <span class="media-visual-icon">◆</span>
+                    <strong>{item.mediaLabel}</strong>
+                    <small>باز کردن مطلب</small>
+                  </div>
+                ) : null}
+
+                <div>
+                  <span class="tag">ماهون</span>
+                  <h3>{item.title}</h3>
+                  <p>{item.excerpt}</p>
+
+                  {item.hashtags.length > 0 && (
+                    <div class="mini-tags">
+                      {item.hashtags.slice(0, 3).map(tag => (
+                        <span class="hash-chip">#{tag}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div class="meta">
+                  <span>{item.date}</span>
+                  <span class="read">ادامه ←</span>
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  </main>
+
+  <script>
+    const shareBtn = document.getElementById("shareBtn");
+    const copyBtn = document.getElementById("copyBtn");
+
+    if (shareBtn) {
+      shareBtn.addEventListener("click", async () => {
+        try {
+          if (navigator.share) {
+            await navigator.share({
+              title: document.title,
+              url: window.location.href
+            });
+          } else {
+            await navigator.clipboard.writeText(window.location.href);
+            shareBtn.textContent = "لینک کپی شد";
+          }
+        } catch {}
+      });
+    }
+
+    if (copyBtn) {
+      copyBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(window.location.href);
+          copyBtn.textContent = "کپی شد";
+
+          setTimeout(() => {
+            copyBtn.textContent = "کپی لینک";
+          }, 1600);
+        } catch {}
+      });
+    }
+
+    const audio = document.getElementById("mainAudio");
+    const playBtn = document.getElementById("audioPlayBtn");
+    const progress = document.getElementById("audioProgress");
+    const current = document.getElementById("audioCurrent");
+    const duration = document.getElementById("audioDuration");
+    const backBtn = document.getElementById("audioBackBtn");
+    const forwardBtn = document.getElementById("audioForwardBtn");
+    const speedBtn = document.getElementById("audioSpeedBtn");
+
+    function formatTime(seconds) {
+      if (!Number.isFinite(seconds)) return "00:00";
+
+      const min = Math.floor(seconds / 60);
+      const sec = Math.floor(seconds % 60);
+
+      return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+    }
+
+    if (audio && playBtn && progress) {
+      const speeds = [1, 1.25, 1.5, 2];
+      let speedIndex = 0;
+
+      playBtn.addEventListener("click", async () => {
+        if (audio.paused) {
+          await audio.play();
+        } else {
+          audio.pause();
+        }
+      });
+
+      audio.addEventListener("play", () => {
+        playBtn.textContent = "توقف";
+      });
+
+      audio.addEventListener("pause", () => {
+        playBtn.textContent = "پخش";
+      });
+
+      audio.addEventListener("loadedmetadata", () => {
+        if (duration) duration.textContent = formatTime(audio.duration);
+      });
+
+      audio.addEventListener("timeupdate", () => {
+        if (current) current.textContent = formatTime(audio.currentTime);
+
+        if (Number.isFinite(audio.duration) && audio.duration > 0) {
+          progress.value = String((audio.currentTime / audio.duration) * 1000);
+        }
+      });
+
+      progress.addEventListener("input", () => {
+        if (Number.isFinite(audio.duration) && audio.duration > 0) {
+          audio.currentTime = (Number(progress.value) / 1000) * audio.duration;
+        }
+      });
+
+      if (backBtn) {
+        backBtn.addEventListener("click", () => {
+          audio.currentTime = Math.max(0, audio.currentTime - 10);
+        });
+      }
+
+      if (forwardBtn) {
+        forwardBtn.addEventListener("click", () => {
+          audio.currentTime = Math.min(audio.duration || audio.currentTime + 10, audio.currentTime + 10);
+        });
+      }
+
+      if (speedBtn) {
+        speedBtn.addEventListener("click", () => {
+          speedIndex = (speedIndex + 1) % speeds.length;
+          audio.playbackRate = speeds[speedIndex];
+          speedBtn.textContent = `${speeds[speedIndex]}x`;
+        });
+      }
+    }
+  </script>
+</BaseLayout>

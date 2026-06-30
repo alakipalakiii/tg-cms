@@ -1,0 +1,29 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { SITE } from "../config";
+---
+
+<BaseLayout title="تماس با ماهون" description="راه‌های ارتباط با مجله هنری ماهون">
+  <main class="page-section">
+    <div class="container">
+      <section class="page-card">
+        <span class="tag">تماس</span>
+
+        <h1>تماس با مجله هنری ماهون</h1>
+
+        <p>
+          برای ارتباط با مجله هنری ماهون، ارسال خبر، پیشنهاد همکاری، معرفی رویداد هنری یا ارسال یادداشت،
+          می‌توانید از طریق کانال تلگرام با ما در ارتباط باشید.
+        </p>
+
+        <p>
+          در نسخه‌های بعدی سایت، فرم تماس، صفحه معرفی نویسندگان، دسته‌بندی مطالب و پنل مدیریت کامل نیز اضافه خواهد شد.
+        </p>
+
+        <a class="btn btn-primary" href={SITE.telegramUrl} target="_blank" rel="noopener">
+          ورود به کانال تلگرام
+        </a>
+      </section>
+    </div>
+  </main>
+</BaseLayout>

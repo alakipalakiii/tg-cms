@@ -1,0 +1,259 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { SITE } from "../config";
+import { getPosts, parsePostContent, formatDate } from "../lib/posts";
+
+const rawPosts = await getPosts();
+
+function mediaLabel(type?: string | null) {
+  if (type === "video") return "ویدیو";
+  if (type === "audio") return "فایل صوتی";
+  if (type === "voice") return "فایل صوتی";
+  if (type === "document") return "فایل پیوست";
+  if (type === "photo") return "تصویر";
+  return "رسانه";
+}
+
+function mediaIcon(type?: string | null) {
+  if (type === "video") return "▶";
+  if (type === "audio") return "♫";
+  if (type === "voice") return "●";
+  if (type === "document") return "↧";
+  if (type === "photo") return "◈";
+  return "◆";
+}
+
+function mediaClass(type?: string | null) {
+  if (type === "video") return "media-video";
+  if (type === "audio" || type === "voice") return "media-audio";
+  if (type === "document") return "media-document";
+  return "media-generic";
+}
+
+const posts = rawPosts.map(post => {
+  const parsed = parsePostContent(post.text);
+
+  return {
+    ...post,
+    title: parsed.title,
+    excerpt: parsed.excerpt,
+    content: parsed.content,
+    hashtags: parsed.hashtags,
+    mentions: parsed.mentions,
+    urls: parsed.urls,
+    searchText: parsed.searchText,
+    date: formatDate(post.created_at),
+    mediaLabel: mediaLabel(post.media_type),
+    mediaIcon: mediaIcon(post.media_type),
+    mediaClass: mediaClass(post.media_type)
+  };
+});
+
+const featuredPost = posts[0] || null;
+const otherPosts = posts.slice(1);
+---
+
+<BaseLayout title={SITE.name} description={SITE.description}>
+  <main>
+    <section class="hero">
+      <div class="container">
+        <div class="hero-card">
+          <div class="hero-content">
+            <div class="eyebrow">رسانه هنری، فرهنگی و معاصر</div>
+
+            <h1 class="hero-title">ماهون؛ روایت هنر، فرهنگ و نگاه معاصر</h1>
+
+            <p class="hero-text">
+              آخرین نوشته‌ها، ویدیوها، فایل‌های صوتی و روایت‌های هنری ماهون به صورت خودکار
+              از تلگرام دریافت می‌شوند و در قالب یک مجله آنلاین حرفه‌ای منتشر می‌شوند.
+            </p>
+
+            <div class="hero-stats">
+              <div class="stat">
+                <strong>{posts.length}</strong>
+                <span>مطلب منتشر شده</span>
+              </div>
+
+              <div class="stat">
+                <strong>Art</strong>
+                <span>روایت هنری</span>
+              </div>
+
+              <div class="stat">
+                <strong>Media</strong>
+                <span>متن، صوت و ویدیو</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="latest" class="container">
+      <div class="section-head">
+        <div>
+          <h2>مطالب تازه</h2>
+          <p>آخرین پست‌های منتشر شده در مجله هنری ماهون</p>
+        </div>
+      </div>
+
+      <div class="search-box">
+        <input id="searchInput" type="search" placeholder="جستجو در مطالب، هشتگ‌ها و روایت‌های ماهون..." />
+      </div>
+
+      {featuredPost ? (
+        <div class="featured" id="featuredArea">
+          <a
+            class="featured-card"
+            href={`/post/${encodeURIComponent(featuredPost.slug)}`}
+            data-post-card
+            data-search={featuredPost.searchText}
+          >
+            {featuredPost.photo_url ? (
+              <div class="featured-media">
+                <img src={featuredPost.photo_url} alt={featuredPost.title} loading="eager" />
+              </div>
+            ) : featuredPost.media_type ? (
+              <div class={`featured-media media-visual ${featuredPost.mediaClass}`}>
+                <span class="media-visual-icon">{featuredPost.mediaIcon}</span>
+                <strong>{featuredPost.mediaLabel}</strong>
+                <small>برای مشاهده یا پخش، مطلب را باز کنید</small>
+              </div>
+            ) : null}
+
+            <div>
+              <span class="tag">آخرین مطلب</span>
+              <h2>{featuredPost.title}</h2>
+              <p>{featuredPost.excerpt}</p>
+
+              {featuredPost.media_type && (
+                <div class="content-type-line">
+                  <span>{featuredPost.mediaLabel}</span>
+                </div>
+              )}
+
+              {featuredPost.hashtags.length > 0 && (
+                <div class="mini-tags">
+                  {featuredPost.hashtags.slice(0, 4).map(tag => (
+                    <span class="hash-chip">#{tag}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div class="meta">
+              <span>{featuredPost.date}</span>
+              <span class="read">خواندن مطلب ←</span>
+            </div>
+          </a>
+
+          <aside class="feature-side">
+            <div>
+              <img src={SITE.logo} alt="مجله هنری ماهون" />
+              <h3>خانه روایت‌های هنری ماهون</h3>
+              <p>
+                ماهون محتوای تلگرام را به تجربه‌ای مجله‌ای، خوانا و قابل اشتراک‌گذاری تبدیل می‌کند.
+              </p>
+            </div>
+          </aside>
+        </div>
+      ) : (
+        <div class="empty">
+          هنوز پستی برای نمایش وجود ندارد.
+        </div>
+      )}
+
+      <div class="posts-grid">
+        {otherPosts.map(post => (
+          <a
+            class="post-card"
+            href={`/post/${encodeURIComponent(post.slug)}`}
+            data-post-card
+            data-search={post.searchText}
+          >
+            {post.photo_url ? (
+              <div class="post-media">
+                <img src={post.photo_url} alt={post.title} loading="lazy" />
+              </div>
+            ) : post.media_type ? (
+              <div class={`post-media media-visual ${post.mediaClass}`}>
+                <span class="media-visual-icon">{post.mediaIcon}</span>
+                <strong>{post.mediaLabel}</strong>
+                <small>باز کردن مطلب</small>
+              </div>
+            ) : null}
+
+            <div>
+              <div class="card-topline">
+                <span class="tag">ماهون</span>
+                <span class="post-id">#{post.id}</span>
+              </div>
+
+              <h3>{post.title}</h3>
+              <p>{post.excerpt}</p>
+
+              {post.media_type && (
+                <div class="content-type-line">
+                  <span>{post.mediaLabel}</span>
+                </div>
+              )}
+
+              {post.hashtags.length > 0 && (
+                <div class="mini-tags">
+                  {post.hashtags.slice(0, 3).map(tag => (
+                    <span class="hash-chip">#{tag}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div class="meta">
+              <span>{post.date}</span>
+              <span class="read">ادامه ←</span>
+            </div>
+          </a>
+        ))}
+      </div>
+
+      <div id="emptySearch" class="empty hidden">
+        نتیجه‌ای برای جستجوی شما پیدا نشد.
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const input = document.getElementById("searchInput");
+    const cards = Array.from(document.querySelectorAll("[data-post-card]"));
+    const emptySearch = document.getElementById("emptySearch");
+    const params = new URLSearchParams(window.location.search);
+    const initialQuery = params.get("q") || "";
+
+    function runSearch() {
+      if (!input) return;
+
+      const query = input.value.trim().toLowerCase();
+      let visibleCount = 0;
+
+      cards.forEach((card) => {
+        const text = (card.getAttribute("data-search") || "").toLowerCase();
+        const isVisible = !query || text.includes(query);
+
+        card.classList.toggle("hidden", !isVisible);
+
+        if (isVisible) visibleCount += 1;
+      });
+
+      if (emptySearch) {
+        emptySearch.classList.toggle("hidden", visibleCount !== 0);
+      }
+    }
+
+    if (input) {
+      input.value = initialQuery;
+      input.addEventListener("input", runSearch);
+      runSearch();
+    }
+  </script>
+</BaseLayout>

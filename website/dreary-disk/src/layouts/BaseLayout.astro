@@ -1,0 +1,82 @@
+---
+import "../styles/global.css";
+import { SITE } from "../config";
+
+interface Props {
+  title?: string;
+  description?: string;
+  image?: string;
+  type?: string;
+  canonical?: string;
+}
+
+const {
+  title = SITE.name,
+  description = SITE.description,
+  image = SITE.defaultImage,
+  type = "website",
+  canonical = Astro.url.href
+} = Astro.props;
+
+const pageTitle = title === SITE.name ? SITE.name : `${title} | ${SITE.name}`;
+
+const absoluteImage = image?.startsWith("http")
+  ? image
+  : new URL(image || SITE.defaultImage, Astro.url.origin).href;
+---
+
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#4b0d0d" />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href={SITE.logo} />
+
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={absoluteImage} />
+    <meta property="og:type" content={type} />
+    <meta property="og:url" content={canonical} />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={absoluteImage} />
+
+    <slot name="head" />
+  </head>
+
+  <body>
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <a href="/" class="brand">
+          <img class="brand-logo" src={SITE.logo} alt="لوگوی مجله هنری ماهون" />
+          <div class="brand-text">
+            <strong>{SITE.name}</strong>
+            <span>{SITE.shortDescription}</span>
+          </div>
+        </a>
+
+        <nav class="nav">
+          <a href="/">خانه</a>
+          <a href="/about">درباره ماهون</a>
+          <a href="/contact">تماس</a>
+          <a class="primary" href={SITE.telegramUrl} target="_blank" rel="noopener">کانال تلگرام</a>
+        </nav>
+      </div>
+    </header>
+
+    <slot />
+
+    <footer class="footer">
+      <div class="container footer-inner">
+        <span>© {SITE.footerText}</span>
+        <span>Powered by Cloudflare + Astro</span>
+      </div>
+    </footer>
+  </body>
+</html>

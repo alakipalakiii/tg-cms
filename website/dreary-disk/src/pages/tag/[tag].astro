@@ -1,0 +1,108 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { SITE } from "../../config";
+import { getPosts, parsePostContent, formatDate } from "../../lib/posts";
+
+const rawTag = Astro.params.tag || "";
+const tag = decodeURIComponent(rawTag).replace(/^#/, "").trim();
+
+const rawPosts = await getPosts();
+
+const posts = rawPosts
+  .map(post => {
+    const parsed = parsePostContent(post.text);
+
+    return {
+      ...post,
+      title: parsed.title,
+      excerpt: parsed.excerpt,
+      content: parsed.content,
+      hashtags: parsed.hashtags,
+      searchText: parsed.searchText,
+      date: formatDate(post.created_at)
+    };
+  })
+  .filter(post =>
+    post.hashtags.some(item => item.toLowerCase() === tag.toLowerCase())
+  );
+
+const title = tag ? `#${tag}` : "برچسب";
+const description = tag
+  ? `مطالب مرتبط با برچسب ${tag} در مجله هنری ماهون`
+  : SITE.description;
+---
+
+<BaseLayout title={title} description={description}>
+  <main class="page-section">
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="/">خانه</a>
+        <span> / </span>
+        <span>برچسب</span>
+      </div>
+
+      <section class="page-card" style="margin-bottom: 28px;">
+        <span class="tag">برچسب ماهون</span>
+
+        <h1>{title}</h1>
+
+        <p>
+          {posts.length > 0
+            ? `${posts.length} مطلب مرتبط با این برچسب در مجله هنری ماهون منتشر شده است.`
+            : "هنوز مطلبی برای این برچسب پیدا نشد."
+          }
+        </p>
+      </section>
+
+      {posts.length > 0 ? (
+        <div class="posts-grid">
+          {posts.map(post => (
+            <a
+              class="post-card"
+              href={`/post/${encodeURIComponent(post.slug)}`}
+              data-post-card
+              data-search={post.searchText}
+            >
+              {post.photo_url && (
+                <div class="post-media">
+                  <img src={post.photo_url} alt={post.title} loading="lazy" />
+                </div>
+              )}
+
+              <div>
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                  <span class="tag">ماهون</span>
+                  <span class="post-id">#{post.id}</span>
+                </div>
+
+                <h3>{post.title}</h3>
+                <p>{post.excerpt}</p>
+
+                {post.hashtags.length > 0 && (
+                  <div class="mini-tags">
+                    {post.hashtags.slice(0, 3).map(item => (
+                      <span class="hash-chip">#{item}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div class="meta">
+                <span>{post.date}</span>
+                <span class="read">ادامه ←</span>
+              </div>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <section class="not-found">
+          <h1>مطلبی پیدا نشد</h1>
+          <p>برای این برچسب هنوز مطلبی در سایت ثبت نشده است.</p>
+          <a class="btn btn-primary" href="/">بازگشت به خانه</a>
+        </section>
+      )}
+    </div>
+  </main>
+</BaseLayout>
