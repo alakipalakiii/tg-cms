@@ -1,400 +1,602 @@
 ---
-export const prerender = false;
-
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { SITE } from "../../config";
-import { getPostBySlug, getPosts, parsePostContent, makeExcerpt, formatDate } from "../../lib/posts";
 
-const { slug } = Astro.params;
+export const prerender = false;
 
-const post = slug ? await getPostBySlug(slug) : null;
-const parsedPost = post ? parsePostContent(post.text) : null;
-
-const allPosts = await getPosts();
-
-function formatFileSize(value?: number | null) {
-  if (!value) return "";
-
-  if (value < 1024 * 1024) {
-    return `${Math.round(value / 1024)} KB`;
-  }
-
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function formatDuration(value?: number | null) {
-  if (!value) return "";
-
-  const minutes = Math.floor(value / 60);
-  const seconds = value % 60;
-
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
-function mediaLabel(type?: string | null) {
-  if (type === "video") return "ویدیو";
-  if (type === "audio") return "فایل صوتی";
-  if (type === "voice") return "فایل صوتی";
-  if (type === "document") return "فایل پیوست";
-  if (type === "photo") return "تصویر";
-  return "رسانه";
-}
-
-const relatedPosts = post
-  ? allPosts
-      .filter(item => item.slug !== post.slug)
-      .slice(0, 3)
-      .map(item => {
-        const parsed = parsePostContent(item.text);
-
-        return {
-          ...item,
-          title: parsed.title,
-          excerpt: makeExcerpt(item.text, 120),
-          hashtags: parsed.hashtags,
-          date: formatDate(item.created_at),
-          mediaLabel: mediaLabel(item.media_type)
-        };
-      })
-  : [];
-
-const visibleTitle = parsedPost ? parsedPost.title : "پست پیدا نشد";
-const seoTitle = post?.seo_title || visibleTitle;
-const description = post?.seo_description || (parsedPost ? parsedPost.excerpt : SITE.description);
-const date = post ? formatDate(post.created_at) : "";
-const mediaType = post?.media_type || null;
-const mediaUrl = post?.media_url || post?.photo_url || null;
-const pageImage = mediaType === "photo" && mediaUrl ? mediaUrl : SITE.defaultImage;
-
-const isVideo = mediaType === "video";
-const isAudio = mediaType === "audio" || mediaType === "voice";
-const isDocument = mediaType === "document";
-const mediaSize = formatFileSize(post?.media_size || null);
-const mediaDuration = formatDuration(post?.media_duration || null);
-const currentMediaLabel = mediaLabel(mediaType);
+const slug = Astro.params.slug || "";
 ---
 
-<BaseLayout title={seoTitle} description={description} image={pageImage} type="article" canonical={Astro.url.href}>
-  <main class="page-section">
-    <div class="container">
-      <div class="breadcrumb">
-        <a href="/">خانه</a>
-        <span> / </span>
-        <span>{post ? "مطلب ماهون" : "یافت نشد"}</span>
-      </div>
+<BaseLayout title={`روایت ماهون | ${SITE.name}`} description={SITE.description}>
+  <main
+    class="client-single"
+    data-worker-url={SITE.workerUrl}
+    data-slug={slug}
+  >
+    <div class="client-single-shell">
+      <a class="client-back-link" href="/">بازگشت به صفحه اصلی</a>
 
-      {post && parsedPost ? (
-        <article class="article">
-          <header class="article-head">
-            <div class="article-head-content">
-              <span class="label">منتشر شده در مجله هنری ماهون</span>
-
-              <h1 class="article-title">{visibleTitle}</h1>
-
-              <div class="article-meta">
-                <span>تاریخ انتشار: {date}</span>
-                <span>شناسه مطلب: #{post.id}</span>
-                <span>بازدید: {post.view_count || 0}</span>
-                {mediaType && <span>{currentMediaLabel}</span>}
-              </div>
-            </div>
-          </header>
-
-          {mediaType === "photo" && mediaUrl && (
-            <figure class="media-stage photo-stage">
-              <img class="article-image" src={mediaUrl} alt={visibleTitle} loading="eager" />
-            </figure>
-          )}
-
-          {isVideo && mediaUrl && (
-            <section class="media-stage video-stage">
-              <div class="media-stage-head">
-                <div>
-                  <span class="media-kicker">ویدیو ماهون</span>
-                  <strong>{visibleTitle}</strong>
-                </div>
-
-                <div class="media-actions">
-                  {mediaDuration && <span class="media-pill">{mediaDuration}</span>}
-                  {mediaSize && <span class="media-pill">{mediaSize}</span>}
-                </div>
-              </div>
-
-              <video class="mahoon-video" src={mediaUrl} controls playsinline preload="metadata"></video>
-
-              <div class="media-bottom-actions">
-                <a class="btn btn-gold" href={mediaUrl} target="_blank" rel="noopener">باز کردن فایل</a>
-              </div>
-            </section>
-          )}
-
-          {isAudio && mediaUrl && (
-            <section class="media-stage audio-stage">
-              <div class="audio-art">
-                <div class="audio-mark">♫</div>
-                <div>
-                  <span class="media-kicker">پخش صوتی ماهون</span>
-                  <strong>{post.media_file_name || visibleTitle}</strong>
-                  <small>
-                    {[mediaDuration, mediaSize].filter(Boolean).join(" · ")}
-                  </small>
-                </div>
-              </div>
-
-              <div class="mahoon-audio-player" data-audio-player>
-                <audio id="mainAudio" src={mediaUrl} preload="metadata"></audio>
-
-                <div class="audio-controls-row">
-                  <button class="audio-main-btn" id="audioPlayBtn" type="button">پخش</button>
-
-                  <div class="audio-time">
-                    <span id="audioCurrent">00:00</span>
-                    <span>/</span>
-                    <span id="audioDuration">00:00</span>
-                  </div>
-                </div>
-
-                <input class="audio-range" id="audioProgress" type="range" min="0" max="1000" value="0" />
-
-                <div class="audio-secondary-row">
-                  <button class="audio-mini-btn" id="audioBackBtn" type="button">۱۰ ثانیه عقب</button>
-                  <button class="audio-mini-btn" id="audioForwardBtn" type="button">۱۰ ثانیه جلو</button>
-                  <button class="audio-mini-btn" id="audioSpeedBtn" type="button">1x</button>
-                  <a class="audio-mini-link" href={mediaUrl} target="_blank" rel="noopener">باز کردن فایل</a>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {isDocument && mediaUrl && (
-            <section class="media-stage document-stage">
-              <div class="file-box pro-file-box">
-                <div class="file-icon">↧</div>
-
-                <div class="file-info">
-                  <strong>{post.media_file_name || "فایل پیوست"}</strong>
-                  <span>{post.media_mime_type || "فایل"}</span>
-                  {mediaSize && <small>{mediaSize}</small>}
-                </div>
-
-                <a class="btn btn-primary" href={mediaUrl} target="_blank" rel="noopener">مشاهده / دریافت فایل</a>
-              </div>
-            </section>
-          )}
-
-          <div class="article-body">
-            <div class="content clean-content">{parsedPost.content}</div>
-
-            {(parsedPost.hashtags.length > 0 || parsedPost.urls.length > 0) && (
-              <div class="telegram-details">
-                {parsedPost.hashtags.length > 0 && (
-                  <div class="detail-group">
-                    <strong>برچسب‌ها</strong>
-
-                    <div class="article-tags">
-                      {parsedPost.hashtags.map(tag => (
-                        <a class="hash-chip large" href={`/tag/${encodeURIComponent(tag)}`}>
-                          #{tag}
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {parsedPost.urls.length > 0 && (
-                  <div class="detail-group">
-                    <strong>لینک‌ها</strong>
-
-                    <div class="source-links">
-                      {parsedPost.urls.map(url => (
-                        <a href={url} target="_blank" rel="noopener">
-                          مشاهده لینک
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div class="tools">
-              <div class="tool-buttons">
-                <button class="btn btn-primary" id="shareBtn">اشتراک‌گذاری</button>
-                <button class="btn btn-gold" id="copyBtn">کپی لینک</button>
-              </div>
-
-              <div class="post-info">
-                {SITE.name}
-              </div>
-            </div>
-          </div>
-        </article>
-      ) : (
-        <section class="not-found">
-          <h1>پست پیدا نشد</h1>
-          <p>این مطلب وجود ندارد، حذف شده یا آدرس آن اشتباه است.</p>
-          <a class="btn btn-primary" href="/">بازگشت به خانه</a>
-        </section>
-      )}
-
-      {relatedPosts.length > 0 && (
-        <section class="related">
-          <div class="section-head">
-            <div>
-              <h2>مطالب دیگر</h2>
-              <p>چند مطلب دیگر از مجله هنری ماهون</p>
-            </div>
-          </div>
-
-          <div class="posts-grid">
-            {relatedPosts.map(item => (
-              <a class="post-card" href={`/post/${encodeURIComponent(item.slug)}`}>
-                {item.photo_url ? (
-                  <div class="post-media">
-                    <img src={item.photo_url} alt={item.title} loading="lazy" />
-                  </div>
-                ) : item.media_type ? (
-                  <div class="post-media media-visual media-generic">
-                    <span class="media-visual-icon">◆</span>
-                    <strong>{item.mediaLabel}</strong>
-                    <small>باز کردن مطلب</small>
-                  </div>
-                ) : null}
-
-                <div>
-                  <span class="tag">ماهون</span>
-                  <h3>{item.title}</h3>
-                  <p>{item.excerpt}</p>
-
-                  {item.hashtags.length > 0 && (
-                    <div class="mini-tags">
-                      {item.hashtags.slice(0, 3).map(tag => (
-                        <span class="hash-chip">#{tag}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div class="meta">
-                  <span>{item.date}</span>
-                  <span class="read">ادامه ←</span>
-                </div>
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
+      <article id="postArticle" class="client-single-card">
+        <div id="postStatus" class="client-single-status">
+          در حال دریافت پست...
+        </div>
+      </article>
     </div>
   </main>
 
-  <script>
-    const shareBtn = document.getElementById("shareBtn");
-    const copyBtn = document.getElementById("copyBtn");
+  <script is:inline>
+    (function () {
+      const root = document.querySelector(".client-single");
+      const article = document.getElementById("postArticle");
+      const statusEl = document.getElementById("postStatus");
 
-    if (shareBtn) {
-      shareBtn.addEventListener("click", async () => {
+      const API_BASE = (
+        root?.dataset?.workerUrl ||
+        "https://tg-cms-api.morentoofficial.workers.dev"
+      ).replace(/\/+$/, "");
+
+      function safeDecode(value) {
         try {
-          if (navigator.share) {
-            await navigator.share({
-              title: document.title,
-              url: window.location.href
-            });
-          } else {
-            await navigator.clipboard.writeText(window.location.href);
-            shareBtn.textContent = "لینک کپی شد";
+          return decodeURIComponent(value || "");
+        } catch {
+          return value || "";
+        }
+      }
+
+      const currentSlug =
+        root?.dataset?.slug ||
+        safeDecode(window.location.pathname.split("/post/")[1] || "");
+
+      function escapeHtml(value) {
+        return String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function escapeAttr(value) {
+        return escapeHtml(value).replace(/`/g, "&#096;");
+      }
+
+      function cleanText(value) {
+        return String(value || "")
+          .replace(/https?:\/\/[^\s]+/giu, "")
+          .replace(/@[a-zA-Z0-9_]+/g, "")
+          .replace(/(^|\s)#([^\s#]+)/gu, " ")
+          .replace(/[•●▪▫◦]/g, "")
+          .replace(/\n{3,}/g, "\n\n")
+          .replace(/[ \t]{2,}/g, " ")
+          .trim();
+      }
+
+      function makeTitle(text) {
+        const source = cleanText(text) || "روایت ماهون";
+        const firstLine =
+          source
+            .split("\n")
+            .map((line) => line.trim())
+            .find(Boolean) || "روایت ماهون";
+
+        if (firstLine.length <= 82) return firstLine;
+        return firstLine.slice(0, 82).trim() + "...";
+      }
+
+      function getTags(text) {
+        return Array.from(
+          new Set(
+            Array.from(String(text || "").matchAll(/(^|\s)#([^\s#]+)/gu))
+              .map((match) => match[2])
+              .filter(Boolean)
+          )
+        );
+      }
+
+      function formatDate(value) {
+        if (!value) return "";
+        try {
+          const date = new Date(String(value).replace(" ", "T"));
+          return new Intl.DateTimeFormat("fa-IR", {
+            year: "numeric",
+            month: "long",
+            day: "numeric"
+          }).format(date);
+        } catch {
+          return String(value);
+        }
+      }
+
+      function formatFileSize(bytes) {
+        const size = Number(bytes || 0);
+        if (!size) return "";
+        if (size < 1024) return `${size} بایت`;
+        if (size < 1024 * 1024) return `${Math.round(size / 1024)} کیلوبایت`;
+        return `${(size / 1024 / 1024).toFixed(1)} مگابایت`;
+      }
+
+      function formatDuration(seconds) {
+        const total = Number(seconds || 0);
+        if (!total) return "";
+        const minutes = Math.floor(total / 60);
+        const rest = Math.floor(total % 60);
+        return `${minutes}:${String(rest).padStart(2, "0")}`;
+      }
+
+      function normalizePost(raw) {
+        const mediaFileId = raw?.media_file_id || raw?.photo_file_id || null;
+        const mediaType = raw?.media_type || (raw?.photo_file_id ? "photo" : null);
+        const mediaUrl =
+          raw?.media_url ||
+          (mediaFileId ? `${API_BASE}/media/${encodeURIComponent(mediaFileId)}` : null);
+        const photoUrl =
+          raw?.photo_url ||
+          (mediaType === "photo" ? mediaUrl : null) ||
+          null;
+
+        return {
+          id: Number(raw?.id || 0),
+          text: String(raw?.text || ""),
+          slug: String(raw?.slug || `post-${raw?.id || Date.now()}`),
+          created_at: String(raw?.created_at || ""),
+          media_type: mediaType,
+          media_file_id: mediaFileId,
+          media_mime_type: raw?.media_mime_type || null,
+          media_file_name: raw?.media_file_name || null,
+          media_duration: raw?.media_duration || null,
+          media_size: raw?.media_size || null,
+          media_url: mediaUrl,
+          photo_url: photoUrl,
+          seo_title: raw?.seo_title || null,
+          seo_description: raw?.seo_description || null,
+          view_count: raw?.view_count || 0
+        };
+      }
+
+      function extractPosts(payload) {
+        if (Array.isArray(payload)) return payload.map(normalizePost).filter((post) => post.id);
+        if (Array.isArray(payload?.posts)) return payload.posts.map(normalizePost).filter((post) => post.id);
+        if (Array.isArray(payload?.data)) return payload.data.map(normalizePost).filter((post) => post.id);
+        if (payload?.id) return [normalizePost(payload)];
+        return [];
+      }
+
+      function mediaLabel(type) {
+        switch (type) {
+          case "photo":
+            return "تصویر";
+          case "video":
+            return "ویدیو";
+          case "audio":
+            return "صوت";
+          case "voice":
+            return "ویس";
+          case "document":
+            return "فایل";
+          case "animation":
+            return "انیمیشن";
+          default:
+            return "رسانه";
+        }
+      }
+
+      function renderText(text) {
+        const cleaned = cleanText(text);
+
+        if (!cleaned) {
+          return `<p>روایتی تازه از مجله هنری ماهون</p>`;
+        }
+
+        return cleaned
+          .split(/\n+/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => `<p>${escapeHtml(line)}</p>`)
+          .join("");
+      }
+
+      function renderTags(post) {
+        const tags = getTags(post.text);
+        if (!tags.length) return "";
+
+        return `
+          <div class="client-single-tags">
+            ${tags.map((tag) => `<span>#${escapeHtml(tag)}</span>`).join("")}
+          </div>
+        `;
+      }
+
+      function renderMedia(post) {
+        const url = post.media_url || post.photo_url;
+
+        if (post.photo_url) {
+          return `
+            <figure class="client-single-media">
+              <img src="${escapeAttr(post.photo_url)}" alt="${escapeAttr(makeTitle(post.text))}" />
+            </figure>
+          `;
+        }
+
+        if (!url) return "";
+
+        if (post.media_type === "video" || post.media_type === "animation") {
+          return `
+            <div class="client-single-media client-single-video">
+              <video controls preload="metadata" src="${escapeAttr(url)}"></video>
+            </div>
+          `;
+        }
+
+        if (post.media_type === "audio" || post.media_type === "voice") {
+          return `
+            <div class="client-audio-box">
+              <div class="client-audio-icon">♪</div>
+              <div class="client-audio-info">
+                <strong>${escapeHtml(post.media_file_name || mediaLabel(post.media_type))}</strong>
+                <span>
+                  ${escapeHtml(formatDuration(post.media_duration))}
+                  ${post.media_size ? " · " + escapeHtml(formatFileSize(post.media_size)) : ""}
+                </span>
+              </div>
+              <audio controls preload="metadata" src="${escapeAttr(url)}"></audio>
+            </div>
+          `;
+        }
+
+        if (post.media_type === "document") {
+          return `
+            <a class="client-file-box" href="${escapeAttr(url)}" target="_blank" rel="noopener">
+              <span>□</span>
+              <div>
+                <strong>${escapeHtml(post.media_file_name || "دانلود فایل")}</strong>
+                <small>${escapeHtml(formatFileSize(post.media_size))}</small>
+              </div>
+            </a>
+          `;
+        }
+
+        return `
+          <a class="client-file-box" href="${escapeAttr(url)}" target="_blank" rel="noopener">
+            <span>◆</span>
+            <div>
+              <strong>${escapeHtml(mediaLabel(post.media_type))}</strong>
+              <small>مشاهده فایل</small>
+            </div>
+          </a>
+        `;
+      }
+
+      function renderPost(post) {
+        const title = post.seo_title || makeTitle(post.text);
+
+        document.title = `${title} | مجله هنری ماهون`;
+
+        article.innerHTML = `
+          ${renderMedia(post)}
+
+          <div class="client-single-body">
+            <div class="client-single-meta">
+              <span>${escapeHtml(formatDate(post.created_at))}</span>
+              ${post.media_type ? `<span>${escapeHtml(mediaLabel(post.media_type))}</span>` : ""}
+              ${post.view_count ? `<span>${escapeHtml(post.view_count)} بازدید</span>` : ""}
+            </div>
+
+            <h1>${escapeHtml(title)}</h1>
+
+            <div class="client-single-text">
+              ${renderText(post.text)}
+            </div>
+
+            ${renderTags(post)}
+
+            <div class="client-single-actions">
+              <a href="/">بازگشت به مطالب</a>
+              ${
+                post.media_url
+                  ? `<a href="${escapeAttr(post.media_url)}" target="_blank" rel="noopener">باز کردن رسانه</a>`
+                  : ""
+              }
+            </div>
+          </div>
+        `;
+      }
+
+      async function fetchJson(url) {
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            Accept: "application/json"
           }
-        } catch {}
-      });
-    }
+        });
 
-    if (copyBtn) {
-      copyBtn.addEventListener("click", async () => {
+        if (!response.ok) {
+          throw new Error(`API error ${response.status}`);
+        }
+
+        return response.json();
+      }
+
+      async function loadPost() {
         try {
-          await navigator.clipboard.writeText(window.location.href);
-          copyBtn.textContent = "کپی شد";
+          statusEl.textContent = "در حال دریافت پست...";
 
-          setTimeout(() => {
-            copyBtn.textContent = "کپی لینک";
-          }, 1600);
-        } catch {}
-      });
-    }
+          let post = null;
 
-    const audio = document.getElementById("mainAudio");
-    const playBtn = document.getElementById("audioPlayBtn");
-    const progress = document.getElementById("audioProgress");
-    const current = document.getElementById("audioCurrent");
-    const duration = document.getElementById("audioDuration");
-    const backBtn = document.getElementById("audioBackBtn");
-    const forwardBtn = document.getElementById("audioForwardBtn");
-    const speedBtn = document.getElementById("audioSpeedBtn");
+          try {
+            const directPayload = await fetchJson(`${API_BASE}/post/${encodeURIComponent(currentSlug)}`);
+            post = extractPosts(directPayload)[0] || null;
+          } catch {
+            post = null;
+          }
 
-    function formatTime(seconds) {
-      if (!Number.isFinite(seconds)) return "00:00";
+          if (!post) {
+            const listPayload = await fetchJson(`${API_BASE}/`);
+            const posts = extractPosts(listPayload);
+            post = posts.find((item) => item.slug === currentSlug) || null;
+          }
 
-      const min = Math.floor(seconds / 60);
-      const sec = Math.floor(seconds % 60);
+          if (!post) {
+            article.innerHTML = `
+              <div class="client-single-status">
+                پست مورد نظر پیدا نشد.
+              </div>
+            `;
+            return;
+          }
 
-      return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-    }
-
-    if (audio && playBtn && progress) {
-      const speeds = [1, 1.25, 1.5, 2];
-      let speedIndex = 0;
-
-      playBtn.addEventListener("click", async () => {
-        if (audio.paused) {
-          await audio.play();
-        } else {
-          audio.pause();
+          renderPost(post);
+        } catch (error) {
+          console.error("Mahoon single post error:", error);
+          article.innerHTML = `
+            <div class="client-single-status">
+              خطا در دریافت پست. لطفاً صفحه را Refresh کنید.
+            </div>
+          `;
         }
-      });
-
-      audio.addEventListener("play", () => {
-        playBtn.textContent = "توقف";
-      });
-
-      audio.addEventListener("pause", () => {
-        playBtn.textContent = "پخش";
-      });
-
-      audio.addEventListener("loadedmetadata", () => {
-        if (duration) duration.textContent = formatTime(audio.duration);
-      });
-
-      audio.addEventListener("timeupdate", () => {
-        if (current) current.textContent = formatTime(audio.currentTime);
-
-        if (Number.isFinite(audio.duration) && audio.duration > 0) {
-          progress.value = String((audio.currentTime / audio.duration) * 1000);
-        }
-      });
-
-      progress.addEventListener("input", () => {
-        if (Number.isFinite(audio.duration) && audio.duration > 0) {
-          audio.currentTime = (Number(progress.value) / 1000) * audio.duration;
-        }
-      });
-
-      if (backBtn) {
-        backBtn.addEventListener("click", () => {
-          audio.currentTime = Math.max(0, audio.currentTime - 10);
-        });
       }
 
-      if (forwardBtn) {
-        forwardBtn.addEventListener("click", () => {
-          audio.currentTime = Math.min(audio.duration || audio.currentTime + 10, audio.currentTime + 10);
-        });
-      }
-
-      if (speedBtn) {
-        speedBtn.addEventListener("click", () => {
-          speedIndex = (speedIndex + 1) % speeds.length;
-          audio.playbackRate = speeds[speedIndex];
-          speedBtn.textContent = `${speeds[speedIndex]}x`;
-        });
-      }
-    }
+      loadPost();
+    })();
   </script>
+
+  <style is:global>
+    .client-single {
+      direction: rtl;
+      min-height: 70vh;
+      padding: 54px 16px 90px;
+    }
+
+    .client-single-shell {
+      width: min(920px, 100%);
+      margin: 0 auto;
+    }
+
+    .client-back-link {
+      display: inline-flex;
+      margin-bottom: 22px;
+      color: #4b0d0d;
+      background: #fffdf8;
+      border: 1px solid rgba(75, 13, 13, 0.12);
+      border-radius: 999px;
+      padding: 12px 18px;
+      text-decoration: none;
+      font-weight: 800;
+      box-shadow: 0 14px 40px rgba(75, 13, 13, 0.06);
+    }
+
+    .client-single-card {
+      background: #fffdf8;
+      border: 1px solid rgba(75, 13, 13, 0.1);
+      border-radius: 34px;
+      overflow: hidden;
+      box-shadow: 0 28px 90px rgba(75, 13, 13, 0.1);
+    }
+
+    .client-single-status {
+      padding: 42px;
+      text-align: center;
+      color: #5f504e;
+    }
+
+    .client-single-media {
+      margin: 0;
+      background: #efe4d7;
+      overflow: hidden;
+    }
+
+    .client-single-media img {
+      width: 100%;
+      max-height: 720px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .client-single-video {
+      padding: 18px;
+      background:
+        radial-gradient(circle at 20% 15%, rgba(255, 255, 255, 0.12), transparent 30%),
+        linear-gradient(135deg, #6b1515, #2d0606);
+    }
+
+    .client-single-video video {
+      width: 100%;
+      display: block;
+      border-radius: 22px;
+      background: #000;
+    }
+
+    .client-single-body {
+      padding: clamp(26px, 5vw, 54px);
+    }
+
+    .client-single-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+      color: #8a6a62;
+      font-size: 13px;
+    }
+
+    .client-single-meta span {
+      background: #f5ece0;
+      border-radius: 999px;
+      padding: 8px 13px;
+    }
+
+    .client-single-body h1 {
+      margin: 0 0 28px;
+      color: #4b0d0d;
+      line-height: 1.65;
+      font-size: clamp(28px, 5vw, 48px);
+      letter-spacing: -0.04em;
+    }
+
+    .client-single-text {
+      color: #3c2d2a;
+      font-size: 18px;
+      line-height: 2.35;
+    }
+
+    .client-single-text p {
+      margin: 0 0 18px;
+    }
+
+    .client-single-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 30px;
+    }
+
+    .client-single-tags span {
+      color: #6b1515;
+      background: #f6efe5;
+      border: 1px solid rgba(75, 13, 13, 0.08);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .client-single-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 38px;
+      padding-top: 28px;
+      border-top: 1px solid rgba(75, 13, 13, 0.1);
+    }
+
+    .client-single-actions a {
+      color: #fffdf8;
+      background: #4b0d0d;
+      border-radius: 999px;
+      padding: 12px 18px;
+      text-decoration: none;
+      font-weight: 800;
+    }
+
+    .client-audio-box {
+      margin: 0;
+      padding: 34px;
+      background:
+        radial-gradient(circle at 20% 15%, rgba(255, 255, 255, 0.12), transparent 30%),
+        linear-gradient(135deg, #6b1515, #2d0606);
+      color: #fffdf8;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 18px;
+      align-items: center;
+    }
+
+    .client-audio-icon {
+      width: 74px;
+      height: 74px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255, 253, 248, 0.22);
+      background: rgba(255, 255, 255, 0.1);
+      font-size: 30px;
+    }
+
+    .client-audio-info {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .client-audio-info strong {
+      font-size: 20px;
+    }
+
+    .client-audio-info span {
+      color: rgba(255, 253, 248, 0.72);
+      font-size: 13px;
+    }
+
+    .client-audio-box audio {
+      grid-column: 1 / -1;
+      width: 100%;
+    }
+
+    .client-file-box {
+      margin: 0;
+      padding: 34px;
+      background:
+        radial-gradient(circle at 20% 15%, rgba(255, 255, 255, 0.12), transparent 30%),
+        linear-gradient(135deg, #6b1515, #2d0606);
+      color: #fffdf8;
+      text-decoration: none;
+      display: flex;
+      gap: 18px;
+      align-items: center;
+    }
+
+    .client-file-box > span {
+      width: 68px;
+      height: 68px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255, 253, 248, 0.22);
+      background: rgba(255, 255, 255, 0.1);
+      font-size: 28px;
+      flex: 0 0 auto;
+    }
+
+    .client-file-box div {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .client-file-box strong {
+      font-size: 18px;
+    }
+
+    .client-file-box small {
+      color: rgba(255, 253, 248, 0.72);
+    }
+
+    @media (max-width: 720px) {
+      .client-single {
+        padding-top: 28px;
+      }
+
+      .client-single-body {
+        padding: 24px;
+      }
+
+      .client-single-text {
+        font-size: 16px;
+      }
+
+      .client-audio-box,
+      .client-file-box {
+        padding: 24px;
+      }
+    }
+  </style>
 </BaseLayout>

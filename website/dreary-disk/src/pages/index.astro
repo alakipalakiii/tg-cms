@@ -1,259 +1,681 @@
 ---
-export const prerender = false;
-
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { SITE } from "../config";
-import { getPosts, parsePostContent, formatDate } from "../lib/posts";
 
-const rawPosts = await getPosts();
-
-function mediaLabel(type?: string | null) {
-  if (type === "video") return "ویدیو";
-  if (type === "audio") return "فایل صوتی";
-  if (type === "voice") return "فایل صوتی";
-  if (type === "document") return "فایل پیوست";
-  if (type === "photo") return "تصویر";
-  return "رسانه";
-}
-
-function mediaIcon(type?: string | null) {
-  if (type === "video") return "▶";
-  if (type === "audio") return "♫";
-  if (type === "voice") return "●";
-  if (type === "document") return "↧";
-  if (type === "photo") return "◈";
-  return "◆";
-}
-
-function mediaClass(type?: string | null) {
-  if (type === "video") return "media-video";
-  if (type === "audio" || type === "voice") return "media-audio";
-  if (type === "document") return "media-document";
-  return "media-generic";
-}
-
-const posts = rawPosts.map(post => {
-  const parsed = parsePostContent(post.text);
-
-  return {
-    ...post,
-    title: parsed.title,
-    excerpt: parsed.excerpt,
-    content: parsed.content,
-    hashtags: parsed.hashtags,
-    mentions: parsed.mentions,
-    urls: parsed.urls,
-    searchText: parsed.searchText,
-    date: formatDate(post.created_at),
-    mediaLabel: mediaLabel(post.media_type),
-    mediaIcon: mediaIcon(post.media_type),
-    mediaClass: mediaClass(post.media_type)
-  };
-});
-
-const featuredPost = posts[0] || null;
-const otherPosts = posts.slice(1);
+const pageTitle = SITE.name;
+const pageDescription = SITE.description;
 ---
 
-<BaseLayout title={SITE.name} description={SITE.description}>
-  <main>
-    <section class="hero">
-      <div class="container">
-        <div class="hero-card">
-          <div class="hero-content">
-            <div class="eyebrow">رسانه هنری، فرهنگی و معاصر</div>
+<BaseLayout title={pageTitle} description={pageDescription}>
+  <main class="client-home" data-worker-url={SITE.workerUrl}>
+    <section class="client-hero">
+      <div class="client-hero-inner">
+        <div class="client-hero-content">
+          <p class="client-kicker">مجله هنری ماهون</p>
+          <h1>روایت هنر، فرهنگ و نگاه معاصر</h1>
+          <p>
+            ماهون رسانه‌ای برای ثبت و بازنشر روایت‌های هنری، فرهنگی، تصویری و شنیداری است.
+          </p>
+        </div>
 
-            <h1 class="hero-title">ماهون؛ روایت هنر، فرهنگ و نگاه معاصر</h1>
-
-            <p class="hero-text">
-              آخرین نوشته‌ها، ویدیوها، فایل‌های صوتی و روایت‌های هنری ماهون به صورت خودکار
-              از تلگرام دریافت می‌شوند و در قالب یک مجله آنلاین حرفه‌ای منتشر می‌شوند.
-            </p>
-
-            <div class="hero-stats">
-              <div class="stat">
-                <strong>{posts.length}</strong>
-                <span>مطلب منتشر شده</span>
-              </div>
-
-              <div class="stat">
-                <strong>Art</strong>
-                <span>روایت هنری</span>
-              </div>
-
-              <div class="stat">
-                <strong>Media</strong>
-                <span>متن، صوت و ویدیو</span>
-              </div>
-            </div>
+        <div class="client-hero-stats">
+          <div class="client-stat-card">
+            <strong id="postsCount">...</strong>
+            <span>مطلب منتشرشده</span>
+          </div>
+          <div class="client-stat-card">
+            <strong>Art</strong>
+            <span>روایت هنری</span>
+          </div>
+          <div class="client-stat-card">
+            <strong>Media</strong>
+            <span>متن، صوت و ویدیو</span>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="latest" class="container">
-      <div class="section-head">
-        <div>
-          <h2>مطالب تازه</h2>
-          <p>آخرین پست‌های منتشر شده در مجله هنری ماهون</p>
-        </div>
+    <section class="client-section">
+      <div class="client-section-heading">
+        <p>آخرین پست‌های منتشرشده در مجله هنری ماهون</p>
+        <h2>مطالب تازه</h2>
       </div>
 
-      <div class="search-box">
-        <input id="searchInput" type="search" placeholder="جستجو در مطالب، هشتگ‌ها و روایت‌های ماهون..." />
+      <div class="client-search-box">
+        <input
+          id="postSearch"
+          type="search"
+          placeholder="جستجو در مطالب، هشتگ‌ها و روایت‌های ماهون ..."
+          autocomplete="off"
+        />
       </div>
 
-      {featuredPost ? (
-        <div class="featured" id="featuredArea">
-          <a
-            class="featured-card"
-            href={`/post/${encodeURIComponent(featuredPost.slug)}`}
-            data-post-card
-            data-search={featuredPost.searchText}
-          >
-            {featuredPost.photo_url ? (
-              <div class="featured-media">
-                <img src={featuredPost.photo_url} alt={featuredPost.title} loading="eager" />
-              </div>
-            ) : featuredPost.media_type ? (
-              <div class={`featured-media media-visual ${featuredPost.mediaClass}`}>
-                <span class="media-visual-icon">{featuredPost.mediaIcon}</span>
-                <strong>{featuredPost.mediaLabel}</strong>
-                <small>برای مشاهده یا پخش، مطلب را باز کنید</small>
-              </div>
-            ) : null}
-
-            <div>
-              <span class="tag">آخرین مطلب</span>
-              <h2>{featuredPost.title}</h2>
-              <p>{featuredPost.excerpt}</p>
-
-              {featuredPost.media_type && (
-                <div class="content-type-line">
-                  <span>{featuredPost.mediaLabel}</span>
-                </div>
-              )}
-
-              {featuredPost.hashtags.length > 0 && (
-                <div class="mini-tags">
-                  {featuredPost.hashtags.slice(0, 4).map(tag => (
-                    <span class="hash-chip">#{tag}</span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div class="meta">
-              <span>{featuredPost.date}</span>
-              <span class="read">خواندن مطلب ←</span>
-            </div>
-          </a>
-
-          <aside class="feature-side">
-            <div>
-              <img src={SITE.logo} alt="مجله هنری ماهون" />
-              <h3>خانه روایت‌های هنری ماهون</h3>
-              <p>
-                ماهون محتوای تلگرام را به تجربه‌ای مجله‌ای، خوانا و قابل اشتراک‌گذاری تبدیل می‌کند.
-              </p>
-            </div>
-          </aside>
-        </div>
-      ) : (
-        <div class="empty">
-          هنوز پستی برای نمایش وجود ندارد.
-        </div>
-      )}
-
-      <div class="posts-grid">
-        {otherPosts.map(post => (
-          <a
-            class="post-card"
-            href={`/post/${encodeURIComponent(post.slug)}`}
-            data-post-card
-            data-search={post.searchText}
-          >
-            {post.photo_url ? (
-              <div class="post-media">
-                <img src={post.photo_url} alt={post.title} loading="lazy" />
-              </div>
-            ) : post.media_type ? (
-              <div class={`post-media media-visual ${post.mediaClass}`}>
-                <span class="media-visual-icon">{post.mediaIcon}</span>
-                <strong>{post.mediaLabel}</strong>
-                <small>باز کردن مطلب</small>
-              </div>
-            ) : null}
-
-            <div>
-              <div class="card-topline">
-                <span class="tag">ماهون</span>
-                <span class="post-id">#{post.id}</span>
-              </div>
-
-              <h3>{post.title}</h3>
-              <p>{post.excerpt}</p>
-
-              {post.media_type && (
-                <div class="content-type-line">
-                  <span>{post.mediaLabel}</span>
-                </div>
-              )}
-
-              {post.hashtags.length > 0 && (
-                <div class="mini-tags">
-                  {post.hashtags.slice(0, 3).map(tag => (
-                    <span class="hash-chip">#{tag}</span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div class="meta">
-              <span>{post.date}</span>
-              <span class="read">ادامه ←</span>
-            </div>
-          </a>
-        ))}
+      <div id="postsStatus" class="client-status">
+        در حال دریافت پست‌ها...
       </div>
 
-      <div id="emptySearch" class="empty hidden">
-        نتیجه‌ای برای جستجوی شما پیدا نشد.
-      </div>
+      <div id="featuredPost" class="client-featured"></div>
+
+      <div id="postsGrid" class="client-posts-grid"></div>
     </section>
   </main>
 
-  <script>
-    const input = document.getElementById("searchInput");
-    const cards = Array.from(document.querySelectorAll("[data-post-card]"));
-    const emptySearch = document.getElementById("emptySearch");
-    const params = new URLSearchParams(window.location.search);
-    const initialQuery = params.get("q") || "";
+  <script is:inline>
+    (function () {
+      const root = document.querySelector(".client-home");
+      const API_BASE = (
+        root?.dataset?.workerUrl ||
+        "https://tg-cms-api.morentoofficial.workers.dev"
+      ).replace(/\/+$/, "");
 
-    function runSearch() {
-      if (!input) return;
+      const statusEl = document.getElementById("postsStatus");
+      const gridEl = document.getElementById("postsGrid");
+      const featuredEl = document.getElementById("featuredPost");
+      const searchEl = document.getElementById("postSearch");
+      const countEl = document.getElementById("postsCount");
 
-      const query = input.value.trim().toLowerCase();
-      let visibleCount = 0;
+      let allPosts = [];
 
-      cards.forEach((card) => {
-        const text = (card.getAttribute("data-search") || "").toLowerCase();
-        const isVisible = !query || text.includes(query);
+      function escapeHtml(value) {
+        return String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
 
-        card.classList.toggle("hidden", !isVisible);
+      function escapeAttr(value) {
+        return escapeHtml(value).replace(/`/g, "&#096;");
+      }
 
-        if (isVisible) visibleCount += 1;
-      });
+      function cleanText(value) {
+        return String(value || "")
+          .replace(/https?:\/\/[^\s]+/giu, "")
+          .replace(/@[a-zA-Z0-9_]+/g, "")
+          .replace(/(^|\s)#([^\s#]+)/gu, " ")
+          .replace(/[•●▪▫◦]/g, "")
+          .replace(/\n{3,}/g, "\n\n")
+          .replace(/[ \t]{2,}/g, " ")
+          .trim();
+      }
 
-      if (emptySearch) {
-        emptySearch.classList.toggle("hidden", visibleCount !== 0);
+      function makeTitle(text) {
+        const source = cleanText(text) || "روایت ماهون";
+        const firstLine =
+          source
+            .split("\n")
+            .map((line) => line.trim())
+            .find(Boolean) || "روایت ماهون";
+
+        if (firstLine.length <= 70) return firstLine;
+        return firstLine.slice(0, 70).trim() + "...";
+      }
+
+      function makeExcerpt(text) {
+        const source = cleanText(text).replace(/\s+/g, " ").trim();
+        if (!source) return "روایتی تازه از مجله هنری ماهون";
+        if (source.length <= 160) return source;
+        return source.slice(0, 160).trim() + "...";
+      }
+
+      function getTags(text) {
+        return Array.from(
+          new Set(
+            Array.from(String(text || "").matchAll(/(^|\s)#([^\s#]+)/gu))
+              .map((match) => match[2])
+              .filter(Boolean)
+          )
+        );
+      }
+
+      function formatDate(value) {
+        if (!value) return "";
+        try {
+          const date = new Date(String(value).replace(" ", "T"));
+          return new Intl.DateTimeFormat("fa-IR", {
+            year: "numeric",
+            month: "long",
+            day: "numeric"
+          }).format(date);
+        } catch {
+          return String(value);
+        }
+      }
+
+      function normalizePost(raw) {
+        const mediaFileId = raw?.media_file_id || raw?.photo_file_id || null;
+        const mediaType = raw?.media_type || (raw?.photo_file_id ? "photo" : null);
+        const mediaUrl =
+          raw?.media_url ||
+          (mediaFileId ? `${API_BASE}/media/${encodeURIComponent(mediaFileId)}` : null);
+        const photoUrl =
+          raw?.photo_url ||
+          (mediaType === "photo" ? mediaUrl : null) ||
+          null;
+
+        return {
+          id: Number(raw?.id || 0),
+          text: String(raw?.text || ""),
+          slug: String(raw?.slug || `post-${raw?.id || Date.now()}`),
+          created_at: String(raw?.created_at || ""),
+          media_type: mediaType,
+          media_file_id: mediaFileId,
+          media_mime_type: raw?.media_mime_type || null,
+          media_file_name: raw?.media_file_name || null,
+          media_duration: raw?.media_duration || null,
+          media_size: raw?.media_size || null,
+          media_url: mediaUrl,
+          photo_url: photoUrl,
+          seo_title: raw?.seo_title || null,
+          seo_description: raw?.seo_description || null,
+          view_count: raw?.view_count || 0
+        };
+      }
+
+      function extractPosts(payload) {
+        if (Array.isArray(payload)) return payload.map(normalizePost).filter((post) => post.id);
+        if (Array.isArray(payload?.posts)) return payload.posts.map(normalizePost).filter((post) => post.id);
+        if (Array.isArray(payload?.data)) return payload.data.map(normalizePost).filter((post) => post.id);
+        return [];
+      }
+
+      function mediaLabel(type) {
+        switch (type) {
+          case "photo":
+            return "تصویر";
+          case "video":
+            return "ویدیو";
+          case "audio":
+            return "صوت";
+          case "voice":
+            return "ویس";
+          case "document":
+            return "فایل";
+          case "animation":
+            return "انیمیشن";
+          default:
+            return "روایت";
+        }
+      }
+
+      function mediaIcon(type) {
+        switch (type) {
+          case "photo":
+            return "◎";
+          case "video":
+            return "▶";
+          case "audio":
+          case "voice":
+            return "♪";
+          case "document":
+            return "□";
+          case "animation":
+            return "◆";
+          default:
+            return "•";
+        }
+      }
+
+      function renderMedia(post, featured) {
+        const className = featured ? "client-card-media client-card-media-featured" : "client-card-media";
+
+        if (post.photo_url) {
+          return `
+            <div class="${className}">
+              <img src="${escapeAttr(post.photo_url)}" alt="${escapeAttr(makeTitle(post.text))}" loading="lazy" />
+            </div>
+          `;
+        }
+
+        if (post.media_type) {
+          return `
+            <div class="${className} client-media-placeholder">
+              <span>${escapeHtml(mediaIcon(post.media_type))}</span>
+              <small>${escapeHtml(mediaLabel(post.media_type))}</small>
+            </div>
+          `;
+        }
+
+        return "";
+      }
+
+      function renderTags(post) {
+        const tags = getTags(post.text);
+        if (!tags.length) return "";
+
+        return `
+          <div class="client-tags">
+            ${tags
+              .slice(0, 4)
+              .map((tag) => `<span>#${escapeHtml(tag)}</span>`)
+              .join("")}
+          </div>
+        `;
+      }
+
+      function renderPostCard(post, featured) {
+        const title = post.seo_title || makeTitle(post.text);
+        const excerpt = post.seo_description || makeExcerpt(post.text);
+        const href = `/post/${encodeURIComponent(post.slug)}`;
+
+        return `
+          <article class="client-post-card ${featured ? "client-post-card-featured" : ""}">
+            <a href="${escapeAttr(href)}" aria-label="${escapeAttr(title)}">
+              ${renderMedia(post, featured)}
+              <div class="client-card-body">
+                <div class="client-card-meta">
+                  <span>${escapeHtml(formatDate(post.created_at))}</span>
+                  ${post.media_type ? `<span>${escapeHtml(mediaLabel(post.media_type))}</span>` : ""}
+                </div>
+                <h3>${escapeHtml(title)}</h3>
+                <p>${escapeHtml(excerpt)}</p>
+                ${renderTags(post)}
+                <div class="client-read-more">ادامه مطلب</div>
+              </div>
+            </a>
+          </article>
+        `;
+      }
+
+      function renderPosts(posts) {
+        countEl.textContent = String(posts.length);
+
+        if (!posts.length) {
+          featuredEl.innerHTML = "";
+          gridEl.innerHTML = "";
+          statusEl.style.display = "block";
+          statusEl.textContent = "هنوز پستی برای نمایش وجود ندارد.";
+          return;
+        }
+
+        statusEl.style.display = "none";
+
+        const featured = posts[0];
+        const rest = posts.slice(1);
+
+        featuredEl.innerHTML = renderPostCard(featured, true);
+        gridEl.innerHTML = rest.map((post) => renderPostCard(post, false)).join("");
+      }
+
+      function applySearch() {
+        const q = String(searchEl.value || "").trim().toLowerCase();
+
+        if (!q) {
+          renderPosts(allPosts);
+          return;
+        }
+
+        const filtered = allPosts.filter((post) => {
+          const haystack = [
+            post.text,
+            post.slug,
+            post.media_type,
+            post.media_file_name,
+            getTags(post.text).join(" ")
+          ]
+            .join(" ")
+            .toLowerCase();
+
+          return haystack.includes(q);
+        });
+
+        renderPosts(filtered);
+
+        if (!filtered.length) {
+          statusEl.style.display = "block";
+          statusEl.textContent = "نتیجه‌ای برای جستجوی شما پیدا نشد.";
+        }
+      }
+
+      async function loadPosts() {
+        try {
+          statusEl.style.display = "block";
+          statusEl.textContent = "در حال دریافت پست‌ها...";
+
+          const response = await fetch(`${API_BASE}/`, {
+            method: "GET",
+            headers: {
+              Accept: "application/json"
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`API error ${response.status}`);
+          }
+
+          const payload = await response.json();
+
+          allPosts = extractPosts(payload).sort((a, b) => {
+            const aTime = new Date(String(a.created_at).replace(" ", "T")).getTime();
+            const bTime = new Date(String(b.created_at).replace(" ", "T")).getTime();
+            return bTime - aTime;
+          });
+
+          renderPosts(allPosts);
+        } catch (error) {
+          console.error("Mahoon client posts error:", error);
+          countEl.textContent = "0";
+          featuredEl.innerHTML = "";
+          gridEl.innerHTML = "";
+          statusEl.style.display = "block";
+          statusEl.innerHTML =
+            "خطا در دریافت پست‌ها. لطفاً چند ثانیه دیگر صفحه را Refresh کنید.";
+        }
+      }
+
+      searchEl.addEventListener("input", applySearch);
+      loadPosts();
+    })();
+  </script>
+
+  <style is:global>
+    .client-home {
+      direction: rtl;
+    }
+
+    .client-hero {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto 72px;
+      padding: 72px 22px 0;
+    }
+
+    .client-hero-inner {
+      border-radius: 0 0 34px 34px;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.1), transparent 28%),
+        linear-gradient(135deg, #6b1515 0%, #4b0d0d 54%, #2d0606 100%);
+      color: #fffdf8;
+      padding: 58px;
+      min-height: 280px;
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 36px;
+      box-shadow: 0 32px 80px rgba(75, 13, 13, 0.24);
+    }
+
+    .client-kicker {
+      margin: 0 0 14px;
+      color: #e8d2a5;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .client-hero h1 {
+      margin: 0;
+      font-size: clamp(34px, 5vw, 64px);
+      line-height: 1.25;
+      letter-spacing: -0.05em;
+    }
+
+    .client-hero p {
+      max-width: 620px;
+      margin-top: 22px;
+      color: rgba(255, 253, 248, 0.82);
+      line-height: 2.1;
+      font-size: 16px;
+    }
+
+    .client-hero-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      align-self: end;
+    }
+
+    .client-stat-card {
+      min-height: 108px;
+      border: 1px solid rgba(255, 253, 248, 0.18);
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 18px;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      backdrop-filter: blur(10px);
+    }
+
+    .client-stat-card strong {
+      font-size: 28px;
+      color: #fff;
+      margin-bottom: 10px;
+    }
+
+    .client-stat-card span {
+      font-size: 13px;
+      color: rgba(255, 253, 248, 0.78);
+    }
+
+    .client-section {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto 90px;
+    }
+
+    .client-section-heading {
+      text-align: right;
+      margin-bottom: 28px;
+    }
+
+    .client-section-heading p {
+      margin: 0 0 12px;
+      color: #7b5b55;
+      font-size: 14px;
+    }
+
+    .client-section-heading h2 {
+      margin: 0;
+      color: #5a0f0f;
+      font-size: clamp(26px, 4vw, 40px);
+      letter-spacing: -0.04em;
+    }
+
+    .client-search-box {
+      margin-bottom: 26px;
+    }
+
+    .client-search-box input {
+      width: 100%;
+      border: 1px solid rgba(75, 13, 13, 0.12);
+      background: #fffdf8;
+      color: #331313;
+      border-radius: 22px;
+      padding: 22px 26px;
+      font-size: 15px;
+      outline: none;
+      box-shadow: 0 20px 60px rgba(75, 13, 13, 0.08);
+    }
+
+    .client-search-box input:focus {
+      border-color: rgba(75, 13, 13, 0.38);
+    }
+
+    .client-status {
+      background: #fffdf8;
+      border: 1px solid rgba(75, 13, 13, 0.1);
+      border-radius: 22px;
+      padding: 28px;
+      text-align: center;
+      color: #5f504e;
+      margin: 26px 0;
+      box-shadow: 0 18px 50px rgba(75, 13, 13, 0.06);
+    }
+
+    .client-featured {
+      margin-bottom: 28px;
+    }
+
+    .client-posts-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 22px;
+    }
+
+    .client-post-card {
+      background: #fffdf8;
+      border: 1px solid rgba(75, 13, 13, 0.1);
+      border-radius: 28px;
+      overflow: hidden;
+      box-shadow: 0 22px 70px rgba(75, 13, 13, 0.08);
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .client-post-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 28px 86px rgba(75, 13, 13, 0.14);
+    }
+
+    .client-post-card a {
+      color: inherit;
+      text-decoration: none;
+      display: block;
+      height: 100%;
+    }
+
+    .client-post-card-featured a {
+      display: grid;
+      grid-template-columns: 0.95fr 1.05fr;
+      min-height: 380px;
+    }
+
+    .client-card-media {
+      background: #efe4d7;
+      aspect-ratio: 4 / 3;
+      overflow: hidden;
+    }
+
+    .client-card-media-featured {
+      aspect-ratio: auto;
+      min-height: 380px;
+    }
+
+    .client-card-media img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .client-media-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 14px;
+      color: #fffdf8;
+      background:
+        radial-gradient(circle at 20% 15%, rgba(255, 255, 255, 0.16), transparent 30%),
+        linear-gradient(135deg, #6b1515, #2d0606);
+    }
+
+    .client-media-placeholder span {
+      width: 74px;
+      height: 74px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 253, 248, 0.26);
+      display: grid;
+      place-items: center;
+      font-size: 30px;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .client-media-placeholder small {
+      color: rgba(255, 253, 248, 0.78);
+    }
+
+    .client-card-body {
+      padding: 24px;
+    }
+
+    .client-post-card-featured .client-card-body {
+      padding: 42px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .client-card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      color: #8a6a62;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+
+    .client-card-meta span {
+      background: #f5ece0;
+      border-radius: 999px;
+      padding: 7px 12px;
+    }
+
+    .client-post-card h3 {
+      margin: 0 0 14px;
+      color: #4b0d0d;
+      line-height: 1.7;
+      font-size: 21px;
+      letter-spacing: -0.03em;
+    }
+
+    .client-post-card-featured h3 {
+      font-size: clamp(28px, 4vw, 42px);
+    }
+
+    .client-post-card p {
+      margin: 0;
+      color: #5f504e;
+      line-height: 2;
+      font-size: 14px;
+    }
+
+    .client-post-card-featured p {
+      font-size: 16px;
+    }
+
+    .client-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .client-tags span {
+      color: #6b1515;
+      background: #f6efe5;
+      border: 1px solid rgba(75, 13, 13, 0.08);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+
+    .client-read-more {
+      margin-top: 22px;
+      color: #4b0d0d;
+      font-weight: 800;
+      font-size: 14px;
+    }
+
+    @media (max-width: 980px) {
+      .client-hero-inner {
+        grid-template-columns: 1fr;
+        padding: 38px 24px;
+      }
+
+      .client-hero-stats {
+        grid-template-columns: 1fr;
+      }
+
+      .client-post-card-featured a {
+        grid-template-columns: 1fr;
+      }
+
+      .client-card-media-featured {
+        aspect-ratio: 4 / 3;
+        min-height: auto;
+      }
+
+      .client-posts-grid {
+        grid-template-columns: 1fr;
       }
     }
-
-    if (input) {
-      input.value = initialQuery;
-      input.addEventListener("input", runSearch);
-      runSearch();
-    }
-  </script>
+  </style>
 </BaseLayout>
