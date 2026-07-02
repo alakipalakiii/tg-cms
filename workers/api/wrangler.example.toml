@@ -1,0 +1,7 @@
+name = "mahoon-api-worker-example"
+main = "src/index.ts"
+compatibility_date = "2026-07-02"
+
+# This is only an example file.
+# Do not put real secrets, tokens, passwords, or Cloudflare variables here.
+# Configure real values in Cloudflare Variables and Secrets instead.

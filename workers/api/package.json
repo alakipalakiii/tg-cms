@@ -1,0 +1,12 @@
+{
+  "name": "mahoon-api-worker-source",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "format-placeholder": "echo \"No formatter configured yet\""
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
