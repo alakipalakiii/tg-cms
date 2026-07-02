@@ -15,6 +15,12 @@ wrangler.toml.local
 .dev.vars
 **/.dev.vars
 
+# Worker API local secrets/config
+workers/api/.env
+workers/api/.env.*
+workers/api/.dev.vars
+workers/api/wrangler.toml
+
 # Environment files
 .env
 .env.*
