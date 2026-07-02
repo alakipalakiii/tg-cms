@@ -24,8 +24,8 @@ const pageDescription = SITE.description;
             <span>مطلب منتشرشده</span>
           </div>
           <div class="client-stat-card">
-            <strong>Art</strong>
-            <span>روایت هنری</span>
+            <strong id="latestPostId">...</strong>
+            <span>آخرین کد مطلب</span>
           </div>
           <div class="client-stat-card">
             <strong>Media</strong>
@@ -41,11 +41,16 @@ const pageDescription = SITE.description;
         <h2>مطالب تازه</h2>
       </div>
 
+      <div class="client-logic-note">
+        <strong>منطق شماره‌گذاری:</strong>
+        کد مطلب روی سایت همان شماره‌ای است که باید در ربات وارد شود. این کد ثابت است و بعد از حذف پست‌ها تغییر نمی‌کند.
+      </div>
+
       <div class="client-search-box">
         <input
           id="postSearch"
           type="search"
-          placeholder="جستجو در مطالب، هشتگ‌ها و روایت‌های ماهون ..."
+          placeholder="جستجو در مطالب، هشتگ‌ها یا کد مطلب؛ مثلا 24 ..."
           autocomplete="off"
         />
       </div>
@@ -73,8 +78,47 @@ const pageDescription = SITE.description;
       const featuredEl = document.getElementById("featuredPost");
       const searchEl = document.getElementById("postSearch");
       const countEl = document.getElementById("postsCount");
+      const latestPostIdEl = document.getElementById("latestPostId");
 
       let allPosts = [];
+
+      function toPersianNumber(value) {
+        return String(value || "")
+          .replace(/0/g, "۰")
+          .replace(/1/g, "۱")
+          .replace(/2/g, "۲")
+          .replace(/3/g, "۳")
+          .replace(/4/g, "۴")
+          .replace(/5/g, "۵")
+          .replace(/6/g, "۶")
+          .replace(/7/g, "۷")
+          .replace(/8/g, "۸")
+          .replace(/9/g, "۹");
+      }
+
+      function normalizeDigits(value) {
+        return String(value || "")
+          .replace(/۰/g, "0")
+          .replace(/۱/g, "1")
+          .replace(/۲/g, "2")
+          .replace(/۳/g, "3")
+          .replace(/۴/g, "4")
+          .replace(/۵/g, "5")
+          .replace(/۶/g, "6")
+          .replace(/۷/g, "7")
+          .replace(/۸/g, "8")
+          .replace(/۹/g, "9")
+          .replace(/٠/g, "0")
+          .replace(/١/g, "1")
+          .replace(/٢/g, "2")
+          .replace(/٣/g, "3")
+          .replace(/٤/g, "4")
+          .replace(/٥/g, "5")
+          .replace(/٦/g, "6")
+          .replace(/٧/g, "7")
+          .replace(/٨/g, "8")
+          .replace(/٩/g, "9");
+      }
 
       function escapeHtml(value) {
         return String(value || "")
@@ -217,6 +261,14 @@ const pageDescription = SITE.description;
         }
       }
 
+      function renderPostCode(post) {
+        return `
+          <span class="client-post-code" title="این کد همان شماره ربات است">
+            کد مطلب #${escapeHtml(toPersianNumber(post.id))}
+          </span>
+        `;
+      }
+
       function renderMedia(post, featured) {
         const className = featured ? "client-card-media client-card-media-featured" : "client-card-media";
 
@@ -224,6 +276,7 @@ const pageDescription = SITE.description;
           return `
             <div class="${className}">
               <img src="${escapeAttr(post.photo_url)}" alt="${escapeAttr(makeTitle(post.text))}" loading="lazy" />
+              <div class="client-media-code">${renderPostCode(post)}</div>
             </div>
           `;
         }
@@ -231,13 +284,20 @@ const pageDescription = SITE.description;
         if (post.media_type) {
           return `
             <div class="${className} client-media-placeholder">
+              <div class="client-media-code">${renderPostCode(post)}</div>
               <span>${escapeHtml(mediaIcon(post.media_type))}</span>
               <small>${escapeHtml(mediaLabel(post.media_type))}</small>
             </div>
           `;
         }
 
-        return "";
+        return `
+          <div class="${className} client-media-placeholder client-media-placeholder-text">
+            <div class="client-media-code">${renderPostCode(post)}</div>
+            <span>•</span>
+            <small>متن</small>
+          </div>
+        `;
       }
 
       function renderTags(post) {
@@ -260,11 +320,12 @@ const pageDescription = SITE.description;
         const href = `/post/${encodeURIComponent(post.slug)}`;
 
         return `
-          <article class="client-post-card ${featured ? "client-post-card-featured" : ""}">
+          <article class="client-post-card ${featured ? "client-post-card-featured" : ""}" data-post-id="${escapeAttr(post.id)}">
             <a href="${escapeAttr(href)}" aria-label="${escapeAttr(title)}">
               ${renderMedia(post, featured)}
               <div class="client-card-body">
                 <div class="client-card-meta">
+                  ${renderPostCode(post)}
                   <span>${escapeHtml(formatDate(post.created_at))}</span>
                   ${post.media_type ? `<span>${escapeHtml(mediaLabel(post.media_type))}</span>` : ""}
                 </div>
@@ -279,7 +340,10 @@ const pageDescription = SITE.description;
       }
 
       function renderPosts(posts) {
-        countEl.textContent = String(posts.length);
+        countEl.textContent = toPersianNumber(posts.length);
+
+        const maxId = posts.reduce((max, post) => Math.max(max, Number(post.id || 0)), 0);
+        latestPostIdEl.textContent = maxId ? `#${toPersianNumber(maxId)}` : "...";
 
         if (!posts.length) {
           featuredEl.innerHTML = "";
@@ -299,7 +363,8 @@ const pageDescription = SITE.description;
       }
 
       function applySearch() {
-        const q = String(searchEl.value || "").trim().toLowerCase();
+        const rawQuery = String(searchEl.value || "").trim();
+        const q = normalizeDigits(rawQuery).toLowerCase().replace(/^#/, "");
 
         if (!q) {
           renderPosts(allPosts);
@@ -307,17 +372,20 @@ const pageDescription = SITE.description;
         }
 
         const filtered = allPosts.filter((post) => {
-          const haystack = [
+          const id = String(post.id || "");
+          const haystack = normalizeDigits([
+            post.id,
+            `#${post.id}`,
+            `کد ${post.id}`,
+            `کد مطلب ${post.id}`,
             post.text,
             post.slug,
             post.media_type,
             post.media_file_name,
             getTags(post.text).join(" ")
-          ]
-            .join(" ")
-            .toLowerCase();
+          ].join(" ")).toLowerCase();
 
-          return haystack.includes(q);
+          return id === q || haystack.includes(q);
         });
 
         renderPosts(filtered);
@@ -349,13 +417,17 @@ const pageDescription = SITE.description;
           allPosts = extractPosts(payload).sort((a, b) => {
             const aTime = new Date(String(a.created_at).replace(" ", "T")).getTime();
             const bTime = new Date(String(b.created_at).replace(" ", "T")).getTime();
-            return bTime - aTime;
+
+            if (bTime !== aTime) return bTime - aTime;
+
+            return Number(b.id || 0) - Number(a.id || 0);
           });
 
           renderPosts(allPosts);
         } catch (error) {
           console.error("Mahoon client posts error:", error);
-          countEl.textContent = "0";
+          countEl.textContent = "۰";
+          latestPostIdEl.textContent = "...";
           featuredEl.innerHTML = "";
           gridEl.innerHTML = "";
           statusEl.style.display = "block";
@@ -453,7 +525,7 @@ const pageDescription = SITE.description;
 
     .client-section-heading {
       text-align: right;
-      margin-bottom: 28px;
+      margin-bottom: 20px;
     }
 
     .client-section-heading p {
@@ -467,6 +539,21 @@ const pageDescription = SITE.description;
       color: #5a0f0f;
       font-size: clamp(26px, 4vw, 40px);
       letter-spacing: -0.04em;
+    }
+
+    .client-logic-note {
+      background: #fffdf8;
+      border: 1px solid rgba(75, 13, 13, 0.1);
+      border-radius: 18px;
+      padding: 16px 20px;
+      margin-bottom: 22px;
+      color: #5f504e;
+      line-height: 2;
+      box-shadow: 0 14px 42px rgba(75, 13, 13, 0.05);
+    }
+
+    .client-logic-note strong {
+      color: #4b0d0d;
     }
 
     .client-search-box {
@@ -538,6 +625,7 @@ const pageDescription = SITE.description;
     }
 
     .client-card-media {
+      position: relative;
       background: #efe4d7;
       aspect-ratio: 4 / 3;
       overflow: hidden;
@@ -555,7 +643,33 @@ const pageDescription = SITE.description;
       display: block;
     }
 
+    .client-media-code {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      z-index: 3;
+    }
+
+    .client-post-code {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 7px 12px;
+      background: #4b0d0d;
+      color: #fffdf8;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+      box-shadow: 0 10px 30px rgba(75, 13, 13, 0.18);
+    }
+
+    .client-card-meta .client-post-code {
+      box-shadow: none;
+    }
+
     .client-media-placeholder {
+      position: relative;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -567,7 +681,13 @@ const pageDescription = SITE.description;
         linear-gradient(135deg, #6b1515, #2d0606);
     }
 
-    .client-media-placeholder span {
+    .client-media-placeholder-text {
+      background:
+        radial-gradient(circle at 20% 15%, rgba(255, 255, 255, 0.14), transparent 30%),
+        linear-gradient(135deg, #5a0f0f, #2d0606);
+    }
+
+    .client-media-placeholder span:not(.client-post-code) {
       width: 74px;
       height: 74px;
       border-radius: 999px;
@@ -602,7 +722,7 @@ const pageDescription = SITE.description;
       margin-bottom: 14px;
     }
 
-    .client-card-meta span {
+    .client-card-meta span:not(.client-post-code) {
       background: #f5ece0;
       border-radius: 999px;
       padding: 7px 12px;

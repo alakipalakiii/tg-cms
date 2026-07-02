@@ -35,6 +35,20 @@ const slug = Astro.params.slug || "";
         "https://tg-cms-api.morentoofficial.workers.dev"
       ).replace(/\/+$/, "");
 
+      function toPersianNumber(value) {
+        return String(value || "")
+          .replace(/0/g, "۰")
+          .replace(/1/g, "۱")
+          .replace(/2/g, "۲")
+          .replace(/3/g, "۳")
+          .replace(/4/g, "۴")
+          .replace(/5/g, "۵")
+          .replace(/6/g, "۶")
+          .replace(/7/g, "۷")
+          .replace(/8/g, "۸")
+          .replace(/9/g, "۹");
+      }
+
       function safeDecode(value) {
         try {
           return decodeURIComponent(value || "");
@@ -110,9 +124,9 @@ const slug = Astro.params.slug || "";
       function formatFileSize(bytes) {
         const size = Number(bytes || 0);
         if (!size) return "";
-        if (size < 1024) return `${size} بایت`;
-        if (size < 1024 * 1024) return `${Math.round(size / 1024)} کیلوبایت`;
-        return `${(size / 1024 / 1024).toFixed(1)} مگابایت`;
+        if (size < 1024) return `${toPersianNumber(size)} بایت`;
+        if (size < 1024 * 1024) return `${toPersianNumber(Math.round(size / 1024))} کیلوبایت`;
+        return `${toPersianNumber((size / 1024 / 1024).toFixed(1))} مگابایت`;
       }
 
       function formatDuration(seconds) {
@@ -120,7 +134,7 @@ const slug = Astro.params.slug || "";
         if (!total) return "";
         const minutes = Math.floor(total / 60);
         const rest = Math.floor(total % 60);
-        return `${minutes}:${String(rest).padStart(2, "0")}`;
+        return toPersianNumber(`${minutes}:${String(rest).padStart(2, "0")}`);
       }
 
       function normalizePost(raw) {
@@ -275,10 +289,17 @@ const slug = Astro.params.slug || "";
           ${renderMedia(post)}
 
           <div class="client-single-body">
+            <div class="client-single-code-box">
+              <strong>کد ثابت مطلب</strong>
+              <span>#${escapeHtml(toPersianNumber(post.id))}</span>
+              <small>برای مدیریت این مطلب در ربات، همین شماره را وارد کنید.</small>
+            </div>
+
             <div class="client-single-meta">
+              <span>کد مطلب #${escapeHtml(toPersianNumber(post.id))}</span>
               <span>${escapeHtml(formatDate(post.created_at))}</span>
               ${post.media_type ? `<span>${escapeHtml(mediaLabel(post.media_type))}</span>` : ""}
-              ${post.view_count ? `<span>${escapeHtml(post.view_count)} بازدید</span>` : ""}
+              ${post.view_count ? `<span>${escapeHtml(toPersianNumber(post.view_count))} بازدید</span>` : ""}
             </div>
 
             <h1>${escapeHtml(title)}</h1>
@@ -429,6 +450,35 @@ const slug = Astro.params.slug || "";
       padding: clamp(26px, 5vw, 54px);
     }
 
+    .client-single-code-box {
+      background:
+        radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.14), transparent 30%),
+        linear-gradient(135deg, #6b1515, #2d0606);
+      color: #fffdf8;
+      border-radius: 24px;
+      padding: 22px;
+      margin-bottom: 24px;
+      display: grid;
+      gap: 8px;
+      box-shadow: 0 18px 55px rgba(75, 13, 13, 0.14);
+    }
+
+    .client-single-code-box strong {
+      font-size: 14px;
+      color: rgba(255, 253, 248, 0.78);
+    }
+
+    .client-single-code-box span {
+      font-size: 34px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .client-single-code-box small {
+      color: rgba(255, 253, 248, 0.72);
+      line-height: 1.9;
+    }
+
     .client-single-meta {
       display: flex;
       flex-wrap: wrap;
@@ -442,6 +492,12 @@ const slug = Astro.params.slug || "";
       background: #f5ece0;
       border-radius: 999px;
       padding: 8px 13px;
+    }
+
+    .client-single-meta span:first-child {
+      background: #4b0d0d;
+      color: #fffdf8;
+      font-weight: 800;
     }
 
     .client-single-body h1 {
