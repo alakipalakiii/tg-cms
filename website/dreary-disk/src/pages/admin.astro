@@ -130,6 +130,12 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         transform: translateY(-2px);
       }
 
+      .btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.58;
+        transform: none;
+      }
+
       .btn-primary {
         background: var(--dark);
         color: #fff;
@@ -482,14 +488,27 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         display: block;
       }
 
+      .message {
+        border: 1px solid transparent;
+        box-shadow: 0 14px 34px rgba(34, 24, 15, 0.08);
+      }
+
       .message.ok {
         background: rgba(47, 133, 90, 0.12);
         color: var(--green);
+        border-color: rgba(47, 133, 90, 0.22);
       }
 
       .message.error {
         background: rgba(184, 66, 66, 0.12);
         color: var(--danger);
+        border-color: rgba(184, 66, 66, 0.22);
+      }
+
+      .message.info {
+        background: rgba(43, 108, 176, 0.12);
+        color: var(--blue);
+        border-color: rgba(43, 108, 176, 0.22);
       }
 
       .empty {
@@ -522,6 +541,21 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       .mini-stat span {
         color: var(--muted);
         font-size: 12px;
+      }
+
+      .id-note {
+        border: 1px solid rgba(184, 135, 70, 0.24);
+        background: rgba(184, 135, 70, 0.1);
+        color: #7a4d20;
+        border-radius: 18px;
+        padding: 12px 14px;
+        margin-bottom: 16px;
+        font-size: 13px;
+        line-height: 1.9;
+      }
+
+      .id-note strong {
+        color: var(--dark);
       }
 
       .media-uploader {
@@ -798,10 +832,16 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                 <input type="hidden" id="postId" />
 
                 <div class="editor-meta">
+                  <div class="mini-stat"><strong id="stablePostId">-</strong><span>کد ثابت</span></div>
                   <div class="mini-stat"><strong id="charCount">0</strong><span>کاراکتر</span></div>
                   <div class="mini-stat"><strong id="wordCount">0</strong><span>کلمه</span></div>
                   <div class="mini-stat"><strong id="tagCount">0</strong><span>هشتگ</span></div>
                   <div class="mini-stat"><strong id="viewCount">0</strong><span>بازدید</span></div>
+                </div>
+
+                <div class="id-note" id="stableIdNote">
+                  <strong>کد ثابت پست:</strong>
+                  این ID همان کدی است که در ربات استفاده می‌شود و بعد از حذف پست‌های دیگر تغییر نمی‌کند.
                 </div>
 
                 <div class="field">
@@ -941,6 +981,8 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       const wordCount = document.getElementById("wordCount");
       const tagCount = document.getElementById("tagCount");
       const viewCount = document.getElementById("viewCount");
+      const stablePostId = document.getElementById("stablePostId");
+      const stableIdNote = document.getElementById("stableIdNote");
 
       const saveBtn = document.getElementById("saveBtn");
       const deleteBtn = document.getElementById("deleteBtn");
@@ -959,6 +1001,9 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       let selectedPost = null;
       let selectedIds = new Set();
       let currentMedia = null;
+      let editorDirty = false;
+      let editorBaseline = "";
+      let messageTimer = null;
 
       function getToken() {
         return localStorage.getItem(TOKEN_KEY) || "";
@@ -983,12 +1028,43 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       }
 
       function showMessage(element, text, type = "ok") {
+        clearTimeout(messageTimer);
         element.textContent = text;
         element.className = `message show ${type}`;
 
-        setTimeout(() => {
+        messageTimer = setTimeout(() => {
           element.className = "message";
-        }, 3800);
+          element.textContent = "";
+        }, type === "error" ? 6200 : 4200);
+      }
+
+      function userFriendlyError(error, fallback = "عملیات انجام نشد. دوباره تلاش کن.") {
+        const message = error?.message || "";
+
+        if (/unauthorized|forbidden|admin|token|401|403/i.test(message)) {
+          return "دسترسی مدیریت تأیید نشد. دوباره وارد پنل شو.";
+        }
+
+        if (/network|fetch|failed/i.test(message)) {
+          return "ارتباط با API برقرار نشد. اتصال اینترنت یا Worker را بررسی کن.";
+        }
+
+        return message || fallback;
+      }
+
+      function setButtonLoading(button, isLoading, loadingText) {
+        if (!button) return;
+
+        if (isLoading) {
+          button.dataset.originalText = button.textContent;
+          button.textContent = loadingText;
+          button.disabled = true;
+          return;
+        }
+
+        button.textContent = button.dataset.originalText || button.textContent;
+        button.disabled = false;
+        delete button.dataset.originalText;
       }
 
       function authHeaders() {
@@ -1145,6 +1221,39 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           media_url: post.media_url || post.photo_url || null,
           photo_url: mediaType === "photo" ? post.media_url || post.photo_url : null
         };
+      }
+
+      function editorStateSnapshot() {
+        const media = currentMedia || {};
+
+        return JSON.stringify({
+          id: postId.value || "",
+          slug: postSlug.value || "",
+          isPublished: Boolean(isPublished.checked),
+          text: postText.value || "",
+          seoTitle: seoTitle.value || "",
+          seoDescription: seoDescription.value || "",
+          adminNote: adminNote.value || "",
+          mediaFileId: media.media_file_id || "",
+          mediaType: media.media_type || ""
+        });
+      }
+
+      function resetEditorDirty() {
+        editorBaseline = editorStateSnapshot();
+        editorDirty = false;
+      }
+
+      function markEditorDirty() {
+        editorDirty = editorStateSnapshot() !== editorBaseline;
+      }
+
+      function updateStableIdDisplay(id) {
+        const value = id ? `#${id}` : "-";
+        stablePostId.textContent = value;
+        stableIdNote.innerHTML = id
+          ? `<strong>کد ثابت پست ${value}:</strong> این ID همان کدی است که در ربات استفاده می‌شود و بعد از حذف پست‌های دیگر تغییر نمی‌کند.`
+          : `<strong>کد ثابت پست:</strong> بعد از ساخت پست، ID ثابت اینجا نمایش داده می‌شود. این ID همان کد ربات است.`;
       }
 
       function renderMediaPreview() {
@@ -1320,7 +1429,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                 <p>${escapeHtml(excerpt)}</p>
 
                 <div class="row-meta">
-                  <span class="badge gray">#${post.id}</span>
+                  <span class="badge blue">کد ثابت #${post.id}</span>
                   <span class="badge ${statusClass}">${statusText}</span>
                   ${media ? `<span class="badge">${mediaLabel(media.media_type)}</span>` : ""}
                   <span class="badge blue">${Number(post.view_count || 0)} بازدید</span>
@@ -1340,8 +1449,9 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         selectedPost = post;
         currentMedia = mediaFromPost(post);
 
-        editorTitle.textContent = `ویرایش پست #${post.id}`;
+        editorTitle.textContent = `ویرایش پست با کد ثابت #${post.id}`;
         postId.value = post.id;
+        updateStableIdDisplay(post.id);
         postSlug.value = post.slug || "";
         isPublished.checked = Number(post.is_published) === 1;
         postText.value = post.text || "";
@@ -1353,6 +1463,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         renderMediaPreview();
         updateEditorStats();
         updatePreview();
+        resetEditorDirty();
         renderPosts();
       }
 
@@ -1362,6 +1473,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
         editorTitle.textContent = "ساخت پست جدید";
         postId.value = "";
+        updateStableIdDisplay("");
         postSlug.value = "";
         isPublished.checked = true;
         postText.value = "";
@@ -1374,6 +1486,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         renderMediaPreview();
         updateEditorStats();
         updatePreview();
+        resetEditorDirty();
         renderPosts();
       }
 
@@ -1431,11 +1544,12 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           return;
         }
 
+        if (uploadMediaBtn.disabled) return;
+
         const formData = new FormData();
         formData.append("file", file);
 
-        uploadMediaBtn.disabled = true;
-        uploadMediaBtn.textContent = "در حال آپلود...";
+        setButtonLoading(uploadMediaBtn, true, "در حال آپلود...");
 
         try {
           const res = await fetch(`${WORKER_URL}/admin/upload`, {
@@ -1452,12 +1566,12 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
           currentMedia = data.media;
           renderMediaPreview();
-          showMessage(editorMessage, "فایل با موفقیت در تلگرام ذخیره شد.", "ok");
+          markEditorDirty();
+          showMessage(editorMessage, "فایل با موفقیت ذخیره شد. برای اتصال آن به پست، ذخیره را بزن.", "ok");
         } catch (error) {
-          showMessage(editorMessage, error.message, "error");
+          showMessage(editorMessage, userFriendlyError(error, "آپلود فایل انجام نشد."), "error");
         } finally {
-          uploadMediaBtn.disabled = false;
-          uploadMediaBtn.textContent = "آپلود فایل";
+          setButtonLoading(uploadMediaBtn, false);
         }
       }
 
@@ -1465,10 +1579,13 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         currentMedia = null;
         mediaFile.value = "";
         renderMediaPreview();
+        markEditorDirty();
         showMessage(editorMessage, "فایل از این پست حذف شد. برای اعمال تغییر، ذخیره را بزن.", "ok");
       }
 
       async function savePost() {
+        if (saveBtn.disabled) return;
+
         const id = postId.value;
         const payload = editorPayload();
 
@@ -1477,6 +1594,8 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           return;
         }
 
+        setButtonLoading(saveBtn, true, id ? "در حال ذخیره..." : "در حال ساخت...");
+
         try {
           if (id) {
             await api(`/admin/posts/${id}`, {
@@ -1484,16 +1603,17 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
               body: JSON.stringify(payload)
             });
 
-            showMessage(editorMessage, "پست با موفقیت ذخیره شد.", "ok");
+            showMessage(editorMessage, `پست با کد ثابت #${id} با موفقیت ذخیره شد.`, "ok");
           } else {
             const data = await api("/admin/posts", {
               method: "POST",
               body: JSON.stringify(payload)
             });
 
-            showMessage(editorMessage, "پست جدید ساخته شد.", "ok");
+            showMessage(editorMessage, `پست جدید ساخته شد. کد ثابت آن #${data.id || "-"} است.`, "ok");
 
             postId.value = data.id || "";
+            updateStableIdDisplay(data.id || "");
             postSlug.value = data.slug || payload.slug;
           }
 
@@ -1503,13 +1623,19 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
           if (fresh) {
             selectPost(fresh);
+          } else {
+            resetEditorDirty();
           }
         } catch (error) {
-          showMessage(editorMessage, error.message, "error");
+          showMessage(editorMessage, userFriendlyError(error, "ذخیره پست انجام نشد."), "error");
+        } finally {
+          setButtonLoading(saveBtn, false);
         }
       }
 
       async function deletePost() {
+        if (deleteBtn.disabled) return;
+
         const id = postId.value;
 
         if (!id) {
@@ -1517,24 +1643,37 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           return;
         }
 
-        const confirmed = confirm("این پست از سایت حذف شود؟ حذف به صورت نرم انجام می‌شود.");
+        const typedId = prompt(
+          `حذف نرم پست با کد ثابت #${id}\n\nاین پست از سایت حذف می‌شود، اما شماره ثابت آن تغییر نمی‌کند و hard delete انجام نمی‌شود.\nبرای تأیید، کد پست را وارد کن: ${id}`
+        );
 
-        if (!confirmed) return;
+        if (typedId === null) return;
+
+        if (typedId.trim() !== String(id)) {
+          showMessage(editorMessage, "کد واردشده با ID ثابت پست یکی نیست. حذف انجام نشد.", "error");
+          return;
+        }
+
+        setButtonLoading(deleteBtn, true, "در حال حذف...");
 
         try {
           await api(`/admin/posts/${id}`, {
             method: "DELETE"
           });
 
-          showMessage(editorMessage, "پست حذف شد.", "ok");
+          showMessage(editorMessage, `پست #${id} به‌صورت نرم حذف شد. شماره ثابت آن تغییر نکرد.`, "ok");
           clearEditor();
           await loadPosts();
         } catch (error) {
-          showMessage(editorMessage, error.message, "error");
+          showMessage(editorMessage, userFriendlyError(error, "حذف پست انجام نشد."), "error");
+        } finally {
+          setButtonLoading(deleteBtn, false);
         }
       }
 
       async function duplicatePost() {
+        if (duplicateBtn.disabled) return;
+
         const payload = editorPayload();
 
         if (!payload.text) {
@@ -1546,13 +1685,15 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         payload.is_published = 0;
         payload.admin_note = payload.admin_note ? payload.admin_note + "\nکپی شده از پست قبلی" : "کپی شده از پست قبلی";
 
+        setButtonLoading(duplicateBtn, true, "در حال کپی...");
+
         try {
           const data = await api("/admin/posts", {
             method: "POST",
             body: JSON.stringify(payload)
           });
 
-          showMessage(editorMessage, "کپی پست ساخته شد و در حالت منتشر نشده قرار گرفت.", "ok");
+          showMessage(editorMessage, `کپی پست ساخته شد و با کد ثابت #${data.id || "-"} در حالت منتشر نشده قرار گرفت.`, "ok");
 
           await loadPosts();
 
@@ -1562,20 +1703,42 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             selectPost(fresh);
           }
         } catch (error) {
-          showMessage(editorMessage, error.message, "error");
+          showMessage(editorMessage, userFriendlyError(error, "کپی پست انجام نشد."), "error");
+        } finally {
+          setButtonLoading(duplicateBtn, false);
         }
       }
 
       async function bulkAction(action) {
         if (selectedIds.size === 0) {
-          alert("هیچ پستی انتخاب نشده است.");
+          showMessage(editorMessage, "هیچ پستی انتخاب نشده است.", "error");
           return;
         }
 
         if (action === "delete") {
-          const confirmed = confirm("پست‌های انتخاب‌شده حذف شوند؟");
+          const confirmed = confirm(`حذف نرم ${selectedIds.size} پست انتخاب‌شده انجام شود؟\n\nشماره ثابت پست‌ها تغییر نمی‌کند و hard delete انجام نمی‌شود.`);
           if (!confirmed) return;
         }
+
+        const buttonByAction = {
+          publish: bulkPublishBtn,
+          unpublish: bulkUnpublishBtn,
+          delete: bulkDeleteBtn
+        };
+        const loadingTextByAction = {
+          publish: "در حال انتشار...",
+          unpublish: "در حال عدم انتشار...",
+          delete: "در حال حذف..."
+        };
+        const doneTextByAction = {
+          publish: "پست‌های انتخاب‌شده منتشر شدند.",
+          unpublish: "پست‌های انتخاب‌شده از انتشار خارج شدند.",
+          delete: "پست‌های انتخاب‌شده به‌صورت نرم حذف شدند."
+        };
+        const actionButton = buttonByAction[action];
+
+        if (actionButton?.disabled) return;
+        setButtonLoading(actionButton, true, loadingTextByAction[action] || "در حال انجام...");
 
         try {
           await api("/admin/posts/bulk", {
@@ -1588,8 +1751,11 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
           selectedIds = new Set();
           await loadPosts();
+          showMessage(editorMessage, doneTextByAction[action] || "عملیات گروهی انجام شد.", "ok");
         } catch (error) {
-          alert(error.message);
+          showMessage(editorMessage, userFriendlyError(error, "عملیات گروهی انجام نشد."), "error");
+        } finally {
+          setButtonLoading(actionButton, false);
         }
       }
 
@@ -1722,16 +1888,37 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
       generateSlugBtn.addEventListener("click", () => {
         postSlug.value = makeSlugFromText(postText.value);
+        markEditorDirty();
       });
 
       postText.addEventListener("input", () => {
+        markEditorDirty();
         updateEditorStats();
         updatePreview();
       });
 
-      isPublished.addEventListener("change", updatePreview);
-      seoTitle.addEventListener("input", updatePreview);
-      seoDescription.addEventListener("input", updatePreview);
+      postSlug.addEventListener("input", markEditorDirty);
+      isPublished.addEventListener("change", () => {
+        markEditorDirty();
+        updatePreview();
+      });
+      seoTitle.addEventListener("input", () => {
+        markEditorDirty();
+        updatePreview();
+      });
+      seoDescription.addEventListener("input", () => {
+        markEditorDirty();
+        updatePreview();
+      });
+      adminNote.addEventListener("input", markEditorDirty);
+      mediaFile.addEventListener("change", markEditorDirty);
+
+      window.addEventListener("beforeunload", event => {
+        if (!editorDirty) return;
+
+        event.preventDefault();
+        event.returnValue = "";
+      });
 
       clearEditor();
 
