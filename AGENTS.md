@@ -42,6 +42,31 @@
 /deleted
 ```
 
+## قوانین Deleted / Restore
+
+hard delete ممنوع است.
+
+bulk hard delete ممنوع است.
+
+حذف و restore فقط باید با `id` دیتابیس جدول `posts` انجام شود.
+
+برای delete، restore یا edit هیچ وقت از `telegram_message_id` استفاده نکن.
+
+ستون `deleted_at` برای soft delete استفاده می‌شود.
+
+restore یعنی:
+
+```sql
+deleted_at = NULL
+is_published = 1
+```
+
+`PATCH` عمومی نباید برای restore پست حذف‌شده باز شود. Restore باید از مسیر مشخص و امن خودش انجام شود.
+
+endpointهای admin باید با `ADMIN_TOKEN` محافظت شوند.
+
+قبل از هر تغییر بزرگ در Worker یا D1، بکاپ D1 لازم است.
+
 ## قوانین تغییر کد
 
 هر تغییر کدنویسی باید کوچک و قابل تست باشد.
@@ -58,5 +83,7 @@ npm run build
 ## قوانین امنیتی
 
 هیچ Secret، Token، Password یا Cloudflare Variable نباید commit شود.
+
+هیچ Secret، Token، Password، Database ID واقعی یا مقدار واقعی Cloudflare نباید وارد GitHub شود.
 
 به Cloudflare، Secretها، Tokenها، Passwordها و متغیرهای محیطی نباید بدون درخواست روشن و مشخص کاربر دست زده شود.
