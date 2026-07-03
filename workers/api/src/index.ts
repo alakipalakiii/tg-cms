@@ -301,6 +301,29 @@ function postWithMediaUrl(post, origin) {
   };
 }
 
+function seoPostPayload(post, origin) {
+  const publicPost = postWithMediaUrl(post, origin);
+
+  if (!publicPost) return null;
+
+  return {
+    id: publicPost.id,
+    slug: publicPost.slug,
+    text: publicPost.text,
+    created_at: publicPost.created_at,
+    updated_at: publicPost.updated_at,
+    seo_title: publicPost.seo_title,
+    seo_description: publicPost.seo_description,
+    media_type: publicPost.media_type,
+    media_url: publicPost.media_url,
+    photo_url: publicPost.photo_url,
+    media_mime_type: publicPost.media_mime_type,
+    media_file_name: publicPost.media_file_name,
+    media_width: publicPost.media_width || publicPost.photo_width || null,
+    media_height: publicPost.media_height || publicPost.photo_height || null
+  };
+}
+
 async function getTelegramFile(fileId, env) {
   if (!env.BOT_TOKEN) return null;
 
@@ -1865,6 +1888,56 @@ export default {
             "Content-Type": telegramFile.headers.get("Content-Type") || "application/octet-stream",
             "Cache-Control": "public, max-age=86400"
           }
+        });
+      }
+
+      if (request.method === "GET" && url.pathname.startsWith("/seo/post/")) {
+        const slug = decodeURIComponent(url.pathname.replace("/seo/post/", ""));
+
+        if (!slug) {
+          return json({
+            ok: false,
+            error: "Slug is required"
+          }, 400);
+        }
+
+        const post = await env.DB.prepare(
+          `
+          SELECT
+            id,
+            text,
+            slug,
+            created_at,
+            updated_at,
+            media_type,
+            media_file_id,
+            media_mime_type,
+            media_file_name,
+            media_width,
+            media_height,
+            photo_file_id,
+            photo_width,
+            photo_height,
+            seo_title,
+            seo_description
+          FROM posts
+          WHERE slug = ?
+          AND deleted_at IS NULL
+          AND is_published = 1
+          LIMIT 1
+          `
+        ).bind(slug).first();
+
+        if (!post) {
+          return json({
+            ok: false,
+            error: "Post not found"
+          }, 404);
+        }
+
+        return json({
+          ok: true,
+          post: seoPostPayload(post, origin)
         });
       }
 
