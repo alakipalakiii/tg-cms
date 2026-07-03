@@ -67,6 +67,28 @@ endpointهای admin باید با `ADMIN_TOKEN` محافظت شوند.
 
 قبل از هر تغییر بزرگ در Worker یا D1، بکاپ D1 لازم است.
 
+## قوانین SEO
+
+برای SSR meta مقاله هرگز از `/post/:slug` استفاده نکن، چون ممکن است `view_count` را افزایش دهد.
+
+برای SSR meta مقاله فقط باید از endpoint زیر استفاده شود:
+
+```text
+GET /seo/post/:slug
+```
+
+endpoint SEO باید read-only بماند و نباید `UPDATE`، `INSERT` یا `DELETE` انجام دهد.
+
+endpoint SEO نباید `view_count` را تغییر دهد.
+
+lookup در endpoint SEO فقط باید با `slug` و query parameter یا bind امن انجام شود.
+
+endpoint SEO نباید فیلدهای admin-only مثل `admin_note`، `chat_id`، `chat_title`، `deleted_at` یا `telegram_message_id` را خروجی بدهد.
+
+تغییرات SEO نباید منطق admin، delete، restore، Telegram، D1 یا منطق ID ثابت را تغییر دهد.
+
+`SITE.url` منبع رسمی canonical و URLهای عمومی سایت است.
+
 ## قوانین تغییر کد
 
 هر تغییر کدنویسی باید کوچک و قابل تست باشد.

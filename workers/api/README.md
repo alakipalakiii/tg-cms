@@ -29,6 +29,29 @@ src/index.ts
 
 Until then, `src/index.ts` is only a safe placeholder.
 
+## Public Endpoints
+
+### `GET /seo/post/:slug`
+
+- Public endpoint and does not require `ADMIN_TOKEN`.
+- Used for SEO metadata on the article page.
+- Read-only.
+- Performs only `SELECT`.
+- Does not increase `view_count`.
+- Returns only posts matching:
+
+  ```sql
+  slug = ?
+  deleted_at IS NULL
+  is_published = 1
+  ```
+
+- Looks up posts only by `slug`, not by `telegram_message_id`.
+- Returns a limited and safe payload.
+- Must not return admin-only fields such as `admin_note`, `chat_id`, `chat_title`, `deleted_at`, or `telegram_message_id`.
+- `post/[slug].astro` uses this endpoint to build SSR metadata.
+- `GET /post/:slug` remains the public user-facing read endpoint, and its `view_count` behavior is separate.
+
 ## Admin Endpoints
 
 Admin endpoints must be protected by `ADMIN_TOKEN`.
