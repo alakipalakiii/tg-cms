@@ -15,14 +15,26 @@ const {
   description = SITE.description,
   image = SITE.defaultImage,
   type = "website",
-  canonical = Astro.url.href
+  canonical
 } = Astro.props;
 
 const pageTitle = title === SITE.name ? SITE.name : `${title} | ${SITE.name}`;
+const siteUrl = SITE.url.replace(/\/+$/, "");
+const pagePath = Astro.url.pathname || "/";
+const canonicalUrl = canonical || `${siteUrl}${pagePath}`;
 
 const absoluteImage = image?.startsWith("http")
   ? image
-  : new URL(image || SITE.defaultImage, Astro.url.origin).href;
+  : new URL(image || SITE.defaultImage, siteUrl).href;
+
+const websiteJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: SITE.name,
+  url: SITE.url,
+  description,
+  inLanguage: "fa-IR"
+};
 ---
 
 <html lang="fa" dir="rtl">
@@ -33,19 +45,23 @@ const absoluteImage = image?.startsWith("http")
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
     <meta name="theme-color" content="#4b0d0d" />
-    <link rel="canonical" href={canonical} />
+    <link rel="canonical" href={canonicalUrl} />
     <link rel="icon" href={SITE.logo} />
 
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={absoluteImage} />
     <meta property="og:type" content={type} />
-    <meta property="og:url" content={canonical} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:site_name" content={SITE.name} />
+    <meta property="og:locale" content="fa_IR" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={absoluteImage} />
+
+    <script type="application/ld+json" set:html={JSON.stringify(websiteJsonLd)} />
 
     <slot name="head" />
   </head>

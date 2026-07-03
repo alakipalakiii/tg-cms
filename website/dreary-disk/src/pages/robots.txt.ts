@@ -1,5 +1,7 @@
+import { SITE } from "../config";
+
 export async function GET({ url }: { url: URL }) {
-  const baseUrl = url.origin;
+  const baseUrl = SITE.url.replace(/\/+$/, "");
 
   const body = `User-agent: *
 Allow: /

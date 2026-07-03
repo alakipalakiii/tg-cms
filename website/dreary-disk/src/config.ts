@@ -4,6 +4,7 @@ export const SITE = {
   shortDescription: "رسانه هنری، فرهنگی و معاصر",
   logo: "/sources/mahoon-logo.jpg",
   defaultImage: "/sources/mahoon-logo.jpg",
+  url: "https://mahoon-art-magazine.morentoofficial.workers.dev",
   telegramUrl: "https://t.me/mahoonartmagazine",
   workerUrl: "https://tg-cms-api.morentoofficial.workers.dev",
   footerText: "مجله هنری ماهون"
