@@ -26,6 +26,18 @@ workers/api/wrangler.toml
 .env.*
 !.env.example
 
+# Database backups
+*.sqlite
+*.sqlite3
+*.db
+*.db3
+*.dump
+*.backup
+d1-backup-*.sql
+*-backup-*.sql
+backups/
+**/backups/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
