@@ -1382,6 +1382,56 @@ export default {
           });
         }
 
+        if (request.method === "GET" && url.pathname === "/admin/posts/deleted") {
+          const requestedLimit = Number(normalizeDigits(url.searchParams.get("limit") || "100"));
+          const limit = Number.isInteger(requestedLimit) && requestedLimit > 0
+            ? Math.min(requestedLimit, 200)
+            : 100;
+
+          const { results } = await env.DB.prepare(
+            `
+            SELECT
+              id,
+              text,
+              slug,
+              created_at,
+              updated_at,
+              is_published,
+              deleted_at,
+              media_type,
+              media_file_id,
+              media_unique_id,
+              media_mime_type,
+              media_file_name,
+              media_duration,
+              media_width,
+              media_height,
+              media_size,
+              photo_file_id,
+              photo_unique_id,
+              photo_width,
+              photo_height,
+              telegram_message_id,
+              chat_id,
+              chat_title,
+              seo_title,
+              seo_description,
+              admin_note,
+              COALESCE(view_count, 0) AS view_count,
+              last_viewed_at
+            FROM posts
+            WHERE deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC, id DESC
+            LIMIT ?
+            `
+          ).bind(limit).all();
+
+          return json({
+            ok: true,
+            posts: (results || []).map(post => postWithMediaUrl(post, origin))
+          });
+        }
+
         if (request.method === "GET" && url.pathname === "/admin/posts") {
           const { results } = await env.DB.prepare(
             `
@@ -1568,6 +1618,62 @@ export default {
             created: true,
             id: result.meta?.last_row_id || null,
             slug
+          });
+        }
+
+        if (request.method === "POST" && url.pathname.endsWith("/restore") && url.pathname.startsWith("/admin/posts/")) {
+          const id = Number(normalizeDigits(url.pathname.replace("/admin/posts/", "").replace("/restore", "")));
+
+          if (!id) {
+            return json({
+              ok: false,
+              error: "Invalid post id"
+            }, 400);
+          }
+
+          const existing = await env.DB.prepare(
+            `
+            SELECT id
+            FROM posts
+            WHERE id = ?
+            AND deleted_at IS NOT NULL
+            LIMIT 1
+            `
+          ).bind(id).first();
+
+          if (!existing) {
+            return json({
+              ok: false,
+              error: "Post not found or is not deleted"
+            }, 404);
+          }
+
+          const result = await env.DB.prepare(
+            `
+            UPDATE posts
+            SET
+              is_published = 1,
+              deleted_at = NULL,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            AND deleted_at IS NOT NULL
+            `
+          ).bind(id).run();
+
+          if (!result.meta?.changes || result.meta.changes < 1) {
+            return json({
+              ok: false,
+              error: "Post not found or already restored"
+            }, 404);
+          }
+
+          const post = await getPostById(env, id);
+
+          return json({
+            ok: true,
+            restored: true,
+            id,
+            post: postWithMediaUrl(post, origin)
           });
         }
 
