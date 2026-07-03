@@ -5,9 +5,93 @@ import { SITE } from "../../config";
 export const prerender = false;
 
 const slug = Astro.params.slug || "";
+
+type SeoPost = {
+  text?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
+  media_type?: string | null;
+  media_url?: string | null;
+  photo_url?: string | null;
+};
+
+const workerUrl = SITE.workerUrl.replace(/\/+$/, "");
+const siteUrl = SITE.url.replace(/\/+$/, "");
+
+function cleanMetaText(value: string | null | undefined): string {
+  return String(value || "")
+    .replace(/https?:\/\/[^\s]+/giu, "")
+    .replace(/@[a-zA-Z0-9_]+/g, "")
+    .replace(/(^|\s)#([^\s#]+)/gu, " ")
+    .replace(/[â€¢â—â–ªâ–«â—¦]/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function makeMetaTitle(text: string | null | undefined): string {
+  const source = cleanMetaText(text);
+  const firstLine = source
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+
+  if (!firstLine) return SITE.name;
+  if (firstLine.length <= 62) return firstLine;
+
+  return `${firstLine.slice(0, 62).trim()}...`;
+}
+
+function makeMetaDescription(text: string | null | undefined): string {
+  const source = cleanMetaText(text).replace(/\s+/g, " ").trim();
+
+  if (!source) return SITE.description;
+  if (source.length <= 155) return source;
+
+  return `${source.slice(0, 155).trim()}...`;
+}
+
+async function fetchSeoPost(postSlug: string): Promise<SeoPost | null> {
+  if (!postSlug) return null;
+
+  try {
+    const response = await fetch(
+      `${workerUrl}/seo/post/${encodeURIComponent(postSlug)}`,
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json"
+        }
+      }
+    );
+
+    if (!response.ok) return null;
+
+    const payload = await response.json();
+    return payload?.post || null;
+  } catch {
+    return null;
+  }
+}
+
+const seoPost = await fetchSeoPost(slug);
+const metaTitle = seoPost?.seo_title || makeMetaTitle(seoPost?.text) || SITE.name;
+const metaDescription =
+  seoPost?.seo_description || makeMetaDescription(seoPost?.text) || SITE.description;
+const metaImage =
+  seoPost?.photo_url ||
+  (seoPost?.media_type === "photo" && seoPost?.media_url ? seoPost.media_url : null) ||
+  SITE.defaultImage;
+const canonicalUrl = `${siteUrl}/post/${encodeURIComponent(slug)}`;
 ---
 
-<BaseLayout title={`روایت ماهون | ${SITE.name}`} description={SITE.description}>
+<BaseLayout
+  title={metaTitle}
+  description={metaDescription}
+  image={metaImage}
+  canonical={canonicalUrl}
+  type="article"
+>
   <main
     class="client-single"
     data-worker-url={SITE.workerUrl}
