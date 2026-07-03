@@ -337,6 +337,28 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         font-size: 14px;
       }
 
+      .view-tabs {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+      }
+
+      .view-tabs .btn.active {
+        background: var(--dark);
+        color: #fff;
+      }
+
+      .view-panel[hidden] {
+        display: none;
+      }
+
+      .filters[hidden],
+      .bulkbar[hidden],
+      .posts-list[hidden] {
+        display: none;
+      }
+
       .posts-list {
         display: grid;
         gap: 12px;
@@ -556,6 +578,10 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
       .id-note strong {
         color: var(--dark);
+      }
+
+      .deleted-note {
+        margin-bottom: 14px;
       }
 
       .media-uploader {
@@ -779,6 +805,11 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
               </div>
 
               <div class="panel-body">
+                <div class="view-tabs">
+                  <button class="btn btn-line active" id="activePostsTabBtn" type="button">پست‌های فعال</button>
+                  <button class="btn btn-line" id="deletedPostsTabBtn" type="button">حذف‌شده‌ها</button>
+                </div>
+
                 <div class="filters">
                   <input class="input" id="searchInput" type="search" placeholder="جستجو در پست‌ها..." />
 
@@ -817,6 +848,15 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
                 <div class="posts-list" id="postsList">
                   <div class="empty">در حال دریافت پست‌ها...</div>
+                </div>
+
+                <div class="posts-list" id="deletedPostsList" hidden>
+                  <div class="id-note deleted-note">
+                    <strong>پست‌های حذف‌شده:</strong>
+                    بازگردانی فقط با ID ثابت دیتابیس انجام می‌شود؛ این ID همان کد ربات است و بعد از حذف تغییر نمی‌کند.
+                  </div>
+
+                  <div class="empty">برای دیدن پست‌های حذف‌شده، تب حذف‌شده‌ها را باز کن.</div>
                 </div>
               </div>
             </section>
@@ -940,16 +980,21 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       const loginMessage = document.getElementById("loginMessage");
 
       const postsList = document.getElementById("postsList");
+      const deletedPostsList = document.getElementById("deletedPostsList");
+      const activePostsTabBtn = document.getElementById("activePostsTabBtn");
+      const deletedPostsTabBtn = document.getElementById("deletedPostsTabBtn");
       const searchInput = document.getElementById("searchInput");
       const statusFilter = document.getElementById("statusFilter");
       const mediaFilter = document.getElementById("mediaFilter");
       const sortFilter = document.getElementById("sortFilter");
+      const filtersBar = searchInput.closest(".filters");
 
       const refreshBtn = document.getElementById("refreshBtn");
       const newPostBtn = document.getElementById("newPostBtn");
       const exportBtn = document.getElementById("exportBtn");
 
       const selectedCount = document.getElementById("selectedCount");
+      const bulkbar = selectedCount.closest(".bulkbar");
       const selectAllBtn = document.getElementById("selectAllBtn");
       const bulkPublishBtn = document.getElementById("bulkPublishBtn");
       const bulkUnpublishBtn = document.getElementById("bulkUnpublishBtn");
@@ -998,9 +1043,11 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       const previewTags = document.getElementById("previewTags");
 
       let posts = [];
+      let deletedPosts = [];
       let selectedPost = null;
       let selectedIds = new Set();
       let currentMedia = null;
+      let currentView = "active";
       let editorDirty = false;
       let editorBaseline = "";
       let messageTimer = null;
@@ -1092,7 +1139,9 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         const data = await res.json().catch(() => null);
 
         if (!res.ok) {
-          throw new Error(data?.error || "خطا در ارتباط با سرور");
+          const error = new Error(data?.error || "خطا در ارتباط با سرور");
+          error.status = res.status;
+          throw error;
         }
 
         return data;
@@ -1324,6 +1373,133 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           updateSelectedCount();
         } catch (error) {
           postsList.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+        }
+      }
+
+      async function loadDeletedPosts() {
+        deletedPostsList.hidden = false;
+        deletedPostsList.innerHTML = `<div class="empty">در حال دریافت پست‌های حذف‌شده...</div>`;
+
+        try {
+          const data = await api("/admin/posts/deleted");
+          deletedPosts = data.posts || [];
+          renderDeletedPosts();
+        } catch (error) {
+          const message = error.status === 404
+            ? "این قابلیت هنوز روی API آنلاین فعال نشده است."
+            : userFriendlyError(error, "دریافت پست‌های حذف‌شده انجام نشد.");
+
+          deletedPostsList.innerHTML = `<div class="empty">${escapeHtml(message)}</div>`;
+        }
+      }
+
+      function showActivePostsView() {
+        currentView = "active";
+        activePostsTabBtn.classList.add("active");
+        deletedPostsTabBtn.classList.remove("active");
+        filtersBar.hidden = false;
+        bulkbar.hidden = false;
+        postsList.hidden = false;
+        deletedPostsList.hidden = true;
+      }
+
+      async function showDeletedPostsView() {
+        currentView = "deleted";
+        deletedPostsTabBtn.classList.add("active");
+        activePostsTabBtn.classList.remove("active");
+        filtersBar.hidden = true;
+        bulkbar.hidden = true;
+        postsList.hidden = true;
+        deletedPostsList.hidden = false;
+        selectedIds = new Set();
+        updateSelectedCount();
+        await loadDeletedPosts();
+      }
+
+      function renderDeletedPosts() {
+        if (deletedPosts.length === 0) {
+          deletedPostsList.innerHTML = `
+            <div class="id-note deleted-note">
+              <strong>پست‌های حذف‌شده:</strong>
+              بازگردانی فقط با ID ثابت دیتابیس انجام می‌شود؛ این ID همان کد ربات است.
+            </div>
+            <div class="empty">پست حذف‌شده‌ای پیدا نشد.</div>
+          `;
+          return;
+        }
+
+        deletedPostsList.innerHTML = `
+          <div class="id-note deleted-note">
+            <strong>پست‌های حذف‌شده:</strong>
+            بازگردانی فقط با ID ثابت دیتابیس انجام می‌شود؛ این ID همان کد ربات است و بعد از حذف تغییر نمی‌کند.
+          </div>
+          ${deletedPosts.map(post => {
+            const title = makeTitle(post.text);
+            const excerpt = makeExcerpt(post.text);
+            const media = mediaFromPost(post);
+            const statusText = Number(post.is_published) === 1 ? "منتشر شده" : "منتشر نشده";
+
+            return `
+              <article class="post-row" data-deleted-id="${post.id}">
+                <div class="post-check">
+                  <span class="badge red">حذف</span>
+                </div>
+
+                <div class="thumb">
+                  ${renderThumb(post)}
+                </div>
+
+                <div>
+                  <h3>${escapeHtml(title)}</h3>
+                  <p>${escapeHtml(excerpt)}</p>
+
+                  <div class="row-meta">
+                    <span class="badge blue">کد ثابت #${post.id}</span>
+                    <span class="badge red">حذف‌شده</span>
+                    <span class="badge gray">${escapeHtml(statusText)}</span>
+                    ${post.slug ? `<span class="badge gray">${escapeHtml(post.slug)}</span>` : ""}
+                    ${post.deleted_at ? `<span class="badge gray">حذف: ${escapeHtml(formatDate(post.deleted_at))}</span>` : ""}
+                    ${media ? `<span class="badge">${mediaLabel(media.media_type)}</span>` : ""}
+                  </div>
+
+                  <div class="editor-actions">
+                    <button class="btn btn-green" data-restore-id="${post.id}" type="button">بازگردانی</button>
+                  </div>
+                </div>
+              </article>
+            `;
+          }).join("")}
+        `;
+      }
+
+      async function restoreDeletedPost(id, button) {
+        if (!id || button?.disabled) return;
+
+        const confirmed = confirm(
+          `پست حذف‌شده با کد ثابت #${id} بازگردانی شود؟\n\nاین عملیات پست را دوباره منتشر می‌کند، deleted_at را خالی می‌کند و ID ثابت تغییر نمی‌کند.`
+        );
+
+        if (!confirmed) return;
+
+        setButtonLoading(button, true, "در حال بازگردانی...");
+
+        try {
+          await api(`/admin/posts/${id}/restore`, {
+            method: "POST",
+            body: JSON.stringify({})
+          });
+
+          showMessage(editorMessage, `پست #${id} با موفقیت بازگردانی شد.`, "ok");
+          await loadDeletedPosts();
+          await loadPosts();
+        } catch (error) {
+          const message = error.status === 404
+            ? "این قابلیت هنوز روی API آنلاین فعال نشده است یا پست قبلاً بازگردانی شده است."
+            : userFriendlyError(error, "بازگردانی پست انجام نشد.");
+
+          showMessage(editorMessage, message, "error");
+        } finally {
+          setButtonLoading(button, false);
         }
       }
 
@@ -1828,6 +2004,14 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         }
       });
 
+      deletedPostsList.addEventListener("click", event => {
+        const restoreButton = event.target.closest("[data-restore-id]");
+        if (!restoreButton) return;
+
+        const id = Number(restoreButton.getAttribute("data-restore-id"));
+        restoreDeletedPost(id, restoreButton);
+      });
+
       loginBtn.addEventListener("click", async () => {
         const token = tokenInput.value.trim();
 
@@ -1851,7 +2035,16 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         showLogin();
       });
 
-      refreshBtn.addEventListener("click", loadPosts);
+      refreshBtn.addEventListener("click", () => {
+        if (currentView === "deleted") {
+          loadDeletedPosts();
+          return;
+        }
+
+        loadPosts();
+      });
+      activePostsTabBtn.addEventListener("click", showActivePostsView);
+      deletedPostsTabBtn.addEventListener("click", showDeletedPostsView);
       searchInput.addEventListener("input", renderPosts);
       statusFilter.addEventListener("change", renderPosts);
       mediaFilter.addEventListener("change", renderPosts);
