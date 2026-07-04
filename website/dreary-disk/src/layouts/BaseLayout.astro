@@ -78,7 +78,7 @@ const websiteJsonLd = {
           </div>
         </a>
 
-        <nav class="nav">
+        <nav class="nav" aria-label="Main navigation">
           <a href="/">خانه</a>
           <a href="/about">درباره ماهون</a>
           <a href="/contact">تماس</a>
@@ -91,8 +91,23 @@ const websiteJsonLd = {
 
     <footer class="footer">
       <div class="container footer-inner">
-        <span>© {SITE.footerText}</span>
-        <span>Powered by Cloudflare + Astro</span>
+        <div class="footer-brand">
+          <strong>{SITE.name}</strong>
+          <p>{SITE.shortDescription}</p>
+        </div>
+
+        <nav class="footer-links" aria-label="Footer navigation">
+          <a href="/">خانه</a>
+          <a href="/about">درباره</a>
+          <a href="/contact">تماس</a>
+          <a href="/rss.xml">RSS</a>
+          <a href={SITE.telegramUrl} target="_blank" rel="noopener">تلگرام</a>
+        </nav>
+
+        <div class="footer-meta">
+          <span>© {new Date().getFullYear()} {SITE.footerText}</span>
+          <span>Powered by Cloudflare + Astro</span>
+        </div>
       </div>
     </footer>
   </body>

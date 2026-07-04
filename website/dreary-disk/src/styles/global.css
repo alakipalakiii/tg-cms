@@ -46,11 +46,12 @@ body {
   margin: 0;
   font-family: "MahoonFont", Tahoma, Arial, sans-serif;
   background:
-    radial-gradient(circle at top right, rgba(75, 13, 13, 0.17), transparent 30%),
-    radial-gradient(circle at bottom left, rgba(201, 166, 107, 0.18), transparent 32%),
-    linear-gradient(180deg, #fffdf8 0%, var(--cream) 42%, #efe4d6 100%);
+    radial-gradient(circle at top right, rgba(75, 13, 13, 0.12), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(201, 166, 107, 0.16), transparent 34%),
+    linear-gradient(180deg, #fffdf8 0%, var(--cream) 48%, #f1e4d4 100%);
   color: var(--ink);
   direction: rtl;
+  text-rendering: optimizeLegibility;
 }
 
 a {
@@ -78,14 +79,14 @@ p {
   position: sticky;
   top: 0;
   z-index: 50;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.13);
-  background: rgba(75, 13, 13, 0.92);
-  backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(75, 13, 13, 0.1);
+  background: rgba(255, 253, 248, 0.88);
+  backdrop-filter: blur(20px);
   color: #fff;
 }
 
 .topbar-inner {
-  min-height: 86px;
+  min-height: 82px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -100,26 +101,25 @@ p {
 }
 
 .brand-logo {
-  width: 64px;
-  height: 64px;
+  width: 58px;
+  height: 58px;
   object-fit: cover;
-  border-radius: 22px;
+  border-radius: 18px;
   background: var(--mahoon);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(75, 13, 13, 0.14);
+  box-shadow: 0 16px 38px rgba(75, 13, 13, 0.14);
 }
 
 .brand-text strong {
   display: block;
   font-size: 19px;
-  color: #fff;
-  letter-spacing: -0.3px;
+  color: var(--mahoon);
 }
 
 .brand-text span {
   display: block;
   margin-top: 5px;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
   font-size: 13px;
 }
 
@@ -131,23 +131,24 @@ p {
 
 .nav a {
   text-decoration: none;
-  color: rgba(255, 255, 255, 0.78);
+  color: #4a3632;
   font-size: 14px;
-  padding: 10px 15px;
+  padding: 10px 14px;
   border-radius: 999px;
   transition: 0.2s ease;
   white-space: nowrap;
 }
 
 .nav a:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: rgba(75, 13, 13, 0.07);
+  color: var(--mahoon);
 }
 
 .nav .primary {
-  background: #fff;
-  color: var(--mahoon);
+  background: var(--mahoon);
+  color: #fffdf8;
   font-weight: bold;
+  box-shadow: 0 12px 26px rgba(75, 13, 13, 0.16);
 }
 
 .hero {
@@ -1029,17 +1030,62 @@ p {
 
 .footer {
   border-top: 1px solid var(--line);
-  background: var(--mahoon);
-  padding: 28px 0;
-  color: rgba(255, 255, 255, 0.72);
+  background:
+    linear-gradient(135deg, rgba(45, 6, 6, 0.96), rgba(75, 13, 13, 0.96)),
+    var(--mahoon);
+  padding: 42px 0;
+  color: rgba(255, 255, 255, 0.74);
   font-size: 13px;
 }
 
 .footer-inner {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto;
+  gap: 24px;
+  align-items: start;
+}
+
+.footer-brand strong {
+  display: block;
+  color: #fffdf8;
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+
+.footer-brand p {
+  margin: 0;
+  max-width: 430px;
+  color: rgba(255, 255, 255, 0.68);
+  line-height: 1.9;
+}
+
+.footer-links,
+.footer-meta {
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
+  justify-content: flex-end;
+  gap: 10px;
   flex-wrap: wrap;
+}
+
+.footer-links a {
+  color: rgba(255, 253, 248, 0.82);
+  text-decoration: none;
+  border: 1px solid rgba(255, 253, 248, 0.16);
+  border-radius: 999px;
+  padding: 9px 13px;
+}
+
+.footer-links a:hover {
+  background: rgba(255, 253, 248, 0.1);
+  color: #fff;
+}
+
+.footer-meta {
+  grid-column: 1 / -1;
+  justify-content: space-between;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.52);
 }
 
 .hidden {
@@ -1077,11 +1123,12 @@ p {
     width: 100%;
     overflow-x: auto;
     padding-bottom: 4px;
+    scrollbar-width: thin;
   }
 
   .brand-logo {
-    width: 58px;
-    height: 58px;
+    width: 52px;
+    height: 52px;
   }
 
   .hero {
@@ -1187,5 +1234,14 @@ p {
   .audio-mini-link {
     justify-content: center;
     text-align: center;
+  }
+
+  .footer-inner {
+    grid-template-columns: 1fr;
+  }
+
+  .footer-links,
+  .footer-meta {
+    justify-content: flex-start;
   }
 }

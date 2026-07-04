@@ -16,6 +16,10 @@ const pageDescription = SITE.description;
           <p>
             ماهون رسانه‌ای برای ثبت و بازنشر روایت‌های هنری، فرهنگی، تصویری و شنیداری است.
           </p>
+          <div class="client-hero-actions">
+            <a href="#latest-posts">آخرین مطالب</a>
+            <a href={SITE.telegramUrl} target="_blank" rel="noopener">تلگرام ماهون</a>
+          </div>
         </div>
 
         <div class="client-hero-stats">
@@ -31,11 +35,15 @@ const pageDescription = SITE.description;
             <strong>Media</strong>
             <span>متن، صوت و ویدیو</span>
           </div>
+          <div class="client-hero-mark">
+            <img src={SITE.logo} alt="" loading="eager" />
+            <span>Curated Art Notes</span>
+          </div>
         </div>
       </div>
     </section>
 
-    <section class="client-section">
+    <section id="latest-posts" class="client-section">
       <div class="client-section-heading">
         <p>آخرین پست‌های منتشرشده در مجله هنری ماهون</p>
         <h2>مطالب تازه</h2>
@@ -55,7 +63,13 @@ const pageDescription = SITE.description;
         />
       </div>
 
-      <div id="postsStatus" class="client-status">
+      <div id="postsStatus" class="client-status client-status-loading" aria-live="polite">
+        <div class="client-skeleton-card"></div>
+        <div class="client-skeleton-lines">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
         در حال دریافت پست‌ها...
       </div>
 
@@ -268,6 +282,25 @@ const pageDescription = SITE.description;
         `;
       }
 
+      function renderLoadingStatus() {
+        statusEl.classList.add("client-status-loading");
+        statusEl.classList.remove("client-status-error");
+        statusEl.innerHTML = `
+          <div class="client-skeleton-card"></div>
+          <div class="client-skeleton-lines">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        `;
+      }
+
+      function renderMessageStatus(message, type) {
+        statusEl.classList.remove("client-status-loading");
+        statusEl.classList.toggle("client-status-error", type === "error");
+        statusEl.innerHTML = `<strong>${escapeHtml(message)}</strong>`;
+      }
+
       function renderMedia(post, featured) {
         const className = featured ? "client-card-media client-card-media-featured" : "client-card-media";
 
@@ -348,11 +381,12 @@ const pageDescription = SITE.description;
           featuredEl.innerHTML = "";
           gridEl.innerHTML = "";
           statusEl.style.display = "block";
-          statusEl.textContent = "هنوز پستی برای نمایش وجود ندارد.";
+          renderMessageStatus("هنوز پستی برای نمایش وجود ندارد.", "empty");
           return;
         }
 
         statusEl.style.display = "none";
+        statusEl.classList.remove("client-status-loading", "client-status-error");
 
         const featured = posts[0];
         const rest = posts.slice(1);
@@ -391,14 +425,14 @@ const pageDescription = SITE.description;
 
         if (!filtered.length) {
           statusEl.style.display = "block";
-          statusEl.textContent = "نتیجه‌ای برای جستجوی شما پیدا نشد.";
+          renderMessageStatus("نتیجه‌ای برای جستجوی شما پیدا نشد.", "empty");
         }
       }
 
       async function loadPosts() {
         try {
           statusEl.style.display = "block";
-          statusEl.textContent = "در حال دریافت پست‌ها...";
+          renderLoadingStatus();
 
           const response = await fetch(`${API_BASE}/`, {
             method: "GET",
@@ -430,8 +464,7 @@ const pageDescription = SITE.description;
           featuredEl.innerHTML = "";
           gridEl.innerHTML = "";
           statusEl.style.display = "block";
-          statusEl.innerHTML =
-            "خطا در دریافت پست‌ها. لطفاً چند ثانیه دیگر صفحه را Refresh کنید.";
+          renderMessageStatus("خطا در دریافت پست‌ها. لطفاً چند ثانیه دیگر صفحه را Refresh کنید.", "error");
         }
       }
 
@@ -447,22 +480,25 @@ const pageDescription = SITE.description;
 
     .client-hero {
       width: min(1180px, calc(100% - 32px));
-      margin: 0 auto 72px;
-      padding: 72px 22px 0;
+      margin: 0 auto 76px;
+      padding: 60px 0 0;
     }
 
     .client-hero-inner {
       border-radius: 0 0 34px 34px;
       background:
-        radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.1), transparent 28%),
-        linear-gradient(135deg, #6b1515 0%, #4b0d0d 54%, #2d0606 100%);
+        linear-gradient(rgba(255, 253, 248, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 253, 248, 0.05) 1px, transparent 1px),
+        radial-gradient(circle at 18% 18%, rgba(201, 166, 107, 0.24), transparent 30%),
+        linear-gradient(135deg, #6b1515 0%, #4b0d0d 58%, #220404 100%);
+      background-size: auto, 44px 44px, auto, auto;
       color: #fffdf8;
-      padding: 58px;
+      padding: clamp(30px, 5vw, 58px);
       min-height: 280px;
       display: grid;
       grid-template-columns: 1.1fr 0.9fr;
       gap: 36px;
-      box-shadow: 0 32px 80px rgba(75, 13, 13, 0.24);
+      box-shadow: 0 34px 90px rgba(75, 13, 13, 0.22);
     }
 
     .client-kicker {
@@ -487,6 +523,32 @@ const pageDescription = SITE.description;
       font-size: 16px;
     }
 
+    .client-hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .client-hero-actions a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      border-radius: 999px;
+      padding: 11px 18px;
+      text-decoration: none;
+      font-weight: 800;
+      background: #fffdf8;
+      color: #4b0d0d;
+      border: 1px solid rgba(255, 253, 248, 0.22);
+    }
+
+    .client-hero-actions a + a {
+      background: rgba(255, 255, 255, 0.09);
+      color: #fffdf8;
+    }
+
     .client-hero-stats {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -498,12 +560,37 @@ const pageDescription = SITE.description;
       min-height: 108px;
       border: 1px solid rgba(255, 253, 248, 0.18);
       background: rgba(255, 255, 255, 0.1);
-      border-radius: 18px;
+      border-radius: 16px;
       padding: 22px;
       display: flex;
       flex-direction: column;
       justify-content: center;
       backdrop-filter: blur(10px);
+    }
+
+    .client-hero-mark {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      border: 1px solid rgba(255, 253, 248, 0.16);
+      border-radius: 18px;
+      padding: 16px;
+      background: rgba(255, 253, 248, 0.08);
+    }
+
+    .client-hero-mark img {
+      width: 58px;
+      height: 58px;
+      border-radius: 16px;
+      object-fit: cover;
+    }
+
+    .client-hero-mark span {
+      color: rgba(255, 253, 248, 0.78);
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
 
     .client-stat-card strong {
@@ -520,6 +607,7 @@ const pageDescription = SITE.description;
     .client-section {
       width: min(1180px, calc(100% - 32px));
       margin: 0 auto 90px;
+      scroll-margin-top: 110px;
     }
 
     .client-section-heading {
@@ -564,7 +652,7 @@ const pageDescription = SITE.description;
       border: 1px solid rgba(75, 13, 13, 0.12);
       background: #fffdf8;
       color: #331313;
-      border-radius: 22px;
+      border-radius: 18px;
       padding: 22px 26px;
       font-size: 15px;
       outline: none;
@@ -586,6 +674,60 @@ const pageDescription = SITE.description;
       box-shadow: 0 18px 50px rgba(75, 13, 13, 0.06);
     }
 
+    .client-status-error {
+      border-color: rgba(120, 20, 20, 0.24);
+      background: #fff8f4;
+      color: #6b1515;
+    }
+
+    .client-status-loading {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 18px;
+      align-items: center;
+      text-align: right;
+    }
+
+    .client-skeleton-card,
+    .client-skeleton-lines span {
+      display: block;
+      border-radius: 18px;
+      background: linear-gradient(90deg, #f1e5d7, #fff8ef, #f1e5d7);
+      background-size: 220% 100%;
+      animation: mahoon-skeleton 1.4s ease-in-out infinite;
+    }
+
+    .client-skeleton-card {
+      height: 92px;
+    }
+
+    .client-skeleton-lines {
+      display: grid;
+      gap: 12px;
+    }
+
+    .client-skeleton-lines span {
+      height: 14px;
+    }
+
+    .client-skeleton-lines span:nth-child(2) {
+      width: 76%;
+    }
+
+    .client-skeleton-lines span:nth-child(3) {
+      width: 54%;
+    }
+
+    @keyframes mahoon-skeleton {
+      0% {
+        background-position: 100% 0;
+      }
+
+      100% {
+        background-position: -100% 0;
+      }
+    }
+
     .client-featured {
       margin-bottom: 28px;
     }
@@ -599,7 +741,7 @@ const pageDescription = SITE.description;
     .client-post-card {
       background: #fffdf8;
       border: 1px solid rgba(75, 13, 13, 0.1);
-      border-radius: 28px;
+      border-radius: 22px;
       overflow: hidden;
       box-shadow: 0 22px 70px rgba(75, 13, 13, 0.08);
       transition: transform 0.25s ease, box-shadow 0.25s ease;
@@ -702,7 +844,7 @@ const pageDescription = SITE.description;
     }
 
     .client-card-body {
-      padding: 24px;
+      padding: 24px 24px 26px;
     }
 
     .client-post-card-featured .client-card-body {
@@ -771,6 +913,8 @@ const pageDescription = SITE.description;
       color: #4b0d0d;
       font-weight: 800;
       font-size: 14px;
+      border-top: 1px solid rgba(75, 13, 13, 0.08);
+      padding-top: 16px;
     }
 
     @media (max-width: 980px) {
@@ -780,7 +924,7 @@ const pageDescription = SITE.description;
       }
 
       .client-hero-stats {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .client-post-card-featured a {
@@ -794,6 +938,30 @@ const pageDescription = SITE.description;
 
       .client-posts-grid {
         grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .client-hero {
+        width: min(100% - 20px, 1180px);
+        padding-top: 28px;
+      }
+
+      .client-hero-inner {
+        border-radius: 24px;
+      }
+
+      .client-hero-stats,
+      .client-status-loading {
+        grid-template-columns: 1fr;
+      }
+
+      .client-hero-actions a {
+        width: 100%;
+      }
+
+      .client-section {
+        width: min(100% - 20px, 1180px);
       }
     }
   </style>
