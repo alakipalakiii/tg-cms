@@ -324,6 +324,27 @@ function seoPostPayload(post, origin) {
   };
 }
 
+function rssPostPayload(post, origin) {
+  const publicPost = postWithMediaUrl(post, origin);
+
+  if (!publicPost) return null;
+
+  return {
+    id: publicPost.id,
+    slug: publicPost.slug,
+    text: publicPost.text,
+    created_at: publicPost.created_at,
+    updated_at: publicPost.updated_at,
+    seo_title: publicPost.seo_title,
+    seo_description: publicPost.seo_description,
+    media_type: publicPost.media_type,
+    media_url: publicPost.media_url,
+    photo_url: publicPost.photo_url,
+    media_mime_type: publicPost.media_mime_type,
+    media_file_name: publicPost.media_file_name
+  };
+}
+
 async function getTelegramFile(fileId, env) {
   if (!env.BOT_TOKEN) return null;
 
@@ -1888,6 +1909,43 @@ export default {
             "Content-Type": telegramFile.headers.get("Content-Type") || "application/octet-stream",
             "Cache-Control": "public, max-age=86400"
           }
+        });
+      }
+
+      if (request.method === "GET" && url.pathname === "/seo/rss-posts") {
+        const requestedLimit = Number(normalizeDigits(url.searchParams.get("limit") || "50"));
+        const limit = Number.isInteger(requestedLimit) && requestedLimit > 0
+          ? Math.min(requestedLimit, 100)
+          : 50;
+
+        const { results } = await env.DB.prepare(
+          `
+          SELECT
+            id,
+            text,
+            slug,
+            created_at,
+            updated_at,
+            media_type,
+            media_file_id,
+            media_mime_type,
+            media_file_name,
+            photo_file_id,
+            seo_title,
+            seo_description
+          FROM posts
+          WHERE slug IS NOT NULL
+          AND slug != ''
+          AND deleted_at IS NULL
+          AND COALESCE(is_published, 1) = 1
+          ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
+          LIMIT ?
+          `
+        ).bind(limit).all();
+
+        return json({
+          ok: true,
+          posts: (results || []).map(post => rssPostPayload(post, origin)).filter(Boolean)
         });
       }
 
