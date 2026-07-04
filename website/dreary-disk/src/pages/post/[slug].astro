@@ -308,8 +308,7 @@ const articleJsonLdHtml = articleJsonLd
           media_url: mediaUrl,
           photo_url: photoUrl,
           seo_title: raw?.seo_title || null,
-          seo_description: raw?.seo_description || null,
-          view_count: raw?.view_count || 0
+          seo_description: raw?.seo_description || null
         };
       }
 
@@ -445,7 +444,6 @@ const articleJsonLdHtml = articleJsonLd
               <span>کد مطلب #${escapeHtml(toPersianNumber(post.id))}</span>
               <span>${escapeHtml(formatDate(post.created_at))}</span>
               ${post.media_type ? `<span>${escapeHtml(mediaLabel(post.media_type))}</span>` : ""}
-              ${post.view_count ? `<span>${escapeHtml(toPersianNumber(post.view_count))} بازدید</span>` : ""}
             </div>
 
             <h1>${escapeHtml(title)}</h1>
