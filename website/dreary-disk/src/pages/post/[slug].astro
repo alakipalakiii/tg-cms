@@ -8,6 +8,8 @@ const slug = Astro.params.slug || "";
 
 type SeoPost = {
   text?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
   seo_title?: string | null;
   seo_description?: string | null;
   media_type?: string | null;
@@ -51,6 +53,23 @@ function makeMetaDescription(text: string | null | undefined): string {
   return `${source.slice(0, 155).trim()}...`;
 }
 
+function absoluteUrl(value: string | null | undefined): string {
+  const source = value || SITE.defaultImage;
+
+  if (source.startsWith("http")) return source;
+
+  return new URL(source, siteUrl).href;
+}
+
+function isoDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+
+  const date = new Date(value.replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date.toISOString();
+}
+
 async function fetchSeoPost(postSlug: string): Promise<SeoPost | null> {
   if (!postSlug) return null;
 
@@ -83,6 +102,43 @@ const metaImage =
   (seoPost?.media_type === "photo" && seoPost?.media_url ? seoPost.media_url : null) ||
   SITE.defaultImage;
 const canonicalUrl = `${siteUrl}/post/${encodeURIComponent(slug)}`;
+const absoluteImageUrl = absoluteUrl(metaImage);
+const absoluteLogoUrl = absoluteUrl(SITE.logo);
+const datePublished = isoDate(seoPost?.created_at);
+const dateModified = isoDate(seoPost?.updated_at || seoPost?.created_at);
+const articleJsonLd = seoPost
+  ? {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      mainEntityOfPage: {
+        "@type": "WebPage",
+        "@id": canonicalUrl
+      },
+      headline: metaTitle,
+      description: metaDescription,
+      image: [absoluteImageUrl],
+      ...(datePublished ? { datePublished } : {}),
+      ...(dateModified ? { dateModified } : {}),
+      author: {
+        "@type": "Organization",
+        name: SITE.name,
+        url: SITE.url
+      },
+      publisher: {
+        "@type": "Organization",
+        name: SITE.name,
+        url: SITE.url,
+        logo: {
+          "@type": "ImageObject",
+          url: absoluteLogoUrl
+        }
+      },
+      inLanguage: "fa-IR"
+    }
+  : null;
+const articleJsonLdHtml = articleJsonLd
+  ? JSON.stringify(articleJsonLd).replace(/</g, "\\u003c")
+  : null;
 ---
 
 <BaseLayout
@@ -92,6 +148,12 @@ const canonicalUrl = `${siteUrl}/post/${encodeURIComponent(slug)}`;
   canonical={canonicalUrl}
   type="article"
 >
+  {
+    articleJsonLdHtml && (
+      <script slot="head" type="application/ld+json" set:html={articleJsonLdHtml} />
+    )
+  }
+
   <main
     class="client-single"
     data-worker-url={SITE.workerUrl}
