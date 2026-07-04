@@ -1891,6 +1891,35 @@ export default {
         });
       }
 
+      if (request.method === "GET" && url.pathname === "/seo/sitemap-posts") {
+        const requestedLimit = Number(normalizeDigits(url.searchParams.get("limit") || "1000"));
+        const limit = Number.isInteger(requestedLimit) && requestedLimit > 0
+          ? Math.min(requestedLimit, 1000)
+          : 1000;
+
+        const { results } = await env.DB.prepare(
+          `
+          SELECT
+            id,
+            slug,
+            created_at,
+            updated_at
+          FROM posts
+          WHERE slug IS NOT NULL
+          AND slug != ''
+          AND deleted_at IS NULL
+          AND COALESCE(is_published, 1) = 1
+          ORDER BY COALESCE(updated_at, created_at) DESC, id DESC
+          LIMIT ?
+          `
+        ).bind(limit).all();
+
+        return json({
+          ok: true,
+          posts: results || []
+        });
+      }
+
       if (request.method === "GET" && url.pathname.startsWith("/seo/post/")) {
         const slug = decodeURIComponent(url.pathname.replace("/seo/post/", ""));
 
