@@ -9,6 +9,11 @@ type SitemapPost = {
 };
 
 const workerUrl = SITE.workerUrl.replace(/\/+$/, "");
+const sitemapPostsEndpoint = `${workerUrl}/seo/sitemap-posts?limit=1000&source=site-sitemap`;
+
+function hasValidSlug(post: SitemapPost): boolean {
+  return Boolean(String(post.slug || "").trim());
+}
 
 function validDate(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -21,10 +26,11 @@ function validDate(value: string | null | undefined): string | null {
 
 async function getSitemapPosts(): Promise<SitemapPost[]> {
   try {
-    const response = await fetch(`${workerUrl}/seo/sitemap-posts?limit=1000`, {
+    const response = await fetch(sitemapPostsEndpoint, {
       method: "GET",
       headers: {
-        Accept: "application/json"
+        Accept: "application/json",
+        "Cache-Control": "no-cache"
       },
       cache: "no-store"
     });
@@ -41,7 +47,7 @@ async function getSitemapPosts(): Promise<SitemapPost[]> {
   }
 }
 
-export async function GET({ url }: { url: URL }) {
+export async function GET() {
   const baseUrl = SITE.url.replace(/\/+$/, "");
   const posts = await getSitemapPosts();
 
@@ -54,7 +60,7 @@ export async function GET({ url }: { url: URL }) {
     })),
 
     ...posts
-      .filter(post => String(post.slug || "").trim())
+      .filter(hasValidSlug)
       .map(post => ({
         loc: `${baseUrl}/post/${encodeURIComponent(String(post.slug))}`,
         lastmod: validDate(post.updated_at || post.created_at),
