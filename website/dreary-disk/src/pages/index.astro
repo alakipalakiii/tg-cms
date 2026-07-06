@@ -2,7 +2,7 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { SITE } from "../config";
 
-async function fetchJsonWithTimeout(url: string, timeoutMs = 1500) {
+async function fetchJsonWithTimeout(url: string, timeoutMs = 1200) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -32,7 +32,7 @@ const heroLabel = `${heroLineOne} ${heroLineTwo}`.trim();
 const latestTitle = siteSettings.home_latest_title || "تازه‌ترین روایت منتشرشده در ماهون";
 ---
 
-<BaseLayout title={pageTitle} description={pageDescription}>
+<BaseLayout title={pageTitle} description={pageDescription} siteSettings={siteSettings}>
   <main class="home-page" data-worker-url={SITE.workerUrl}>
     <section class="home-hero" aria-label="شعار مجله هنری ماهون">
       <div class="home-hero__panel">
@@ -121,6 +121,7 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
         { title: "نقاشی", tags: ["نقاشی"] }
       ];
       const POETRY_TEXT_CATEGORY_TITLE = "شعر و متن";
+      const NO_DRAG_SELECTOR = "a, button, input, textarea, select, [data-no-drag], [data-read-more-link]";
       const CATEGORY_TAGS = new Set(
         CATEGORY_DEFINITIONS.flatMap((category) => category.tags.map(normalizeTag))
       );
@@ -211,10 +212,11 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
         return escapeHtml(value).replace(/`/g, "&#096;");
       }
 
-      function cleanText(value) {
+      function cleanPublicText(value) {
         return String(value || "")
           .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
           .replace(/\u{1F539}/gu, "")
+          .replace(/https?:\/\/(?:t\.me|telegram\.me|telegram\.dog)\/[^\s]+/giu, "")
           .replace(/https?:\/\/[^\s]+/giu, "")
           .replace(/@[a-zA-Z0-9_]+/g, "")
           .replace(/(^|\s)#([^\s#]+)/gu, " ")
@@ -222,6 +224,10 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
           .replace(/\n{3,}/g, "\n\n")
           .replace(/[ \t]{2,}/g, " ")
           .trim();
+      }
+
+      function cleanText(value) {
+        return cleanPublicText(value);
       }
 
       function normalizeTag(tag) {
@@ -235,23 +241,114 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
           .toLowerCase();
       }
 
-      function makeTitle(text) {
-        const source = cleanText(text) || "روایت ماهون";
-        const firstLine =
-          source
-            .split("\n")
-            .map((line) => line.trim())
-            .find(Boolean) || "روایت ماهون";
-
-        if (firstLine.length <= 70) return firstLine;
-        return firstLine.slice(0, 70).trim() + "...";
+      function truncateText(value, maxLength) {
+        const source = String(value || "").replace(/\s+/g, " ").trim();
+        if (!source) return "";
+        return source.length <= maxLength ? source : `${source.slice(0, maxLength).trim()}…`;
       }
 
-      function makeExcerpt(text) {
-        const source = cleanText(text).replace(/\s+/g, " ").trim();
+      function titleRules(mode) {
+        if (mode === "post") return { maxChars: 52, maxWords: 8 };
+        if (mode === "suggestion") return { maxChars: 34, maxWords: 6 };
+        return { maxChars: 38, maxWords: 6 };
+      }
+
+      function firstWords(value, maxWords) {
+        return String(value || "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .split(" ")
+          .filter(Boolean)
+          .slice(0, maxWords)
+          .join(" ");
+      }
+
+      function buildShortTitle(value, mode = "card") {
+        const { maxChars, maxWords } = titleRules(mode);
+        const source = cleanPublicText(value).replace(/\s+/g, " ").trim();
+        if (!source) return "";
+        const phrase = firstWords(source.split(/\n|[.!؟?؛]/).find(Boolean) || source, maxWords);
+        const limited = truncateText(phrase, maxChars);
+        const wasShortened = phrase.length > maxChars || source.split(/\s+/).filter(Boolean).length > maxWords;
+        return wasShortened && !limited.endsWith("…") ? `${limited}…` : limited;
+      }
+
+      function isSeoTitleUsable(post, seoTitle) {
+        const cleanTitle = cleanPublicText(seoTitle).replace(/\s+/g, " ").trim();
+        if (!cleanTitle || cleanTitle.length > 65) return false;
+        const cleanBody = cleanPublicText(post?.text).replace(/\s+/g, " ").trim();
+        if (cleanBody && cleanBody.length > 90 && cleanBody.startsWith(cleanTitle)) return false;
+        return cleanTitle.split(/\s+/).filter(Boolean).length <= 10;
+      }
+
+      function makeTitle(text) {
+        return buildShortTitle(text, "card") || "مطلبی از ماهون";
+      }
+
+      function makeDisplayTitle(post, mode = "card") {
+        const seoTitle = cleanPublicText(post?.seo_title).replace(/\s+/g, " ").trim();
+        if (isSeoTitleUsable(post, seoTitle)) {
+          return buildShortTitle(seoTitle, mode) || "مطلبی از ماهون";
+        }
+
+        return buildShortTitle(post?.text, mode) || "مطلبی از ماهون";
+      }
+
+      function makeExcerpt(input) {
+        const value = typeof input === "object" && input !== null
+          ? input.seo_description || input.text
+          : input;
+        const source = cleanPublicText(value).replace(/\s+/g, " ").trim();
         if (!source) return "روایتی تازه از مجله هنری ماهون";
-        if (source.length <= 160) return source;
-        return source.slice(0, 160).trim() + "...";
+        return truncateText(source, 145);
+      }
+
+      function validMediaValue(value) {
+        const source = String(value || "").trim();
+        if (!source || source.toLowerCase() === "about:blank" || /^javascript:/i.test(source)) return null;
+        return source;
+      }
+
+      function looksLikeImageUrl(value) {
+        return /\.(avif|webp|png|jpe?g|gif|bmp|svg)(\?|#|$)/i.test(String(value || ""));
+      }
+
+      function getPostHref(post) {
+        const slug = String(post?.slug || "").trim();
+        if (slug && slug !== "#" && !/^javascript:/i.test(slug)) {
+          return `/post/${encodeURIComponent(slug)}`;
+        }
+
+        const id = String(post?.id || "").trim();
+        if (id) return `/post/${encodeURIComponent(id)}`;
+
+        return "#";
+      }
+
+      function getMediaSrc(post) {
+        const directImage = [
+          post?.photo_url,
+          post?.image_url,
+          post?.thumbnail_url,
+          post?.media?.url,
+          post?.file_url
+        ].map(validMediaValue).find(Boolean);
+        if (directImage) return directImage;
+
+        const mediaUrl = validMediaValue(post?.media_url);
+        if (mediaUrl && (post?.media_type === "photo" || post?.media_type === "image" || looksLikeImageUrl(mediaUrl))) {
+          return mediaUrl;
+        }
+
+        const fileId = String(post?.photo_file_id || post?.telegram_file_id || post?.file_id || "").trim();
+        if (fileId) return `${API_BASE}/media/${encodeURIComponent(fileId)}`;
+
+        const mediaFileId = String(post?.media_file_id || "").trim();
+        if (mediaFileId && (post?.media_type === "photo" || post?.media_type === "image")) {
+          return `${API_BASE}/media/${encodeURIComponent(mediaFileId)}`;
+        }
+
+        return null;
       }
 
       function getTags(text) {
@@ -288,23 +385,27 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
       }
 
       function normalizePost(raw) {
-        const mediaFileId = raw?.media_file_id || raw?.photo_file_id || null;
+        const mediaFileId = raw?.media_file_id || raw?.photo_file_id || raw?.file_id || raw?.telegram_file_id || null;
         const mediaType = raw?.media_type || (raw?.photo_file_id ? "photo" : null);
         const mediaUrl =
           raw?.media_url ||
           (mediaFileId ? `${API_BASE}/media/${encodeURIComponent(mediaFileId)}` : null);
-        const photoUrl =
-          raw?.photo_url ||
-          (mediaType === "photo" ? mediaUrl : null) ||
-          null;
+        const photoUrl = getMediaSrc({ ...raw, media_url: mediaUrl, media_type: mediaType });
 
         return {
           id: Number(raw?.id || 0),
           text: String(raw?.text || ""),
-          slug: String(raw?.slug || `post-${raw?.id || Date.now()}`),
+          slug: String(raw?.slug || ""),
           created_at: String(raw?.created_at || ""),
           media_type: mediaType,
           media_file_id: mediaFileId,
+          photo_file_id: raw?.photo_file_id || null,
+          file_id: raw?.file_id || null,
+          telegram_file_id: raw?.telegram_file_id || null,
+          image_url: raw?.image_url || null,
+          thumbnail_url: raw?.thumbnail_url || null,
+          file_url: raw?.file_url || null,
+          media: raw?.media || null,
           media_mime_type: raw?.media_mime_type || null,
           media_file_name: raw?.media_file_name || null,
           media_duration: raw?.media_duration || null,
@@ -369,7 +470,7 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
       }
 
       function isTextOnlyPost(post) {
-        return !post.photo_url && !post.media_type;
+        return !getMediaSrc(post) && !post.media_type;
       }
 
       function postHasCategory(post, category) {
@@ -438,10 +539,11 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
           `;
         }
 
-        if (post.photo_url) {
+        const imageSrc = getMediaSrc(post);
+        if (imageSrc) {
           return `
-            <div class="${className}">
-              <img src="${escapeAttr(post.photo_url)}" alt="${escapeAttr(makeTitle(post.text))}" loading="lazy" />
+            <div class="${className}" data-media-wrap>
+                <img src="${escapeAttr(imageSrc)}" alt="${escapeAttr(makeDisplayTitle(post, "card"))}" width="320" height="190" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
             </div>
           `;
         }
@@ -480,30 +582,32 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
       }
 
       function renderFeaturedPost(post) {
-        const title = post.seo_title || makeTitle(post.text);
-        const excerpt = post.seo_description || makeExcerpt(post.text);
-        const href = `/post/${encodeURIComponent(post.slug)}`;
+        const title = makeDisplayTitle(post, "card");
+        const excerpt = makeExcerpt(post);
+        const href = getPostHref(post);
+        const hasHref = href !== "#";
         const category = getPostCategory(post);
+        const imageSrc = getMediaSrc(post);
         const media =
-          post.photo_url
+          imageSrc && hasHref
             ? `
-              <a class="featured-card__media" href="${escapeAttr(href)}" aria-label="${escapeAttr(title)}">
-                <img src="${escapeAttr(post.photo_url)}" alt="${escapeAttr(title)}" loading="lazy" />
+              <a class="featured-card__media" href="${escapeAttr(href)}" aria-label="${escapeAttr(title)}" data-media-wrap>
+                <img src="${escapeAttr(imageSrc)}" alt="${escapeAttr(title)}" width="560" height="360" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
               </a>
             `
             : "";
 
         return `
-          <article class="featured-card ${!post.photo_url ? "featured-card--text-only" : ""}">
+          <article class="featured-card ${!imageSrc ? "featured-card--text-only" : ""}">
             <div class="featured-card__content">
               <div class="featured-card__meta">
                 <span class="featured-card__date">${escapeHtml(formatDate(post.created_at))}</span>
                 ${category ? `<span class="featured-card__category">${escapeHtml(category)}</span>` : ""}
               </div>
-              <h2 class="featured-card__title">${escapeHtml(title)}</h2>
+              <h2 class="featured-card__title public-card-title">${escapeHtml(title)}</h2>
               <p class="featured-card__excerpt">${escapeHtml(excerpt)}</p>
               ${renderTags(post)}
-              <a class="featured-card__cta" href="${escapeAttr(href)}" aria-label="${escapeAttr(title)}">ادامه مطلب</a>
+              ${hasHref ? `<a class="featured-card__cta" href="${escapeAttr(href)}" aria-label="ادامه مطلب ${escapeAttr(title)}" data-read-more-link data-no-drag>ادامه مطلب</a>` : ""}
             </div>
             ${media}
           </article>
@@ -546,16 +650,17 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
         gridEl.innerHTML = posts
           .slice(0, 20)
           .map((post) => {
-            const title = post.seo_title || makeTitle(post.text);
-            const href = `/post/${encodeURIComponent(post.slug)}`;
-            const thumb = post.photo_url
-              ? `<img class="all-post-row__thumb" src="${escapeAttr(post.photo_url)}" alt="${escapeAttr(title)}" loading="lazy" />`
+            const title = makeDisplayTitle(post, "card");
+            const href = getPostHref(post);
+            const imageSrc = getMediaSrc(post);
+            const thumb = imageSrc
+              ? `<span data-media-wrap><img class="all-post-row__thumb" src="${escapeAttr(imageSrc)}" alt="${escapeAttr(title)}" width="72" height="72" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" /></span>`
               : "";
 
             return `
-              <a class="all-post-row" href="${escapeAttr(href)}">
+              <a class="all-post-row" href="${escapeAttr(href)}" data-card-link data-no-drag>
                 <div class="all-post-row__text">
-                  <strong class="all-post-row__title">${escapeHtml(title)}</strong>
+                  <strong class="all-post-row__title public-card-title">${escapeHtml(title)}</strong>
                   <span class="all-post-row__date">${escapeHtml(formatDate(post.created_at))}</span>
                 </div>
                 ${thumb}
@@ -569,12 +674,13 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
       function renderRailMedia(post, forceTextOnly) {
         if (forceTextOnly) return "";
 
-        const title = post.seo_title || makeTitle(post.text);
+        const title = makeDisplayTitle(post, "card");
+        const imageSrc = getMediaSrc(post);
 
-        if (post.photo_url) {
+        if (imageSrc) {
           return `
-            <div class="client-card-media">
-              <img src="${escapeAttr(post.photo_url)}" alt="${escapeAttr(title)}" loading="lazy" />
+            <div class="client-card-media" data-media-wrap>
+              <img src="${escapeAttr(imageSrc)}" alt="${escapeAttr(title)}" width="274" height="163" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
             </div>
           `;
         }
@@ -601,21 +707,22 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
       }
 
       function renderRailPostCard(post, forceTextOnly = false) {
-        const title = post.seo_title || makeTitle(post.text);
-        const excerpt = post.seo_description || makeExcerpt(post.text);
-        const href = `/post/${encodeURIComponent(post.slug)}`;
+        const title = makeDisplayTitle(post, "card");
+        const excerpt = makeExcerpt(post);
+        const href = getPostHref(post);
+        const hasHref = href !== "#";
         const textOnly = forceTextOnly || isTextOnlyPost(post);
 
         return `
-          <article class="category-card ${isAudioPost(post) && !forceTextOnly ? "category-card--audio" : ""} ${textOnly ? "category-card--text-only" : ""}" data-href="${escapeAttr(href)}" aria-label="${escapeAttr(title)}">
+          <article class="category-card ${isAudioPost(post) && !forceTextOnly ? "category-card--audio" : ""} ${textOnly ? "category-card--text-only" : ""}" ${hasHref ? `data-href="${escapeAttr(href)}"` : ""} aria-label="${escapeAttr(title)}">
             ${renderRailMedia(post, forceTextOnly)}
             <div class="category-card__body">
               <div class="category-card__meta">
                 <span>${escapeHtml(formatDate(post.created_at))}</span>
               </div>
-              <h3><a href="${escapeAttr(href)}">${escapeHtml(title)}</a></h3>
-              <p>${escapeHtml(excerpt)}</p>
-              <a class="category-card__cta" href="${escapeAttr(href)}" aria-label="${escapeAttr(title)}">ادامه مطلب</a>
+              <h3 class="rail-card-title">${hasHref ? `<a href="${escapeAttr(href)}" data-card-link data-no-drag>${escapeHtml(title)}</a>` : escapeHtml(title)}</h3>
+              <p class="public-card-excerpt">${escapeHtml(excerpt)}</p>
+              ${hasHref ? `<a class="category-card__cta" href="${escapeAttr(href)}" aria-label="ادامه مطلب ${escapeAttr(title)}" data-read-more-link data-no-drag>ادامه مطلب</a>` : ""}
             </div>
           </article>
         `;
@@ -635,7 +742,7 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
               </div>
             </header>
             <div class="category-rail__viewport">
-              ${posts.map((post) => renderRailPostCard(post, forceTextOnlyRail)).join("")}
+              ${posts.slice(0, 8).map((post) => renderRailPostCard(post, forceTextOnlyRail)).join("")}
             </div>
           </section>
         `;
@@ -645,7 +752,7 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
         const rest = posts.slice(1);
         const groups = CATEGORY_DEFINITIONS.map((category) => ({
           title: category.title,
-          posts: rest.filter((post) => postHasCategory(post, category)),
+          posts: rest.filter((post) => postHasCategory(post, category)).slice(0, 8),
           forceTextOnlyRail: category.title === POETRY_TEXT_CATEGORY_TITLE
         }));
 
@@ -714,7 +821,7 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
 
       async function loadPosts() {
         const controller = new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), 2500);
+        const timer = window.setTimeout(() => controller.abort(), 2000);
 
         try {
           statusEl.style.display = "block";
@@ -822,9 +929,9 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
         }
 
         const categoryCard = event.target.closest(".category-card[data-href]");
-        if (categoryCard && !event.target.closest("a, button")) {
+        if (categoryCard && !event.target.closest(NO_DRAG_SELECTOR)) {
           const href = categoryCard.dataset.href;
-          if (href) window.location.href = href;
+          if (href && href !== "#") window.location.href = href;
         }
       });
 
@@ -833,7 +940,7 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
           if (row.dataset.dragReady === "true") return;
 
           row.dataset.dragReady = "true";
-          const dragClickThreshold = 6;
+          const dragClickThreshold = 12;
           let activePointerId = null;
           let startX = 0;
           let startY = 0;
@@ -852,6 +959,7 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
 
           row.addEventListener("pointerdown", (event) => {
             if (event.button !== undefined && event.button !== 0) return;
+            if (event.target.closest(NO_DRAG_SELECTOR)) return;
 
             activePointerId = event.pointerId;
             row.classList.add("is-dragging");
@@ -888,6 +996,7 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
           row.addEventListener(
             "click",
             (event) => {
+              if (event.target.closest(NO_DRAG_SELECTOR) && !suppressClick) return;
               if (!suppressClick) return;
               event.preventDefault();
               event.stopPropagation();
@@ -1112,6 +1221,8 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
 
     .featured-card__cta,
     .category-card__cta {
+      position: relative;
+      z-index: 5;
       width: fit-content;
       min-height: 35px;
       display: inline-flex;
@@ -1455,7 +1566,8 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
       min-width: 0;
       overflow-x: auto;
       overflow-y: hidden;
-      padding: 4px 2px 8px;
+      padding: 4px 14px 8px;
+      scroll-padding-inline: 14px;
       scroll-behavior: smooth;
       scroll-snap-type: x proximity;
       scrollbar-width: none;

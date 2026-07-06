@@ -114,10 +114,11 @@ const pageDescription = "فهرست مطالب منتشرشده در مجله ه
           .replace(/9/g, "۹");
       }
 
-      function cleanText(value) {
+      function cleanPublicText(value) {
         return String(value || "")
           .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
           .replace(/\u{1F539}/gu, "")
+          .replace(/https?:\/\/(?:t\.me|telegram\.me|telegram\.dog)\/[^\s]+/giu, "")
           .replace(/https?:\/\/[^\s]+/giu, "")
           .replace(/@[a-zA-Z0-9_]+/g, "")
           .replace(/(^|\s)#([^\s#]+)/gu, " ")
@@ -127,21 +128,118 @@ const pageDescription = "فهرست مطالب منتشرشده در مجله ه
           .trim();
       }
 
-      function makeTitle(text) {
-        const source = cleanText(text) || "روایت ماهون";
-        const firstLine =
-          source
-            .split("\n")
-            .map((line) => line.trim())
-            .find(Boolean) || "روایت ماهون";
-
-        return firstLine.length <= 74 ? firstLine : `${firstLine.slice(0, 74).trim()}...`;
+      function cleanText(value) {
+        return cleanPublicText(value);
       }
 
-      function makeExcerpt(text) {
-        const source = cleanText(text).replace(/\s+/g, " ").trim();
+      function truncateText(value, maxLength) {
+        const source = String(value || "").replace(/\s+/g, " ").trim();
+        if (!source) return "";
+        return source.length <= maxLength ? source : `${source.slice(0, maxLength).trim()}…`;
+      }
+
+      function titleRules(mode) {
+        if (mode === "post") return { maxChars: 52, maxWords: 8 };
+        if (mode === "suggestion") return { maxChars: 34, maxWords: 6 };
+        return { maxChars: 38, maxWords: 6 };
+      }
+
+      function firstWords(value, maxWords) {
+        return String(value || "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .split(" ")
+          .filter(Boolean)
+          .slice(0, maxWords)
+          .join(" ");
+      }
+
+      function buildShortTitle(value, mode = "card") {
+        const { maxChars, maxWords } = titleRules(mode);
+        const source = cleanPublicText(value).replace(/\s+/g, " ").trim();
+        if (!source) return "";
+        const phrase = firstWords(source.split(/\n|[.!؟?؛]/).find(Boolean) || source, maxWords);
+        const limited = truncateText(phrase, maxChars);
+        const wasShortened = phrase.length > maxChars || source.split(/\s+/).filter(Boolean).length > maxWords;
+        return wasShortened && !limited.endsWith("…") ? `${limited}…` : limited;
+      }
+
+      function isSeoTitleUsable(post, seoTitle) {
+        const cleanTitle = cleanPublicText(seoTitle).replace(/\s+/g, " ").trim();
+        if (!cleanTitle || cleanTitle.length > 65) return false;
+        const cleanBody = cleanPublicText(post?.text).replace(/\s+/g, " ").trim();
+        if (cleanBody && cleanBody.length > 90 && cleanBody.startsWith(cleanTitle)) return false;
+        return cleanTitle.split(/\s+/).filter(Boolean).length <= 10;
+      }
+
+      function makeTitle(text) {
+        return buildShortTitle(text, "card") || "مطلبی از ماهون";
+      }
+
+      function makeDisplayTitle(post, mode = "card") {
+        const seoTitle = cleanPublicText(post?.seo_title).replace(/\s+/g, " ").trim();
+        if (isSeoTitleUsable(post, seoTitle)) {
+          return buildShortTitle(seoTitle, mode) || "مطلبی از ماهون";
+        }
+
+        return buildShortTitle(post?.text, mode) || "مطلبی از ماهون";
+      }
+
+      function makeExcerpt(input) {
+        const value = typeof input === "object" && input !== null
+          ? input.seo_description || input.text
+          : input;
+        const source = cleanPublicText(value).replace(/\s+/g, " ").trim();
         if (!source) return "روایتی تازه از مجله هنری ماهون";
-        return source.length <= 150 ? source : `${source.slice(0, 150).trim()}...`;
+        return truncateText(source, 145);
+      }
+
+      function validMediaValue(value) {
+        const source = String(value || "").trim();
+        if (!source || source.toLowerCase() === "about:blank" || /^javascript:/i.test(source)) return null;
+        return source;
+      }
+
+      function looksLikeImageUrl(value) {
+        return /\.(avif|webp|png|jpe?g|gif|bmp|svg)(\?|#|$)/i.test(String(value || ""));
+      }
+
+      function getPostHref(post) {
+        const slug = String(post?.slug || "").trim();
+        if (slug && slug !== "#" && !/^javascript:/i.test(slug)) {
+          return `/post/${encodeURIComponent(slug)}`;
+        }
+
+        const id = String(post?.id || "").trim();
+        if (id) return `/post/${encodeURIComponent(id)}`;
+
+        return "#";
+      }
+
+      function getMediaSrc(post) {
+        const directImage = [
+          post?.photo_url,
+          post?.image_url,
+          post?.thumbnail_url,
+          post?.media?.url,
+          post?.file_url
+        ].map(validMediaValue).find(Boolean);
+        if (directImage) return directImage;
+
+        const mediaUrl = validMediaValue(post?.media_url);
+        if (mediaUrl && (post?.media_type === "photo" || post?.media_type === "image" || looksLikeImageUrl(mediaUrl))) {
+          return mediaUrl;
+        }
+
+        const fileId = String(post?.photo_file_id || post?.telegram_file_id || post?.file_id || "").trim();
+        if (fileId) return `${API_BASE}/media/${encodeURIComponent(fileId)}`;
+
+        const mediaFileId = String(post?.media_file_id || "").trim();
+        if (mediaFileId && (post?.media_type === "photo" || post?.media_type === "image")) {
+          return `${API_BASE}/media/${encodeURIComponent(mediaFileId)}`;
+        }
+
+        return null;
       }
 
       function formatDate(value) {
@@ -158,21 +256,27 @@ const pageDescription = "فهرست مطالب منتشرشده در مجله ه
       }
 
       function normalizePost(raw) {
-        const mediaFileId = raw?.media_file_id || raw?.photo_file_id || null;
+        const mediaFileId = raw?.media_file_id || raw?.photo_file_id || raw?.file_id || raw?.telegram_file_id || null;
         const mediaType = raw?.media_type || (raw?.photo_file_id ? "photo" : null);
         const mediaUrl =
           raw?.media_url ||
           (mediaFileId ? `${API_BASE}/media/${encodeURIComponent(mediaFileId)}` : null);
-        const photoUrl =
-          raw?.photo_url ||
-          (mediaType === "photo" ? mediaUrl : null) ||
-          null;
+        const photoUrl = getMediaSrc({ ...raw, media_url: mediaUrl, media_type: mediaType });
 
         return {
           id: Number(raw?.id || 0),
           text: String(raw?.text || ""),
-          slug: String(raw?.slug || `post-${raw?.id || Date.now()}`),
+          slug: String(raw?.slug || ""),
           created_at: String(raw?.created_at || ""),
+          media_url: mediaUrl,
+          media_file_id: mediaFileId,
+          photo_file_id: raw?.photo_file_id || null,
+          file_id: raw?.file_id || null,
+          telegram_file_id: raw?.telegram_file_id || null,
+          image_url: raw?.image_url || null,
+          thumbnail_url: raw?.thumbnail_url || null,
+          file_url: raw?.file_url || null,
+          media: raw?.media || null,
           photo_url: photoUrl,
           seo_title: raw?.seo_title || null,
           seo_description: raw?.seo_description || null,
@@ -212,17 +316,18 @@ const pageDescription = "فهرست مطالب منتشرشده در مجله ه
 
         listEl.innerHTML = pagePosts
           .map((post) => {
-            const title = post.seo_title || makeTitle(post.text);
-            const excerpt = post.seo_description || makeExcerpt(post.text);
-            const href = `/post/${encodeURIComponent(post.slug)}`;
-            const thumb = post.photo_url
-              ? `<img class="public-list-row__thumb" src="${escapeAttr(post.photo_url)}" alt="${escapeAttr(title)}" loading="lazy" />`
+            const title = makeDisplayTitle(post);
+            const excerpt = makeExcerpt(post);
+            const href = getPostHref(post);
+            const imageSrc = getMediaSrc(post);
+            const thumb = imageSrc
+              ? `<span data-media-wrap><img class="public-list-row__thumb" src="${escapeAttr(imageSrc)}" alt="${escapeAttr(title)}" width="72" height="72" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" /></span>`
               : "";
 
             return `
               <a class="public-list-row" href="${escapeAttr(href)}">
                 <div class="public-list-row__text">
-                  <strong class="public-list-row__title">${escapeHtml(title)}</strong>
+                  <strong class="public-list-row__title public-card-title">${escapeHtml(title)}</strong>
                   <span class="public-list-row__excerpt">${escapeHtml(excerpt)}</span>
                   <span class="public-list-row__meta">${escapeHtml(formatDate(post.created_at))}</span>
                 </div>
@@ -267,9 +372,13 @@ const pageDescription = "فهرست مطالب منتشرشده در مجله ه
       }
 
       async function loadPosts() {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 2000);
+
         try {
           const response = await fetch(`${API_BASE}/`, {
             method: "GET",
+            signal: controller.signal,
             headers: { Accept: "application/json" }
           });
 
@@ -287,6 +396,8 @@ const pageDescription = "فهرست مطالب منتشرشده در مجله ه
           listEl.innerHTML = "";
           paginationEl.innerHTML = "";
           renderStatus("خطا در دریافت مطالب. لطفاً کمی بعد دوباره صفحه را باز کنید.", true);
+        } finally {
+          window.clearTimeout(timer);
         }
       }
 

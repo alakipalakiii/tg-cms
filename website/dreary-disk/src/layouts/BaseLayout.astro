@@ -8,6 +8,7 @@ interface Props {
   image?: string;
   type?: string;
   canonical?: string;
+  siteSettings?: Record<string, string>;
 }
 
 const {
@@ -15,7 +16,8 @@ const {
   description = SITE.description,
   image = SITE.defaultImage,
   type = "website",
-  canonical
+  canonical,
+  siteSettings
 } = Astro.props;
 
 const DEFAULT_SITE_COPY = {
@@ -44,6 +46,10 @@ async function fetchJsonWithTimeout(url: string, timeoutMs = 1500) {
 }
 
 async function loadSiteCopy() {
+  if (siteSettings) {
+    return { ...DEFAULT_SITE_COPY, ...siteSettings };
+  }
+
   const payload = await fetchJsonWithTimeout(`${SITE.workerUrl.replace(/\/+$/, "")}/site-settings`);
   return { ...DEFAULT_SITE_COPY, ...(payload?.settings || {}) };
 }

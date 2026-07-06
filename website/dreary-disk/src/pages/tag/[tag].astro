@@ -48,6 +48,7 @@ function cleanUiText(value: string | null | undefined) {
   return String(value || "")
     .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
     .replace(/\u{1F539}/gu, "")
+    .replace(/https?:\/\/(?:t\.me|telegram\.me|telegram\.dog)\/[^\s]+/giu, "")
     .replace(/https?:\/\/[^\s]+/giu, "")
     .replace(/@[a-zA-Z0-9_]+/g, "")
     .replace(/(^|\s)#([^\s#]+)/gu, " ")
@@ -60,24 +61,106 @@ function cleanUiText(value: string | null | undefined) {
 const rawTag = Astro.params.tag || "";
 const tag = safeDecode(rawTag).replace(/^#/, "").trim();
 const normalizedCurrentTag = normalizeTag(tag);
+const workerUrl = SITE.workerUrl.replace(/\/+$/, "");
 
 const rawPosts = await getPosts();
 
+function truncateText(value: string | null | undefined, maxLength: number) {
+  const source = String(value || "").replace(/\s+/g, " ").trim();
+  if (!source) return "";
+  return source.length <= maxLength ? source : `${source.slice(0, maxLength).trim()}…`;
+}
+
+function firstWords(value: string | null | undefined, maxWords: number) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, maxWords)
+    .join(" ");
+}
+
+function buildShortTitle(value: string | null | undefined) {
+  const source = cleanUiText(value).replace(/\s+/g, " ").trim();
+  if (!source) return "";
+  const phrase = firstWords(source.split(/\n|[.!؟?؛]/).find(Boolean) || source, 6);
+  const limited = truncateText(phrase, 38);
+  const wasShortened = phrase.length > 38 || source.split(/\s+/).filter(Boolean).length > 6;
+  return wasShortened && !limited.endsWith("…") ? `${limited}…` : limited;
+}
+
+function isSeoTitleUsable(post: (typeof rawPosts)[number], seoTitle: string | null | undefined) {
+  const cleanTitle = cleanUiText(seoTitle).replace(/\s+/g, " ").trim();
+  if (!cleanTitle || cleanTitle.length > 65) return false;
+  const cleanBody = cleanUiText(post.text).replace(/\s+/g, " ").trim();
+  if (cleanBody && cleanBody.length > 90 && cleanBody.startsWith(cleanTitle)) return false;
+  return cleanTitle.split(/\s+/).filter(Boolean).length <= 10;
+}
+
 function makeTagPostTitle(post: (typeof rawPosts)[number], parsed: ReturnType<typeof parsePostContent>) {
-  const seoTitle = String(post.seo_title || "").trim();
-  if (seoTitle) return seoTitle;
+  const seoTitle = cleanUiText(post.seo_title).replace(/\s+/g, " ").trim();
+  if (isSeoTitleUsable(post, seoTitle)) return buildShortTitle(seoTitle) || "مطلبی از ماهون";
 
   const parsedTitle = cleanUiText(makeTitle(post.text));
-  if (parsedTitle) return parsedTitle;
+  if (parsedTitle) return buildShortTitle(parsedTitle) || "مطلبی از ماهون";
 
   const firstLine = cleanUiText(parsed.cleanText)
-    .split("\n")
+    .split(/\n|[.!؟?؛]/)
     .map((line) => line.trim())
     .find(Boolean);
-  if (firstLine) return firstLine.length > 74 ? `${firstLine.slice(0, 74).trim()}...` : firstLine;
+  if (firstLine) return buildShortTitle(firstLine) || "مطلبی از ماهون";
 
-  const excerpt = cleanUiText(makeExcerpt(post.text, 74));
-  return excerpt || "مطلب ماهون";
+  const excerpt = cleanUiText(makeExcerpt(post.text, 42));
+  return buildShortTitle(excerpt) || "مطلبی از ماهون";
+}
+
+function getPostHref(post: (typeof rawPosts)[number]) {
+  const slug = String(post.slug || "").trim();
+  if (slug && slug !== "#" && !/^javascript:/i.test(slug)) {
+    return `/post/${encodeURIComponent(slug)}`;
+  }
+
+  const id = String(post.id || "").trim();
+  if (id) return `/post/${encodeURIComponent(id)}`;
+
+  return "#";
+}
+
+function validMediaValue(value: unknown) {
+  const source = String(value || "").trim();
+  if (!source || source.toLowerCase() === "about:blank" || /^javascript:/i.test(source)) return null;
+  return source;
+}
+
+function looksLikeImageUrl(value: unknown) {
+  return /\.(avif|webp|png|jpe?g|gif|bmp|svg)(\?|#|$)/i.test(String(value || ""));
+}
+
+function getMediaSrc(post: Record<string, any>) {
+  const directImage = [
+    post.photo_url,
+    post.image_url,
+    post.thumbnail_url,
+    post.media?.url,
+    post.file_url
+  ].map(validMediaValue).find(Boolean);
+  if (directImage) return directImage;
+
+  const mediaUrl = validMediaValue(post.media_url);
+  if (mediaUrl && (post.media_type === "photo" || post.media_type === "image" || looksLikeImageUrl(mediaUrl))) {
+    return mediaUrl;
+  }
+
+  const fileId = String(post.photo_file_id || post.telegram_file_id || post.file_id || "").trim();
+  if (fileId) return `${workerUrl}/media/${encodeURIComponent(fileId)}`;
+
+  const mediaFileId = String(post.media_file_id || "").trim();
+  if (mediaFileId && (post.media_type === "photo" || post.media_type === "image")) {
+    return `${workerUrl}/media/${encodeURIComponent(mediaFileId)}`;
+  }
+
+  return null;
 }
 
 const posts = rawPosts
@@ -89,6 +172,8 @@ const posts = rawPosts
       ...post,
       title: makeTagPostTitle(post, parsed),
       excerpt: cleanUiText(makeExcerpt(post.text, 150)),
+      href: getPostHref(post),
+      mediaSrc: getMediaSrc(post),
       content: cleanUiText(parsed.cleanText),
       hashtags: publicHashtags,
       allHashtags: parsed.hashtags,
@@ -133,18 +218,29 @@ const description = tag
           {posts.map((post) => (
             <a
               class="public-list-row"
-              href={`/post/${encodeURIComponent(post.slug)}`}
+              href={post.href}
               data-post-card
               data-search={post.searchText}
             >
               <div class="public-list-row__text">
-                <strong class="public-list-row__title">{post.title}</strong>
+                <strong class="public-list-row__title public-card-title">{post.title}</strong>
                 <span class="public-list-row__excerpt">{post.excerpt}</span>
                 <span class="public-list-row__meta">{post.date}</span>
               </div>
 
-              {post.photo_url && (
-                <img class="public-list-row__thumb" src={post.photo_url} alt={post.title} loading="lazy" />
+              {post.mediaSrc && (
+                <span data-media-wrap>
+                  <img
+                    class="public-list-row__thumb"
+                    src={post.mediaSrc}
+                    alt={post.title}
+                    width="72"
+                    height="72"
+                    loading="lazy"
+                    decoding="async"
+                    onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')"
+                  />
+                </span>
               )}
 
               <span class="public-list-row__arrow" aria-hidden="true">‹</span>

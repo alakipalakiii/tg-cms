@@ -2615,3 +2615,59 @@ p {
     flex: 1 1 calc(50% - 8px) !important;
   }
 }
+
+/* Mahoon public link, thumbnail and title hardening */
+[data-media-wrap].is-hidden {
+  display: none !important;
+}
+
+.public-card-title,
+.post-title,
+.rail-card-title,
+.suggestion-title,
+.featured-card__title,
+.all-post-row__title,
+.public-list-row__title,
+.category-card h3 {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.public-card-excerpt,
+.featured-card__excerpt,
+.public-list-row__excerpt,
+.category-card p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.post-page-title {
+  max-width: 680px;
+  line-height: 1.5;
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+[data-read-more-link] {
+  position: relative;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+[data-card-link],
+[data-no-drag] {
+  pointer-events: auto;
+}
+
+@media (max-width: 720px) {
+  .post-page-title {
+    -webkit-line-clamp: 3;
+  }
+}
