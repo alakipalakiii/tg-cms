@@ -451,6 +451,92 @@ function requireAdmin(request, env) {
   return token === env.ADMIN_TOKEN;
 }
 
+const SITE_SETTING_KEYS = [
+  "site_name",
+  "header_description",
+  "home_hero_line_one",
+  "home_hero_line_two",
+  "home_latest_title",
+  "about_lead",
+  "about_body",
+  "contact_lead",
+  "contact_body",
+  "contact_cta_text",
+  "footer_title",
+  "footer_description",
+  "footer_copyright",
+  "telegram_url"
+];
+
+const SITE_SETTING_KEY_SET = new Set(SITE_SETTING_KEYS);
+
+function isMissingSiteSettingsTable(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes("site_settings") && (
+    message.includes("no such table") ||
+    message.includes("not found") ||
+    message.includes("does not exist")
+  );
+}
+
+function normalizeSiteSettingsPayload(body) {
+  const source = body?.settings && typeof body.settings === "object" ? body.settings : body;
+  const settings = {};
+
+  for (const key of SITE_SETTING_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(source || {}, key)) {
+      settings[key] = cleanText(source[key]);
+    }
+  }
+
+  return settings;
+}
+
+async function readSiteSettings(env) {
+  try {
+    const { results } = await env.DB.prepare(
+      `
+      SELECT key, value
+      FROM site_settings
+      ORDER BY key ASC
+      `
+    ).all();
+
+    return Object.fromEntries(
+      (results || [])
+        .filter(row => SITE_SETTING_KEY_SET.has(row.key))
+        .map(row => [row.key, cleanText(row.value)])
+    );
+  } catch (error) {
+    if (isMissingSiteSettingsTable(error)) return {};
+    throw error;
+  }
+}
+
+async function writeSiteSettings(env, settings) {
+  const entries = Object.entries(settings).filter(([key]) => SITE_SETTING_KEY_SET.has(key));
+
+  if (entries.length === 0) {
+    return { changed: 0 };
+  }
+
+  const statements = entries.map(([key, value]) =>
+    env.DB.prepare(
+      `
+      INSERT INTO site_settings (key, value, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = CURRENT_TIMESTAMP
+      `
+    ).bind(key, value)
+  );
+
+  await env.DB.batch(statements);
+
+  return { changed: entries.length };
+}
+
 function getTelegramAdminIds(env) {
   const values = [
     env.BOT_ADMIN_CHAT_ID || "",
@@ -1392,6 +1478,15 @@ export default {
         });
       }
 
+      if (request.method === "GET" && url.pathname === "/site-settings") {
+        const settings = await readSiteSettings(env);
+
+        return json({
+          ok: true,
+          settings
+        });
+      }
+
       if (url.pathname.startsWith("/admin")) {
         if (!requireAdmin(request, env)) {
           return json({
@@ -1405,6 +1500,40 @@ export default {
             ok: true,
             admin: true
           });
+        }
+
+        if (request.method === "GET" && url.pathname === "/admin/site-settings") {
+          const settings = await readSiteSettings(env);
+
+          return json({
+            ok: true,
+            settings
+          });
+        }
+
+        if (request.method === "PATCH" && url.pathname === "/admin/site-settings") {
+          const body = await request.json();
+          const settings = normalizeSiteSettingsPayload(body);
+
+          try {
+            const result = await writeSiteSettings(env, settings);
+
+            return json({
+              ok: true,
+              saved: true,
+              changed: result.changed,
+              settings: await readSiteSettings(env)
+            });
+          } catch (error) {
+            if (isMissingSiteSettingsTable(error)) {
+              return json({
+                ok: false,
+                error: "site_settings table is missing. Create the D1 table from the migration file before saving site settings."
+              }, 500);
+            }
+
+            throw error;
+          }
         }
 
         if (request.method === "POST" && url.pathname === "/admin/upload") {

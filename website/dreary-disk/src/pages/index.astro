@@ -2,66 +2,60 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { SITE } from "../config";
 
-const pageTitle = SITE.name;
-const pageDescription = SITE.description;
+async function fetchJsonWithTimeout(url: string, timeoutMs = 1500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (error) {
+    console.warn("home settings fallback", error);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function loadSiteSettings() {
+  const payload = await fetchJsonWithTimeout(`${SITE.workerUrl.replace(/\/+$/, "")}/site-settings`);
+  return payload?.settings || {};
+}
+
+const siteSettings = await loadSiteSettings();
+const pageTitle = siteSettings.site_name || SITE.name;
+const pageDescription = siteSettings.header_description || SITE.description;
+const heroLineOne = siteSettings.home_hero_line_one || "درخت هنر، زمانی میوه خواهد داد";
+const heroLineTwo = siteSettings.home_hero_line_two || "که ریشه آن خشکیده نشده باشد!";
+const heroLabel = `${heroLineOne} ${heroLineTwo}`.trim();
+const latestTitle = siteSettings.home_latest_title || "تازه‌ترین روایت منتشرشده در ماهون";
 ---
 
 <BaseLayout title={pageTitle} description={pageDescription}>
-  <main class="client-home" data-worker-url={SITE.workerUrl}>
-    <section class="client-hero">
-      <div class="client-hero-inner">
-        <div class="client-hero-content">
-          <p class="client-kicker">مجله هنری ماهون</p>
-          <h1>روایت هنر، فرهنگ و نگاه معاصر</h1>
-          <p>
-            ماهون رسانه‌ای برای ثبت و بازنشر روایت‌های هنری، فرهنگی، تصویری و شنیداری است.
-          </p>
-          <div class="client-hero-actions">
-            <a href="#latest-posts">آخرین مطالب</a>
-            <a href={SITE.telegramUrl} target="_blank" rel="noopener">تلگرام ماهون</a>
-          </div>
-        </div>
-
-        <div class="client-hero-stats">
-          <div class="client-stat-card">
-            <strong id="postsCount">...</strong>
-            <span>مطلب منتشرشده</span>
-          </div>
-          <div class="client-stat-card">
-            <strong id="latestPostId">...</strong>
-            <span>آخرین کد مطلب</span>
-          </div>
-          <div class="client-stat-card">
-            <strong>Media</strong>
-            <span>متن، صوت و ویدیو</span>
-          </div>
-          <div class="client-hero-mark">
-            <img src={SITE.logo} alt="" loading="eager" />
-            <span>Curated Art Notes</span>
-          </div>
-        </div>
+  <main class="home-page" data-worker-url={SITE.workerUrl}>
+    <section class="home-hero" aria-label="شعار مجله هنری ماهون">
+      <div class="home-hero__panel">
+        <h1
+          class="home-hero__slogan"
+          data-line-one={heroLineOne}
+          data-line-two={heroLineTwo}
+          aria-label={heroLabel}
+        >
+          <span></span>
+          <span></span>
+        </h1>
       </div>
     </section>
 
-    <section id="latest-posts" class="client-section">
-      <div class="client-section-heading">
-        <p>آخرین پست‌های منتشرشده در مجله هنری ماهون</p>
-        <h2>مطالب تازه</h2>
+    <section class="latest-intro">
+      <div class="section-title section-title--lined">
+        <span>{latestTitle}</span>
       </div>
+    </section>
 
-      <div class="client-logic-note">
-        <strong>منطق شماره‌گذاری:</strong>
-        کد مطلب روی سایت همان شماره‌ای است که باید در ربات وارد شود. این کد ثابت است و بعد از حذف پست‌ها تغییر نمی‌کند.
-      </div>
-
-      <div class="client-search-box">
-        <input
-          id="postSearch"
-          type="search"
-          placeholder="جستجو در مطالب، هشتگ‌ها یا کد مطلب؛ مثلا 24 ..."
-          autocomplete="off"
-        />
-      </div>
+    <section class="latest-featured-section">
+      <div id="featuredPost" class="latest-featured"></div>
 
       <div id="postsStatus" class="client-status client-status-loading" aria-live="polite">
         <div class="client-skeleton-card"></div>
@@ -72,16 +66,41 @@ const pageDescription = SITE.description;
         </div>
         در حال دریافت پست‌ها...
       </div>
-
-      <div id="featuredPost" class="client-featured"></div>
-
-      <div id="postsGrid" class="client-posts-grid"></div>
     </section>
+
+    <section class="home-stats" id="homeStats" aria-label="آمار مطالب ماهون"></section>
+
+    <section class="home-search-section">
+      <label class="home-search" for="postSearch">
+        <span class="home-search__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="6" />
+            <path d="m16 16 4 4" />
+          </svg>
+        </span>
+        <input
+          id="postSearch"
+          type="search"
+          placeholder="جست‌وجو در مطالب..."
+          autocomplete="off"
+        />
+      </label>
+    </section>
+
+    <section class="all-posts-section" aria-labelledby="allPostsTitle">
+      <div class="section-heading-row">
+        <h2 id="allPostsTitle">همه مطالب</h2>
+      </div>
+      <div id="postsGrid" class="all-posts-list" tabindex="0"></div>
+      <a class="all-posts-more" href="/posts">مشاهده همه مطالب</a>
+    </section>
+
+    <section class="category-rails" id="categoryRails"></section>
   </main>
 
   <script is:inline>
     (function () {
-      const root = document.querySelector(".client-home");
+      const root = document.querySelector(".home-page");
       const API_BASE = (
         root?.dataset?.workerUrl ||
         "https://tg-cms-api.morentoofficial.workers.dev"
@@ -90,11 +109,56 @@ const pageDescription = SITE.description;
       const statusEl = document.getElementById("postsStatus");
       const gridEl = document.getElementById("postsGrid");
       const featuredEl = document.getElementById("featuredPost");
+      const statsEl = document.getElementById("homeStats");
+      const categoryRailsEl = document.getElementById("categoryRails");
       const searchEl = document.getElementById("postSearch");
-      const countEl = document.getElementById("postsCount");
-      const latestPostIdEl = document.getElementById("latestPostId");
+
+      const CATEGORY_DEFINITIONS = [
+        { title: "کتاب", tags: ["کتاب"] },
+        { title: "دیالوگ ها", tags: ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"] },
+        { title: "صوتی", tags: ["صوتی", "صدا", "موسیقی"] },
+        { title: "شعر و متن", tags: ["متن", "متن‌ها", "متن_ها", "شعر", "اشعار", "شعرها", "شعر_ها"] },
+        { title: "نقاشی", tags: ["نقاشی"] }
+      ];
+      const POETRY_TEXT_CATEGORY_TITLE = "شعر و متن";
+      const CATEGORY_TAGS = new Set(
+        CATEGORY_DEFINITIONS.flatMap((category) => category.tags.map(normalizeTag))
+      );
 
       let allPosts = [];
+      const sharedAudio = new Audio();
+      let activeAudioButton = null;
+
+      function typeHeroQuote() {
+        const quote = document.querySelector(".home-hero__slogan");
+        const targets = quote ? Array.from(quote.querySelectorAll("span")) : [];
+        const text = [quote?.dataset?.lineOne, quote?.dataset?.lineTwo].filter(Boolean).join("\n");
+
+        if (!quote || targets.length < 2 || !text) return;
+
+        let index = 0;
+        targets[0].textContent = "";
+        targets[1].textContent = "";
+        quote.classList.add("is-typing");
+
+        const tick = () => {
+          index += 1;
+          const visible = text.slice(0, index);
+          const [lineOne = "", lineTwo = ""] = visible.split("\n");
+          targets[0].textContent = lineOne;
+          targets[1].textContent = lineTwo;
+
+          if (index < text.length) {
+            window.setTimeout(tick, 38);
+            return;
+          }
+
+          quote.classList.remove("is-typing");
+          quote.classList.add("is-typed");
+        };
+
+        window.setTimeout(tick, 260);
+      }
 
       function toPersianNumber(value) {
         return String(value || "")
@@ -149,6 +213,8 @@ const pageDescription = SITE.description;
 
       function cleanText(value) {
         return String(value || "")
+          .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
+          .replace(/\u{1F539}/gu, "")
           .replace(/https?:\/\/[^\s]+/giu, "")
           .replace(/@[a-zA-Z0-9_]+/g, "")
           .replace(/(^|\s)#([^\s#]+)/gu, " ")
@@ -156,6 +222,17 @@ const pageDescription = SITE.description;
           .replace(/\n{3,}/g, "\n\n")
           .replace(/[ \t]{2,}/g, " ")
           .trim();
+      }
+
+      function normalizeTag(tag) {
+        return String(tag || "")
+          .replace(/^#/, "")
+          .replace(/[يى]/g, "ی")
+          .replace(/ك/g, "ک")
+          .replace(/\u200c/g, "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .toLowerCase();
       }
 
       function makeTitle(text) {
@@ -185,6 +262,15 @@ const pageDescription = SITE.description;
               .filter(Boolean)
           )
         );
+      }
+
+      function getPublicTags(text) {
+        return getTags(text).filter((tag) => !CATEGORY_TAGS.has(normalizeTag(tag)));
+      }
+
+      function getTagHref(tag) {
+        const cleanTag = String(tag || "").replace(/^#/, "").trim();
+        return `/tag/${encodeURIComponent(cleanTag)}`;
       }
 
       function formatDate(value) {
@@ -240,19 +326,19 @@ const pageDescription = SITE.description;
       function mediaLabel(type) {
         switch (type) {
           case "photo":
-            return "تصویر";
+            return "";
           case "video":
             return "ویدیو";
           case "audio":
             return "صوت";
           case "voice":
-            return "ویس";
+            return "صدا";
           case "document":
             return "فایل";
           case "animation":
             return "انیمیشن";
           default:
-            return "روایت";
+            return "یادداشت";
         }
       }
 
@@ -274,12 +360,31 @@ const pageDescription = SITE.description;
         }
       }
 
-      function renderPostCode(post) {
-        return `
-          <span class="client-post-code" title="این کد همان شماره ربات است">
-            کد مطلب #${escapeHtml(toPersianNumber(post.id))}
-          </span>
-        `;
+      function isAudioPost(post) {
+        return post.media_type === "audio" || post.media_type === "voice";
+      }
+
+      function isVisualPost(post) {
+        return ["photo", "video", "animation"].includes(post.media_type);
+      }
+
+      function isTextOnlyPost(post) {
+        return !post.photo_url && !post.media_type;
+      }
+
+      function postHasCategory(post, category) {
+        if (!category.tags.length) return true;
+
+        const postTags = new Set(getTags(post.text).map(normalizeTag));
+        return category.tags.some((tag) => postTags.has(normalizeTag(tag)));
+      }
+
+      function formatDuration(seconds) {
+        const total = Number(seconds || 0);
+        if (!total) return "";
+        const minutes = Math.floor(total / 60);
+        const rest = Math.floor(total % 60);
+        return toPersianNumber(`${minutes}:${String(rest).padStart(2, "0")}`);
       }
 
       function renderLoadingStatus() {
@@ -304,11 +409,39 @@ const pageDescription = SITE.description;
       function renderMedia(post, featured) {
         const className = featured ? "client-card-media client-card-media-featured" : "client-card-media";
 
+        if (isAudioPost(post)) {
+          const duration = formatDuration(post.media_duration);
+          const disabledAttr = post.media_url ? "" : " disabled";
+
+          return `
+            <div class="${className} client-audio-card-media">
+              <div class="client-audio-cover">
+                <span>♪</span>
+              </div>
+              <div class="client-audio-panel">
+                <small>${escapeHtml(mediaLabel(post.media_type))}</small>
+                <button
+                  class="client-audio-play"
+                  type="button"
+                  data-audio-src="${escapeAttr(post.media_url || "")}"
+                  aria-label="پخش صوت"
+                  ${disabledAttr}
+                >
+                  پخش
+                </button>
+                <div class="client-audio-progress" aria-hidden="true">
+                  <span></span>
+                </div>
+                <em>${duration || "آماده شنیدن"}</em>
+              </div>
+            </div>
+          `;
+        }
+
         if (post.photo_url) {
           return `
             <div class="${className}">
               <img src="${escapeAttr(post.photo_url)}" alt="${escapeAttr(makeTitle(post.text))}" loading="lazy" />
-              <div class="client-media-code">${renderPostCode(post)}</div>
             </div>
           `;
         }
@@ -316,70 +449,215 @@ const pageDescription = SITE.description;
         if (post.media_type) {
           return `
             <div class="${className} client-media-placeholder">
-              <div class="client-media-code">${renderPostCode(post)}</div>
+              <span>${escapeHtml(mediaIcon(post.media_type))}</span>
+            </div>
+          `;
+        }
+
+        return "";
+      }
+
+      function renderTags(post) {
+        const tags = getPublicTags(post.text);
+        if (!tags.length) return "";
+
+        return `
+          <div class="post-tags">
+            ${tags
+              .slice(0, 3)
+              .map(
+                (tag) =>
+                  `<a href="${escapeAttr(getTagHref(tag))}">#${escapeHtml(tag)}</a>`
+              )
+              .join("")}
+          </div>
+        `;
+      }
+
+      function getPostCategory(post) {
+        const category = CATEGORY_DEFINITIONS.find((item) => postHasCategory(post, item));
+        return category?.title || "";
+      }
+
+      function renderFeaturedPost(post) {
+        const title = post.seo_title || makeTitle(post.text);
+        const excerpt = post.seo_description || makeExcerpt(post.text);
+        const href = `/post/${encodeURIComponent(post.slug)}`;
+        const category = getPostCategory(post);
+        const media =
+          post.photo_url
+            ? `
+              <a class="featured-card__media" href="${escapeAttr(href)}" aria-label="${escapeAttr(title)}">
+                <img src="${escapeAttr(post.photo_url)}" alt="${escapeAttr(title)}" loading="lazy" />
+              </a>
+            `
+            : "";
+
+        return `
+          <article class="featured-card ${!post.photo_url ? "featured-card--text-only" : ""}">
+            <div class="featured-card__content">
+              <div class="featured-card__meta">
+                <span class="featured-card__date">${escapeHtml(formatDate(post.created_at))}</span>
+                ${category ? `<span class="featured-card__category">${escapeHtml(category)}</span>` : ""}
+              </div>
+              <h2 class="featured-card__title">${escapeHtml(title)}</h2>
+              <p class="featured-card__excerpt">${escapeHtml(excerpt)}</p>
+              ${renderTags(post)}
+              <a class="featured-card__cta" href="${escapeAttr(href)}" aria-label="${escapeAttr(title)}">ادامه مطلب</a>
+            </div>
+            ${media}
+          </article>
+        `;
+      }
+
+      function renderStats(posts) {
+        if (!posts.length) {
+          statsEl.innerHTML = "";
+          return;
+        }
+
+        const activeCategories = CATEGORY_DEFINITIONS.filter((category) =>
+          posts.some((post) => postHasCategory(post, category))
+        ).length;
+        const latestCode = posts[0]?.id || 0;
+        const textOnlyCount = posts.filter(isTextOnlyPost).length;
+
+        statsEl.innerHTML = `
+          <div class="home-stat-card">
+            <strong>${toPersianNumber(posts.length)}</strong>
+            <span>مطالب منتشرشده</span>
+          </div>
+          <div class="home-stat-card">
+            <strong>${toPersianNumber(activeCategories)}</strong>
+            <span>دسته‌بندی فعال</span>
+          </div>
+          <div class="home-stat-card">
+            <strong>${toPersianNumber(latestCode)}</strong>
+            <span>آخرین کد مطلب</span>
+          </div>
+          <div class="home-stat-card">
+            <strong>${toPersianNumber(textOnlyCount)}</strong>
+            <span>مطالب متنی</span>
+          </div>
+        `;
+      }
+
+      function renderAllPostsList(posts) {
+        gridEl.innerHTML = posts
+          .slice(0, 20)
+          .map((post) => {
+            const title = post.seo_title || makeTitle(post.text);
+            const href = `/post/${encodeURIComponent(post.slug)}`;
+            const thumb = post.photo_url
+              ? `<img class="all-post-row__thumb" src="${escapeAttr(post.photo_url)}" alt="${escapeAttr(title)}" loading="lazy" />`
+              : "";
+
+            return `
+              <a class="all-post-row" href="${escapeAttr(href)}">
+                <div class="all-post-row__text">
+                  <strong class="all-post-row__title">${escapeHtml(title)}</strong>
+                  <span class="all-post-row__date">${escapeHtml(formatDate(post.created_at))}</span>
+                </div>
+                ${thumb}
+                <span class="all-post-row__arrow" aria-hidden="true">‹</span>
+              </a>
+            `;
+          })
+          .join("");
+      }
+
+      function renderRailMedia(post, forceTextOnly) {
+        if (forceTextOnly) return "";
+
+        const title = post.seo_title || makeTitle(post.text);
+
+        if (post.photo_url) {
+          return `
+            <div class="client-card-media">
+              <img src="${escapeAttr(post.photo_url)}" alt="${escapeAttr(title)}" loading="lazy" />
+            </div>
+          `;
+        }
+
+        if (isAudioPost(post)) {
+          return `
+            <div class="client-card-media client-media-placeholder category-card__media-placeholder">
+              <span>♪</span>
+              <small>${escapeHtml(mediaLabel(post.media_type))}</small>
+            </div>
+          `;
+        }
+
+        if (post.media_type) {
+          return `
+            <div class="client-card-media client-media-placeholder category-card__media-placeholder">
               <span>${escapeHtml(mediaIcon(post.media_type))}</span>
               <small>${escapeHtml(mediaLabel(post.media_type))}</small>
             </div>
           `;
         }
 
-        return `
-          <div class="${className} client-media-placeholder client-media-placeholder-text">
-            <div class="client-media-code">${renderPostCode(post)}</div>
-            <span>•</span>
-            <small>متن</small>
-          </div>
-        `;
+        return "";
       }
 
-      function renderTags(post) {
-        const tags = getTags(post.text);
-        if (!tags.length) return "";
-
-        return `
-          <div class="client-tags">
-            ${tags
-              .slice(0, 4)
-              .map((tag) => `<span>#${escapeHtml(tag)}</span>`)
-              .join("")}
-          </div>
-        `;
-      }
-
-      function renderPostCard(post, featured) {
+      function renderRailPostCard(post, forceTextOnly = false) {
         const title = post.seo_title || makeTitle(post.text);
         const excerpt = post.seo_description || makeExcerpt(post.text);
         const href = `/post/${encodeURIComponent(post.slug)}`;
+        const textOnly = forceTextOnly || isTextOnlyPost(post);
 
         return `
-          <article class="client-post-card ${featured ? "client-post-card-featured" : ""}" data-post-id="${escapeAttr(post.id)}">
-            <a href="${escapeAttr(href)}" aria-label="${escapeAttr(title)}">
-              ${renderMedia(post, featured)}
-              <div class="client-card-body">
-                <div class="client-card-meta">
-                  ${renderPostCode(post)}
-                  <span>${escapeHtml(formatDate(post.created_at))}</span>
-                  ${post.media_type ? `<span>${escapeHtml(mediaLabel(post.media_type))}</span>` : ""}
-                </div>
-                <h3>${escapeHtml(title)}</h3>
-                <p>${escapeHtml(excerpt)}</p>
-                ${renderTags(post)}
-                <div class="client-read-more">ادامه مطلب</div>
+          <article class="category-card ${isAudioPost(post) && !forceTextOnly ? "category-card--audio" : ""} ${textOnly ? "category-card--text-only" : ""}" data-href="${escapeAttr(href)}" aria-label="${escapeAttr(title)}">
+            ${renderRailMedia(post, forceTextOnly)}
+            <div class="category-card__body">
+              <div class="category-card__meta">
+                <span>${escapeHtml(formatDate(post.created_at))}</span>
               </div>
-            </a>
+              <h3><a href="${escapeAttr(href)}">${escapeHtml(title)}</a></h3>
+              <p>${escapeHtml(excerpt)}</p>
+              <a class="category-card__cta" href="${escapeAttr(href)}" aria-label="${escapeAttr(title)}">ادامه مطلب</a>
+            </div>
           </article>
         `;
       }
 
+      function renderCategorySection(group, index) {
+        const { title, posts, forceTextOnlyRail } = group;
+        if (!posts.length) return "";
+
+        return `
+          <section class="category-rail" aria-labelledby="post-row-${index}">
+            <header class="category-rail__header">
+              <h2 id="post-row-${index}">${escapeHtml(title)}</h2>
+              <div class="category-rail__controls">
+                <button type="button" class="category-rail__button" data-scroll-dir="-1" aria-label="قبلی">‹</button>
+                <button type="button" class="category-rail__button" data-scroll-dir="1" aria-label="بعدی">›</button>
+              </div>
+            </header>
+            <div class="category-rail__viewport">
+              ${posts.map((post) => renderRailPostCard(post, forceTextOnlyRail)).join("")}
+            </div>
+          </section>
+        `;
+      }
+
+      function buildPostGroups(posts) {
+        const rest = posts.slice(1);
+        const groups = CATEGORY_DEFINITIONS.map((category) => ({
+          title: category.title,
+          posts: rest.filter((post) => postHasCategory(post, category)),
+          forceTextOnlyRail: category.title === POETRY_TEXT_CATEGORY_TITLE
+        }));
+
+        return groups.filter((group) => group.posts.length);
+      }
+
       function renderPosts(posts) {
-        countEl.textContent = toPersianNumber(posts.length);
-
-        const maxId = posts.reduce((max, post) => Math.max(max, Number(post.id || 0)), 0);
-        latestPostIdEl.textContent = maxId ? `#${toPersianNumber(maxId)}` : "...";
-
         if (!posts.length) {
           featuredEl.innerHTML = "";
+          statsEl.innerHTML = "";
           gridEl.innerHTML = "";
+          categoryRailsEl.innerHTML = "";
           statusEl.style.display = "block";
           renderMessageStatus("هنوز پستی برای نمایش وجود ندارد.", "empty");
           return;
@@ -389,10 +667,15 @@ const pageDescription = SITE.description;
         statusEl.classList.remove("client-status-loading", "client-status-error");
 
         const featured = posts[0];
-        const rest = posts.slice(1);
+        const groups = buildPostGroups(posts);
 
-        featuredEl.innerHTML = renderPostCard(featured, true);
-        gridEl.innerHTML = rest.map((post) => renderPostCard(post, false)).join("");
+        featuredEl.innerHTML = renderFeaturedPost(featured);
+        renderStats(posts);
+        renderAllPostsList(posts);
+        categoryRailsEl.innerHTML = groups
+          .map((group, index) => renderCategorySection(group, index))
+          .join("");
+        setupRowDragging();
       }
 
       function applySearch() {
@@ -430,12 +713,16 @@ const pageDescription = SITE.description;
       }
 
       async function loadPosts() {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 2500);
+
         try {
           statusEl.style.display = "block";
           renderLoadingStatus();
 
           const response = await fetch(`${API_BASE}/`, {
             method: "GET",
+            signal: controller.signal,
             headers: {
               Accept: "application/json"
             }
@@ -458,16 +745,166 @@ const pageDescription = SITE.description;
 
           renderPosts(allPosts);
         } catch (error) {
-          console.error("Mahoon client posts error:", error);
-          countEl.textContent = "۰";
-          latestPostIdEl.textContent = "...";
+          console.debug("Mahoon client posts fallback:", error);
           featuredEl.innerHTML = "";
+          statsEl.innerHTML = "";
           gridEl.innerHTML = "";
-          statusEl.style.display = "block";
-          renderMessageStatus("خطا در دریافت پست‌ها. لطفاً چند ثانیه دیگر صفحه را Refresh کنید.", "error");
+          categoryRailsEl.innerHTML = "";
+          statusEl.style.display = "none";
+        } finally {
+          window.clearTimeout(timer);
         }
       }
 
+      function resetAudioButton(button) {
+        if (!button) return;
+        button.textContent = "پخش";
+        button.classList.remove("is-playing");
+        const progress = button
+          .closest(".client-audio-card-media")
+          ?.querySelector(".client-audio-progress span");
+        if (progress) progress.style.transform = "scaleX(0)";
+      }
+
+      function updateAudioProgress() {
+        if (!activeAudioButton || !sharedAudio.duration) return;
+
+        const progress = activeAudioButton
+          .closest(".client-audio-card-media")
+          ?.querySelector(".client-audio-progress span");
+        if (!progress) return;
+
+        progress.style.transform = `scaleX(${Math.min(
+          sharedAudio.currentTime / sharedAudio.duration,
+          1
+        )})`;
+      }
+
+      document.addEventListener("click", (event) => {
+        const audioButton = event.target.closest(".client-audio-play");
+        const rowButton = event.target.closest(".category-rail__button");
+
+        if (audioButton) {
+          event.preventDefault();
+          event.stopPropagation();
+
+          const src = audioButton.dataset.audioSrc;
+          if (!src || audioButton.disabled) return;
+
+          if (activeAudioButton === audioButton && !sharedAudio.paused) {
+            sharedAudio.pause();
+            resetAudioButton(audioButton);
+            activeAudioButton = null;
+            return;
+          }
+
+          resetAudioButton(activeAudioButton);
+          activeAudioButton = audioButton;
+          sharedAudio.src = src;
+          sharedAudio.play().catch(() => {
+            resetAudioButton(audioButton);
+            activeAudioButton = null;
+          });
+          audioButton.textContent = "توقف";
+          audioButton.classList.add("is-playing");
+        }
+
+        if (rowButton) {
+          const row = rowButton
+            .closest(".category-rail")
+            ?.querySelector(".category-rail__viewport");
+          if (!row) return;
+
+          row.scrollBy({
+            left: Number(rowButton.dataset.scrollDir || 1) * row.clientWidth * 0.85,
+            behavior: "smooth"
+          });
+        }
+
+        const categoryCard = event.target.closest(".category-card[data-href]");
+        if (categoryCard && !event.target.closest("a, button")) {
+          const href = categoryCard.dataset.href;
+          if (href) window.location.href = href;
+        }
+      });
+
+      function setupRowDragging() {
+        document.querySelectorAll(".category-rail__viewport").forEach((row) => {
+          if (row.dataset.dragReady === "true") return;
+
+          row.dataset.dragReady = "true";
+          const dragClickThreshold = 6;
+          let activePointerId = null;
+          let startX = 0;
+          let startY = 0;
+          let scrollLeft = 0;
+          let didDrag = false;
+          let suppressClick = false;
+
+          const finishDrag = (event) => {
+            if (activePointerId !== event.pointerId) return;
+
+            activePointerId = null;
+            row.classList.remove("is-dragging");
+            row.releasePointerCapture?.(event.pointerId);
+            suppressClick = didDrag;
+          };
+
+          row.addEventListener("pointerdown", (event) => {
+            if (event.button !== undefined && event.button !== 0) return;
+
+            activePointerId = event.pointerId;
+            row.classList.add("is-dragging");
+            row.setPointerCapture?.(event.pointerId);
+            startX = event.clientX;
+            startY = event.clientY;
+            scrollLeft = row.scrollLeft;
+            didDrag = false;
+            suppressClick = false;
+          });
+
+          row.addEventListener("pointerleave", () => {
+            if (activePointerId === null) row.classList.remove("is-dragging");
+          });
+
+          row.addEventListener("pointerup", finishDrag);
+          row.addEventListener("pointercancel", finishDrag);
+
+          row.addEventListener("pointermove", (event) => {
+            if (activePointerId !== event.pointerId) return;
+            const deltaX = event.clientX - startX;
+            const deltaY = event.clientY - startY;
+
+            if (!didDrag && Math.hypot(deltaX, deltaY) > dragClickThreshold) {
+              didDrag = true;
+            }
+
+            if (didDrag) {
+              event.preventDefault();
+              row.scrollLeft = scrollLeft - deltaX;
+            }
+          });
+
+          row.addEventListener(
+            "click",
+            (event) => {
+              if (!suppressClick) return;
+              event.preventDefault();
+              event.stopPropagation();
+              suppressClick = false;
+            },
+            true
+          );
+        });
+      }
+
+      sharedAudio.addEventListener("timeupdate", updateAudioProgress);
+      sharedAudio.addEventListener("ended", () => {
+        resetAudioButton(activeAudioButton);
+        activeAudioButton = null;
+      });
+
+      typeHeroQuote();
       searchEl.addEventListener("input", applySearch);
       loadPosts();
     })();
@@ -476,187 +913,776 @@ const pageDescription = SITE.description;
   <style is:global>
     .client-home {
       direction: rtl;
+      overflow-x: hidden;
+    }
+
+    .home-page {
+      direction: rtl;
+      overflow-x: hidden;
+    }
+
+    .home-hero,
+    .latest-intro,
+    .latest-featured-section,
+    .home-stats,
+    .home-search-section,
+    .all-posts-section,
+    .category-rails {
+      width: min(1180px, calc(100% - 32px));
+      margin-right: auto;
+      margin-left: auto;
+    }
+
+    .home-hero {
+      padding: 22px 0 0;
+      margin-bottom: 28px;
+    }
+
+    .home-hero__panel {
+      min-height: 196px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border-radius: 26px;
+      background:
+        linear-gradient(rgba(255, 253, 248, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 253, 248, 0.04) 1px, transparent 1px),
+        #4b0d0d;
+      background-size: 42px 42px, 42px 42px, auto;
+      box-shadow: 0 18px 44px rgba(75, 13, 13, 0.14);
+      text-align: center;
+      padding: 28px 32px;
+    }
+
+    .home-hero__slogan {
+      min-height: 2.9em;
+      display: grid;
+      place-items: center;
+      align-content: center;
+      gap: 4px;
+      margin: 0;
+      color: rgba(255, 253, 248, 0.96);
+      font-size: clamp(25px, 2.7vw, 36px);
+      line-height: 1.75;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .home-hero__slogan::after {
+      content: none;
+      display: none;
+    }
+
+    .home-hero__slogan span {
+      display: block;
+      width: 100%;
+      min-height: 1.75em;
+      direction: rtl;
+      unicode-bidi: plaintext;
+    }
+
+    .latest-intro {
+      margin-bottom: 18px;
+    }
+
+    .section-title {
+      text-align: center;
+    }
+
+    .section-title--lined {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      color: #5a0f0f;
+      font-size: 24px;
+      font-weight: 800;
+      line-height: 1.7;
+    }
+
+    .section-title--lined::before,
+    .section-title--lined::after {
+      content: "";
+      height: 1px;
+      flex: 1 1 120px;
+      max-width: 290px;
+      background: rgba(75, 13, 13, 0.18);
+    }
+
+    .latest-featured-section {
+      margin-bottom: 20px;
+    }
+
+    .latest-featured {
+      min-height: 0;
+    }
+
+    .featured-card {
+      height: 232px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(230px, 0.85fr);
+      overflow: hidden;
+      border: 1px solid rgba(109, 15, 20, 0.16);
+      border-radius: 22px;
+      background:
+        linear-gradient(135deg, rgba(109, 15, 20, 0.075), rgba(232, 211, 204, 0.72)),
+        #fff8ef;
+      box-shadow: 0 18px 48px rgba(74, 9, 13, 0.1);
+    }
+
+    .featured-card--text-only {
+      display: flex;
+      height: 210px;
+      background:
+        radial-gradient(circle at 12% 18%, rgba(255, 248, 239, 0.8), transparent 24%),
+        linear-gradient(135deg, rgba(109, 15, 20, 0.1), rgba(232, 211, 204, 0.78)),
+        #fff8ef;
+    }
+
+    .featured-card__content {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 18px 22px;
+      overflow: hidden;
+    }
+
+    .featured-card--text-only .featured-card__content {
+      width: 100%;
+      min-height: 0;
+      padding: 20px 26px;
+    }
+
+    .featured-card__meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+      color: #8a6a62;
+      font-size: 10px;
+      line-height: 1.5;
+      font-weight: 500;
+    }
+
+    .featured-card__date,
+    .featured-card__category {
+      border-radius: 999px;
+      background: rgba(255, 248, 239, 0.8);
+      padding: 4px 8px;
+    }
+
+    .featured-card__title {
+      margin: 0 0 9px;
+      color: #6d0f14;
+      font-size: clamp(26px, 2.8vw, 34px);
+      line-height: 1.48;
+      letter-spacing: 0;
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .featured-card__excerpt {
+      margin: 0;
+      color: #5f4a45;
+      font-size: 14px;
+      font-weight: 400;
+      line-height: 1.82;
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .featured-card__media {
+      display: block;
+      height: 100%;
+      min-height: 0;
+      background: #e8d3cc;
+    }
+
+    .featured-card__media img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .featured-card__cta,
+    .category-card__cta {
+      width: fit-content;
+      min-height: 35px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: auto;
+      margin-right: auto;
+      color: #4b0d0d;
+      background: rgba(255, 248, 239, 0.9);
+      border: 1px solid rgba(109, 15, 20, 0.2);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+      pointer-events: auto;
+      transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+    }
+
+    .featured-card__cta:hover,
+    .category-card__cta:hover {
+      background: #4b0d0d;
+      color: #fffdf8;
+      transform: translateY(-1px);
+    }
+
+    .post-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 10px;
+      margin-bottom: 10px;
+    }
+
+    .post-tags a {
+      color: #6d0f14;
+      background: rgba(255, 248, 239, 0.74);
+      border: 1px solid rgba(109, 15, 20, 0.1);
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 10px;
+      font-weight: 500;
+      text-decoration: none;
+    }
+
+    .home-stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .home-stat-card {
+      min-height: 104px;
+      aspect-ratio: 1 / 0.72;
+      display: grid;
+      place-content: center;
+      gap: 8px;
+      text-align: center;
+      border: 1px solid rgba(255, 248, 239, 0.16);
+      border-radius: 18px;
+      background:
+        linear-gradient(145deg, #7a171c, #4a090d);
+      box-shadow: 0 18px 42px rgba(74, 9, 13, 0.18);
+    }
+
+    .home-stat-card:nth-child(1) {
+      background: linear-gradient(145deg, #7d171d, #4a090d);
+    }
+
+    .home-stat-card:nth-child(2) {
+      background: linear-gradient(145deg, #6d0f14, #3f070b);
+    }
+
+    .home-stat-card:nth-child(3) {
+      background: linear-gradient(145deg, #812329, #4a090d);
+    }
+
+    .home-stat-card:nth-child(4) {
+      background: linear-gradient(145deg, #73161b, #4a090d);
+    }
+
+    .home-stat-card strong {
+      color: #fff8ef;
+      font-size: clamp(2.4rem, 3.2vw, 3rem);
+      line-height: 1;
+      font-weight: 900;
+    }
+
+    .home-stat-card span {
+      color: rgba(255, 248, 239, 0.76);
+      font-size: clamp(0.95rem, 1.15vw, 1.05rem);
+      line-height: 1.6;
+      font-weight: 600;
+    }
+
+    .home-search-section {
+      margin-bottom: 26px;
+    }
+
+    .home-search {
+      position: relative;
+      width: min(760px, 100%);
+      min-height: 58px;
+      display: block;
+      margin: 0 auto;
+    }
+
+    .home-search input {
+      width: 100%;
+      height: 58px;
+      border: 1px solid rgba(75, 13, 13, 0.26);
+      border-radius: 16px;
+      background: rgba(255, 253, 248, 0.99);
+      color: #331313;
+      padding: 0 48px 0 20px;
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 500;
+      outline: none;
+      box-shadow: 0 16px 38px rgba(75, 13, 13, 0.09);
+    }
+
+    .home-search input:focus {
+      border-color: rgba(75, 13, 13, 0.44);
+    }
+
+    .home-search__icon {
+      position: absolute;
+      top: 50%;
+      right: 18px;
+      width: 19px;
+      height: 19px;
+      color: rgba(75, 13, 13, 0.72);
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+
+    .home-search__icon svg {
+      width: 100%;
+      height: 100%;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .all-posts-section {
+      margin-bottom: 32px;
+    }
+
+    .section-heading-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .section-heading-row h2 {
+      margin: 0;
+      color: #4b0d0d;
+      font-size: 23px;
+      line-height: 1.7;
+      font-weight: 800;
+    }
+
+    .all-posts-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-auto-rows: 96px;
+      gap: 0 18px;
+      max-height: 288px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      border-top: 1px solid rgba(75, 13, 13, 0.12);
+      border-bottom: 1px solid rgba(75, 13, 13, 0.12);
+      scrollbar-width: thin;
+      scrollbar-color: rgba(75, 13, 13, 0.44) rgba(247, 239, 230, 0.74);
+    }
+
+    .all-posts-list::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .all-posts-list::-webkit-scrollbar-track {
+      background: rgba(247, 239, 230, 0.74);
+      border-radius: 999px;
+    }
+
+    .all-posts-list::-webkit-scrollbar-thumb {
+      background: rgba(75, 13, 13, 0.44);
+      border-radius: 999px;
+    }
+
+    .all-post-row {
+      height: 96px;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 4px;
+      color: #2f1a17;
+      text-decoration: none;
+      border-bottom: 1px solid rgba(75, 13, 13, 0.09);
+      transition: background 0.2s ease, color 0.2s ease, padding 0.2s ease;
+    }
+
+    .all-post-row:last-child {
+      border-bottom: 0;
+    }
+
+    .all-post-row:nth-last-child(2) {
+      border-bottom: 0;
+    }
+
+    .all-post-row:hover {
+      color: #4b0d0d;
+      padding-right: 10px;
+      background: rgba(75, 13, 13, 0.025);
+    }
+
+    .all-post-row__text {
+      min-width: 0;
+      display: grid;
+      gap: 5px;
+      margin-left: auto;
+    }
+
+    .all-post-row__title {
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 1.65;
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .all-post-row__date {
+      color: #8a6a62;
+      font-size: 11px;
+      line-height: 1.5;
+      font-weight: 400;
+    }
+
+    .all-post-row__thumb {
+      width: 64px;
+      height: 64px;
+      object-fit: cover;
+      border-radius: 6px;
+      background: #efe4d7;
+      flex: 0 0 auto;
+    }
+
+    .all-post-row__arrow {
+      color: rgba(75, 13, 13, 0.46);
+      font-size: 26px;
+      line-height: 1;
+      flex: 0 0 auto;
+    }
+
+    .all-posts-more {
+      width: fit-content;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      margin-top: 16px;
+      margin-right: auto;
+      color: #4b0d0d;
+      background: #fffdf8;
+      border: 1px solid rgba(75, 13, 13, 0.18);
+      border-radius: 999px;
+      padding: 8px 16px;
+      font-weight: 800;
+      font-size: 14px;
+      text-decoration: none;
+      box-shadow: 0 12px 28px rgba(75, 13, 13, 0.06);
+    }
+
+    .category-rails {
+      display: grid;
+      gap: 18px;
+      margin-bottom: 56px;
+    }
+
+    .category-rail {
+      min-width: 0;
+    }
+
+    .category-rail__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 10px;
+    }
+
+    .category-rail__header h2 {
+      margin: 0;
+      color: #4b0d0d;
+      font-size: 21px;
+      line-height: 1.6;
+      font-weight: 800;
+    }
+
+    .category-rail__controls {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+
+    .category-rail__button {
+      width: 34px;
+      height: 34px;
+      border: 1px solid rgba(75, 13, 13, 0.13);
+      border-radius: 999px;
+      background: #fffdf8;
+      color: #4b0d0d;
+      cursor: pointer;
+      font: inherit;
+      font-size: 21px;
+      line-height: 1;
+      box-shadow: 0 10px 24px rgba(75, 13, 13, 0.06);
+      transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+    }
+
+    .category-rail__button:hover {
+      background: #4b0d0d;
+      color: #fffdf8;
+      transform: translateY(-1px);
+    }
+
+    .category-rail__viewport {
+      position: relative;
+      display: flex;
+      gap: 14px;
+      min-width: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 4px 2px 8px;
+      scroll-behavior: smooth;
+      scroll-snap-type: x proximity;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      cursor: grab;
+      user-select: none;
+      touch-action: pan-x;
+    }
+
+    .category-rail__viewport.is-dragging {
+      cursor: grabbing;
+    }
+
+    .category-rail__viewport::-webkit-scrollbar {
+      display: none;
+    }
+
+    .category-card {
+      position: relative;
+      flex: 0 0 274px;
+      scroll-snap-align: start;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid rgba(75, 13, 13, 0.1);
+      border-radius: 18px;
+      background: #fffdf8;
+      box-shadow: 0 16px 42px rgba(75, 13, 13, 0.07);
+      color: inherit;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .category-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 22px 56px rgba(75, 13, 13, 0.1);
+    }
+
+    .category-card--text-only {
+      position: relative;
+      background:
+        linear-gradient(180deg, rgba(75, 13, 13, 0.04), rgba(255, 253, 248, 0.98)),
+        #fffdf8;
+    }
+
+    .category-card--text-only::before {
+      content: "";
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 38px;
+      height: 3px;
+      border-radius: 999px;
+      background: rgba(75, 13, 13, 0.38);
+      pointer-events: none;
+    }
+
+    .category-card .client-card-media {
+      aspect-ratio: 16 / 9.5;
+      min-height: auto;
+    }
+
+    .category-card__media-placeholder small {
+      color: rgba(255, 253, 248, 0.78);
+      font-size: 12px;
+    }
+
+    .category-card--text-only .category-card__body {
+      padding-top: 30px;
+    }
+
+    .category-card__body {
+      min-height: 230px;
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      padding: 18px;
+    }
+
+    .category-card__meta {
+      margin-bottom: 10px;
+      color: #8a6a62;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .category-card__meta span {
+      border-radius: 999px;
+      background: #f5ece0;
+      padding: 5px 9px;
+    }
+
+    .category-card h3 {
+      margin: 0 0 11px;
+      font-size: 18px;
+      line-height: 1.68;
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .category-card h3 a {
+      color: #4b0d0d;
+      text-decoration: none;
+      pointer-events: auto;
+    }
+
+    .category-card p {
+      margin: 0;
+      color: #6a5550;
+      font-size: 13px;
+      line-height: 1.85;
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
     }
 
     .client-hero {
       width: min(1180px, calc(100% - 32px));
-      margin: 0 auto 76px;
-      padding: 60px 0 0;
+      margin: 0 auto 30px;
+      padding: 22px 0 0;
     }
 
     .client-hero-inner {
-      border-radius: 0 0 34px 34px;
+      border-radius: 26px;
       background:
-        linear-gradient(rgba(255, 253, 248, 0.06) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 253, 248, 0.05) 1px, transparent 1px),
-        radial-gradient(circle at 18% 18%, rgba(201, 166, 107, 0.24), transparent 30%),
-        linear-gradient(135deg, #6b1515 0%, #4b0d0d 58%, #220404 100%);
-      background-size: auto, 44px 44px, auto, auto;
+        linear-gradient(rgba(255, 253, 248, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 253, 248, 0.04) 1px, transparent 1px),
+        #4b0d0d;
+      background-size: 42px 42px, 42px 42px, auto;
       color: #fffdf8;
-      padding: clamp(30px, 5vw, 58px);
-      min-height: 280px;
-      display: grid;
-      grid-template-columns: 1.1fr 0.9fr;
-      gap: 36px;
-      box-shadow: 0 34px 90px rgba(75, 13, 13, 0.22);
+      min-height: 196px;
+      padding: 32px 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      box-shadow: 0 18px 46px rgba(75, 13, 13, 0.16);
     }
 
-    .client-kicker {
-      margin: 0 0 14px;
-      color: #e8d2a5;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }
-
-    .client-hero h1 {
+    .client-hero-quote {
+      max-width: 920px;
       margin: 0;
-      font-size: clamp(34px, 5vw, 64px);
-      line-height: 1.25;
-      letter-spacing: -0.05em;
+      color: rgba(255, 253, 248, 0.95);
+      line-height: 1.9;
+      font-size: clamp(28px, 3.1vw, 42px);
+      font-weight: 700;
     }
 
-    .client-hero p {
-      max-width: 620px;
-      margin-top: 22px;
-      color: rgba(255, 253, 248, 0.82);
-      line-height: 2.1;
-      font-size: 16px;
-    }
-
-    .client-hero-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-top: 28px;
-    }
-
-    .client-hero-actions a {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 44px;
-      border-radius: 999px;
-      padding: 11px 18px;
-      text-decoration: none;
-      font-weight: 800;
-      background: #fffdf8;
-      color: #4b0d0d;
-      border: 1px solid rgba(255, 253, 248, 0.22);
-    }
-
-    .client-hero-actions a + a {
-      background: rgba(255, 255, 255, 0.09);
-      color: #fffdf8;
-    }
-
-    .client-hero-stats {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 14px;
-      align-self: end;
-    }
-
-    .client-stat-card {
-      min-height: 108px;
-      border: 1px solid rgba(255, 253, 248, 0.18);
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 16px;
-      padding: 22px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      backdrop-filter: blur(10px);
-    }
-
-    .client-hero-mark {
-      grid-column: 1 / -1;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      border: 1px solid rgba(255, 253, 248, 0.16);
-      border-radius: 18px;
-      padding: 16px;
-      background: rgba(255, 253, 248, 0.08);
-    }
-
-    .client-hero-mark img {
-      width: 58px;
-      height: 58px;
-      border-radius: 16px;
-      object-fit: cover;
-    }
-
-    .client-hero-mark span {
-      color: rgba(255, 253, 248, 0.78);
-      font-size: 13px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .client-stat-card strong {
-      font-size: 28px;
-      color: #fff;
-      margin-bottom: 10px;
-    }
-
-    .client-stat-card span {
-      font-size: 13px;
-      color: rgba(255, 253, 248, 0.78);
+    .client-hero-quote span {
+      display: inline;
     }
 
     .client-section {
       width: min(1180px, calc(100% - 32px));
-      margin: 0 auto 90px;
+      margin: 0 auto 56px;
       scroll-margin-top: 110px;
     }
 
     .client-section-heading {
-      text-align: right;
-      margin-bottom: 20px;
-    }
-
-    .client-section-heading p {
-      margin: 0 0 12px;
-      color: #7b5b55;
-      font-size: 14px;
+      text-align: center;
+      margin-bottom: 18px;
     }
 
     .client-section-heading h2 {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
       margin: 0;
       color: #5a0f0f;
-      font-size: clamp(26px, 4vw, 40px);
-      letter-spacing: -0.04em;
+      font-size: 25px;
+      font-weight: 700;
+      letter-spacing: 0;
     }
 
-    .client-logic-note {
-      background: #fffdf8;
-      border: 1px solid rgba(75, 13, 13, 0.1);
-      border-radius: 18px;
-      padding: 16px 20px;
-      margin-bottom: 22px;
-      color: #5f504e;
-      line-height: 2;
-      box-shadow: 0 14px 42px rgba(75, 13, 13, 0.05);
-    }
-
-    .client-logic-note strong {
-      color: #4b0d0d;
+    .client-section-heading h2::before,
+    .client-section-heading h2::after {
+      content: "";
+      width: min(150px, 24vw);
+      height: 1px;
+      background: rgba(75, 13, 13, 0.16);
     }
 
     .client-search-box {
-      margin-bottom: 26px;
+      position: relative;
+      width: min(760px, 100%);
+      margin: 0 auto 30px;
     }
 
     .client-search-box input {
       width: 100%;
-      border: 1px solid rgba(75, 13, 13, 0.12);
-      background: #fffdf8;
+      height: 58px;
+      border: 1px solid rgba(75, 13, 13, 0.24);
+      background: rgba(255, 253, 248, 0.98);
       color: #331313;
-      border-radius: 18px;
-      padding: 22px 26px;
-      font-size: 15px;
+      border-radius: 16px;
+      padding: 0 48px 0 20px;
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 500;
       outline: none;
-      box-shadow: 0 20px 60px rgba(75, 13, 13, 0.08);
+      box-shadow: 0 18px 45px rgba(75, 13, 13, 0.1);
+    }
+
+    .client-search-icon {
+      position: absolute;
+      top: 50%;
+      right: 18px;
+      width: 19px;
+      height: 19px;
+      color: rgba(75, 13, 13, 0.72);
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+
+    .client-search-icon svg {
+      width: 100%;
+      height: 100%;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }
 
     .client-search-box input:focus {
@@ -729,13 +1755,117 @@ const pageDescription = SITE.description;
     }
 
     .client-featured {
-      margin-bottom: 28px;
+      margin-bottom: 22px;
     }
 
     .client-posts-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 22px;
+      gap: 18px;
+    }
+
+    .client-stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin: 0 0 28px;
+    }
+
+    .client-stat-box {
+      aspect-ratio: 1 / 0.78;
+      min-height: 132px;
+      display: grid;
+      place-content: center;
+      gap: 8px;
+      text-align: center;
+      border: 1px solid rgba(75, 13, 13, 0.1);
+      border-radius: 20px;
+      background:
+        linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(251, 246, 239, 0.94));
+      box-shadow: 0 18px 44px rgba(75, 13, 13, 0.07);
+    }
+
+    .client-stat-box strong {
+      color: #4b0d0d;
+      font-size: clamp(26px, 3vw, 38px);
+      line-height: 1;
+      font-weight: 800;
+    }
+
+    .client-stat-box span {
+      color: #7a615c;
+      font-size: 13px;
+      line-height: 1.7;
+      font-weight: 500;
+    }
+
+    .client-all-posts-section {
+      margin: 0 0 30px;
+    }
+
+    .client-all-posts-section h3 {
+      margin: 0 0 10px;
+      color: #4b0d0d;
+      font-size: 24px;
+      line-height: 1.7;
+      font-weight: 800;
+    }
+
+    .client-all-posts-list {
+      border-top: 1px solid rgba(75, 13, 13, 0.12);
+      border-bottom: 1px solid rgba(75, 13, 13, 0.12);
+    }
+
+    .client-all-post-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 17px 4px;
+      color: #2f1a17;
+      text-decoration: none;
+      border-bottom: 1px solid rgba(75, 13, 13, 0.09);
+      transition: color 0.2s ease, padding 0.2s ease, background 0.2s ease;
+    }
+
+    .client-all-post-item:last-child {
+      border-bottom: 0;
+    }
+
+    .client-all-post-item:hover {
+      color: #4b0d0d;
+      padding-right: 10px;
+      background: rgba(75, 13, 13, 0.025);
+    }
+
+    .client-all-post-item span {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .client-all-post-item strong {
+      font-size: 18px;
+      line-height: 1.75;
+      font-weight: 700;
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .client-all-post-item small {
+      color: #8a6a62;
+      font-size: 11px;
+      line-height: 1.5;
+      font-weight: 400;
+    }
+
+    .client-all-post-item i {
+      color: rgba(75, 13, 13, 0.46);
+      font-style: normal;
+      font-size: 28px;
+      line-height: 1;
+      flex: 0 0 auto;
     }
 
     .client-post-card {
@@ -745,6 +1875,8 @@ const pageDescription = SITE.description;
       overflow: hidden;
       box-shadow: 0 22px 70px rgba(75, 13, 13, 0.08);
       transition: transform 0.25s ease, box-shadow 0.25s ease;
+      display: flex;
+      flex-direction: column;
     }
 
     .client-post-card:hover {
@@ -752,29 +1884,49 @@ const pageDescription = SITE.description;
       box-shadow: 0 28px 86px rgba(75, 13, 13, 0.14);
     }
 
-    .client-post-card a {
-      color: inherit;
-      text-decoration: none;
-      display: block;
-      height: 100%;
-    }
-
-    .client-post-card-featured a {
+    .client-post-card-featured {
       display: grid;
       grid-template-columns: 0.95fr 1.05fr;
-      min-height: 380px;
+      min-height: 292px;
+    }
+
+    .client-post-card-featured.featured-card--text-only {
+      display: block;
+      min-height: auto;
+      background:
+        linear-gradient(90deg, rgba(75, 13, 13, 0.055), transparent 42%),
+        #fffdf8;
+    }
+
+    .post-card--text-only {
+      position: relative;
+      background:
+        linear-gradient(180deg, rgba(75, 13, 13, 0.045), rgba(255, 253, 248, 0.96)),
+        #fffdf8;
+    }
+
+    .post-card--text-only::before {
+      content: "";
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      width: 42px;
+      height: 3px;
+      border-radius: 999px;
+      background: rgba(75, 13, 13, 0.42);
     }
 
     .client-card-media {
       position: relative;
       background: #efe4d7;
-      aspect-ratio: 4 / 3;
+      aspect-ratio: 16 / 10;
       overflow: hidden;
+      flex: 0 0 auto;
     }
 
     .client-card-media-featured {
       aspect-ratio: auto;
-      min-height: 380px;
+      min-height: 292px;
     }
 
     .client-card-media img {
@@ -844,14 +1996,20 @@ const pageDescription = SITE.description;
     }
 
     .client-card-body {
-      padding: 24px 24px 26px;
+      padding: 20px 20px 22px;
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-height: 0;
     }
 
     .client-post-card-featured .client-card-body {
-      padding: 42px;
-      display: flex;
-      flex-direction: column;
+      padding: 28px 32px;
       justify-content: center;
+    }
+
+    .post-card--text-only .client-card-body {
+      padding-top: 30px;
     }
 
     .client-card-meta {
@@ -859,109 +2017,444 @@ const pageDescription = SITE.description;
       flex-wrap: wrap;
       gap: 10px;
       color: #8a6a62;
-      font-size: 13px;
-      margin-bottom: 14px;
+      font-size: 11px;
+      font-weight: 400;
+      margin-bottom: 12px;
     }
 
     .client-card-meta span:not(.client-post-code) {
       background: #f5ece0;
       border-radius: 999px;
-      padding: 7px 12px;
+      padding: 6px 10px;
     }
 
     .client-post-card h3 {
       margin: 0 0 14px;
       color: #4b0d0d;
       line-height: 1.7;
-      font-size: 21px;
-      letter-spacing: -0.03em;
+      font-size: 19px;
+      letter-spacing: 0;
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
     }
 
     .client-post-card-featured h3 {
-      font-size: clamp(28px, 4vw, 42px);
+      font-size: 31px;
+      -webkit-line-clamp: 3;
     }
 
     .client-post-card p {
       margin: 0;
       color: #5f504e;
-      line-height: 2;
+      line-height: 1.95;
       font-size: 14px;
+      font-weight: 400;
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
     }
 
     .client-post-card-featured p {
-      font-size: 16px;
+      font-size: 15px;
     }
 
     .client-tags {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin-top: 18px;
+      margin-top: 14px;
     }
 
-    .client-tags span {
+    .client-tags a {
       color: #6b1515;
       background: #f6efe5;
       border: 1px solid rgba(75, 13, 13, 0.08);
       border-radius: 999px;
       padding: 6px 10px;
       font-size: 12px;
+      font-weight: 500;
+      text-decoration: none;
     }
 
     .client-read-more {
-      margin-top: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: fit-content;
+      min-height: 36px;
+      margin-top: auto;
+      margin-right: auto;
       color: #4b0d0d;
-      font-weight: 800;
+      background: #fffdf8;
+      border: 1px solid rgba(75, 13, 13, 0.18);
+      border-radius: 999px;
+      padding: 8px 15px;
+      font-weight: 700;
       font-size: 14px;
-      border-top: 1px solid rgba(75, 13, 13, 0.08);
-      padding-top: 16px;
+      text-decoration: none;
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .client-read-more:hover {
+      background: #4b0d0d;
+      border-color: #4b0d0d;
+      color: #fffdf8;
+      transform: translateY(-1px);
+    }
+
+    .client-post-row-section {
+      min-width: 0;
+    }
+
+    .client-row-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 10px;
+    }
+
+    .client-row-heading h3 {
+      margin: 0;
+      color: #4b0d0d;
+      font-size: 21px;
+      line-height: 1.6;
+    }
+
+    .client-row-controls {
+      display: flex;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+
+    .client-row-button {
+      width: 34px;
+      height: 34px;
+      border: 1px solid rgba(75, 13, 13, 0.13);
+      border-radius: 999px;
+      background: #fffdf8;
+      color: #4b0d0d;
+      cursor: pointer;
+      font: inherit;
+      font-size: 21px;
+      line-height: 1;
+      box-shadow: 0 10px 24px rgba(75, 13, 13, 0.06);
+      transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+    }
+
+    .client-row-button:hover {
+      background: #4b0d0d;
+      color: #fffdf8;
+      transform: translateY(-1px);
+    }
+
+    .client-post-row {
+      display: flex;
+      gap: 16px;
+      min-width: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 4px 2px 8px;
+      scroll-behavior: smooth;
+      scroll-snap-type: x proximity;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      cursor: grab;
+      user-select: none;
+      touch-action: pan-x;
+    }
+
+    .client-post-row.is-dragging {
+      cursor: grabbing;
+    }
+
+    .client-post-row::-webkit-scrollbar {
+      display: none;
+    }
+
+    .client-post-row .client-post-card {
+      flex: 0 0 280px;
+      scroll-snap-align: start;
+    }
+
+    .client-audio-card-media {
+      display: grid;
+      grid-template-columns: 1fr;
+      place-items: stretch;
+      padding: 18px;
+      gap: 12px;
+      color: #fffdf8;
+      background:
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.07) 0 3px, transparent 3px 18px),
+        linear-gradient(135deg, #2d0606, #4b0d0d 58%, #7b5b2c);
+    }
+
+    .client-audio-cover {
+      display: grid;
+      place-items: center;
+      min-height: 96px;
+      border: 1px solid rgba(255, 253, 248, 0.16);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .client-audio-cover span {
+      width: 58px;
+      height: 58px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 253, 248, 0.22);
+      font-size: 30px;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .client-audio-panel {
+      display: grid;
+      gap: 10px;
+    }
+
+    .client-audio-panel small,
+    .client-audio-panel em {
+      color: rgba(255, 253, 248, 0.72);
+      font-style: normal;
+      font-size: 12px;
+    }
+
+    .client-audio-play {
+      width: fit-content;
+      border: 0;
+      border-radius: 999px;
+      padding: 9px 16px;
+      background: #fffdf8;
+      color: #4b0d0d;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 800;
+    }
+
+    .client-audio-play:disabled {
+      cursor: default;
+      opacity: 0.62;
+    }
+
+    .client-audio-progress {
+      height: 5px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255, 253, 248, 0.18);
+    }
+
+    .client-audio-progress span {
+      display: block;
+      width: 100%;
+      height: 100%;
+      transform: scaleX(0);
+      transform-origin: right center;
+      background: #e8d2a5;
     }
 
     @media (max-width: 980px) {
-      .client-hero-inner {
+      .featured-card {
+        height: auto;
         grid-template-columns: 1fr;
-        padding: 38px 24px;
       }
 
-      .client-hero-stats {
+      .featured-card__media {
+        height: auto;
+        min-height: auto;
+        aspect-ratio: 16 / 8;
+        order: -1;
+      }
+
+      .home-stats {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
-      .client-post-card-featured a {
+      .category-card {
+        flex-basis: 270px;
+      }
+
+      .client-hero-inner {
+        min-height: 184px;
+        padding: 28px 24px;
+      }
+
+      .client-post-card-featured {
         grid-template-columns: 1fr;
       }
 
       .client-card-media-featured {
-        aspect-ratio: 4 / 3;
+        aspect-ratio: 16 / 10;
         min-height: auto;
       }
 
-      .client-posts-grid {
-        grid-template-columns: 1fr;
+      .client-post-row .client-post-card {
+        flex-basis: 276px;
       }
     }
 
     @media (max-width: 620px) {
+      .home-hero,
+      .latest-intro,
+      .latest-featured-section,
+      .home-stats,
+      .home-search-section,
+      .all-posts-section,
+      .category-rails {
+        width: min(100% - 20px, 1180px);
+      }
+
+      .home-hero {
+        padding-top: 18px;
+        margin-bottom: 22px;
+      }
+
+      .home-hero__panel {
+        min-height: 154px;
+        border-radius: 22px;
+        padding: 20px 16px;
+      }
+
+      .home-hero__slogan {
+        font-size: clamp(19px, 6vw, 23px);
+        line-height: 1.85;
+        gap: 2px;
+      }
+
+      .section-title--lined {
+        gap: 10px;
+        font-size: 19px;
+      }
+
+      .section-title--lined::before,
+      .section-title--lined::after {
+        flex-basis: 38px;
+      }
+
+      .featured-card__content,
+      .featured-card--text-only .featured-card__content {
+        min-height: auto;
+        padding: 18px 18px;
+      }
+
+      .featured-card__title {
+        font-size: 24px;
+      }
+
+      .home-stats {
+        gap: 10px;
+      }
+
+      .home-stat-card {
+        min-height: 98px;
+        border-radius: 16px;
+      }
+
+      .home-stat-card strong {
+        font-size: 2rem;
+      }
+
+      .home-stat-card span {
+        font-size: 0.9rem;
+      }
+
+      .home-search {
+        width: 100%;
+      }
+
+      .all-posts-list {
+        grid-template-columns: 1fr;
+        grid-auto-rows: 86px;
+        max-height: 172px;
+      }
+
+      .all-post-row {
+        height: 86px;
+        gap: 10px;
+      }
+
+      .all-post-row__title {
+        font-size: 15px;
+      }
+
+      .all-post-row__thumb {
+        width: 58px;
+        height: 58px;
+      }
+
+      .category-rail__header {
+        align-items: flex-start;
+      }
+
+      .category-card {
+        flex-basis: min(84vw, 294px);
+      }
+
       .client-hero {
         width: min(100% - 20px, 1180px);
-        padding-top: 28px;
+        padding-top: 18px;
       }
 
       .client-hero-inner {
         border-radius: 24px;
+        min-height: 156px;
+        padding: 22px 18px;
       }
 
-      .client-hero-stats,
       .client-status-loading {
         grid-template-columns: 1fr;
       }
 
-      .client-hero-actions a {
-        width: 100%;
+      .client-hero-quote {
+        font-size: 22px;
+        line-height: 1.9;
       }
 
-      .client-section {
+      .client-section,
+      .client-search-box {
         width: min(100% - 20px, 1180px);
+      }
+
+      .client-stats-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .client-stat-box {
+        min-height: 112px;
+        border-radius: 18px;
+      }
+
+      .client-all-posts-section h3 {
+        font-size: 21px;
+      }
+
+      .client-all-post-item {
+        padding: 15px 0;
+      }
+
+      .client-all-post-item strong {
+        font-size: 16px;
+      }
+
+      .client-post-card-featured .client-card-body {
+        padding: 22px 20px;
+      }
+
+      .client-post-card-featured h3 {
+        font-size: 25px;
+      }
+
+      .client-row-heading {
+        align-items: flex-start;
+      }
+
+      .client-post-row .client-post-card {
+        flex-basis: min(84vw, 300px);
       }
     }
   </style>

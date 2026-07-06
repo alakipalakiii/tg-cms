@@ -3,29 +3,101 @@ export const prerender = false;
 
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { SITE } from "../../config";
-import { getPosts, parsePostContent, formatDate } from "../../lib/posts";
+import { getPosts, parsePostContent, formatDate, makeExcerpt, makeTitle } from "../../lib/posts";
+
+const SYSTEM_TAGS = new Set(
+  [
+    "کتاب",
+    "دیالوگ",
+    "دیالوگ‌ها",
+    "دیالوگ_ها",
+    "صوتی",
+    "صدا",
+    "موسیقی",
+    "متن",
+    "متن‌ها",
+    "متن_ها",
+    "شعر",
+    "اشعار",
+    "شعرها",
+    "شعر_ها",
+    "نقاشی"
+  ].map(normalizeTag)
+);
+
+function safeDecode(value: string) {
+  try {
+    return decodeURIComponent(value || "");
+  } catch {
+    return value || "";
+  }
+}
+
+function normalizeTag(value: string) {
+  return String(value || "")
+    .replace(/^#/, "")
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/\u200c/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function cleanUiText(value: string | null | undefined) {
+  return String(value || "")
+    .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
+    .replace(/\u{1F539}/gu, "")
+    .replace(/https?:\/\/[^\s]+/giu, "")
+    .replace(/@[a-zA-Z0-9_]+/g, "")
+    .replace(/(^|\s)#([^\s#]+)/gu, " ")
+    .replace(/[•●▪▫◦]/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
 
 const rawTag = Astro.params.tag || "";
-const tag = decodeURIComponent(rawTag).replace(/^#/, "").trim();
+const tag = safeDecode(rawTag).replace(/^#/, "").trim();
+const normalizedCurrentTag = normalizeTag(tag);
 
 const rawPosts = await getPosts();
 
+function makeTagPostTitle(post: (typeof rawPosts)[number], parsed: ReturnType<typeof parsePostContent>) {
+  const seoTitle = String(post.seo_title || "").trim();
+  if (seoTitle) return seoTitle;
+
+  const parsedTitle = cleanUiText(makeTitle(post.text));
+  if (parsedTitle) return parsedTitle;
+
+  const firstLine = cleanUiText(parsed.cleanText)
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+  if (firstLine) return firstLine.length > 74 ? `${firstLine.slice(0, 74).trim()}...` : firstLine;
+
+  const excerpt = cleanUiText(makeExcerpt(post.text, 74));
+  return excerpt || "مطلب ماهون";
+}
+
 const posts = rawPosts
-  .map(post => {
+  .map((post) => {
     const parsed = parsePostContent(post.text);
+    const publicHashtags = parsed.hashtags.filter((item) => !SYSTEM_TAGS.has(normalizeTag(item)));
 
     return {
       ...post,
-      title: parsed.title,
-      excerpt: parsed.excerpt,
-      content: parsed.content,
-      hashtags: parsed.hashtags,
-      searchText: parsed.searchText,
+      title: makeTagPostTitle(post, parsed),
+      excerpt: cleanUiText(makeExcerpt(post.text, 150)),
+      content: cleanUiText(parsed.cleanText),
+      hashtags: publicHashtags,
+      allHashtags: parsed.hashtags,
+      searchText: [post.seo_title, post.text, post.slug].filter(Boolean).join(" "),
       date: formatDate(post.created_at)
     };
   })
-  .filter(post =>
-    post.hashtags.some(item => item.toLowerCase() === tag.toLowerCase())
+  .filter((post) =>
+    post.allHashtags.some((item) => normalizeTag(item) === normalizedCurrentTag)
   );
 
 const title = tag ? `#${tag}` : "برچسب";
@@ -57,42 +129,25 @@ const description = tag
       </section>
 
       {posts.length > 0 ? (
-        <div class="posts-grid">
-          {posts.map(post => (
+        <div class="public-list">
+          {posts.map((post) => (
             <a
-              class="post-card"
+              class="public-list-row"
               href={`/post/${encodeURIComponent(post.slug)}`}
               data-post-card
               data-search={post.searchText}
             >
+              <div class="public-list-row__text">
+                <strong class="public-list-row__title">{post.title}</strong>
+                <span class="public-list-row__excerpt">{post.excerpt}</span>
+                <span class="public-list-row__meta">{post.date}</span>
+              </div>
+
               {post.photo_url && (
-                <div class="post-media">
-                  <img src={post.photo_url} alt={post.title} loading="lazy" />
-                </div>
+                <img class="public-list-row__thumb" src={post.photo_url} alt={post.title} loading="lazy" />
               )}
 
-              <div>
-                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-                  <span class="tag">ماهون</span>
-                  <span class="post-id">#{post.id}</span>
-                </div>
-
-                <h3>{post.title}</h3>
-                <p>{post.excerpt}</p>
-
-                {post.hashtags.length > 0 && (
-                  <div class="mini-tags">
-                    {post.hashtags.slice(0, 3).map(item => (
-                      <span class="hash-chip">#{item}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div class="meta">
-                <span>{post.date}</span>
-                <span class="read">ادامه ←</span>
-              </div>
+              <span class="public-list-row__arrow" aria-hidden="true">‹</span>
             </a>
           ))}
         </div>

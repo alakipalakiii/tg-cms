@@ -1,28 +1,75 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { SITE } from "../config";
+
+const DEFAULT_CONTACT_BODY = `برای ارسال پیشنهاد، معرفی رویداد، همکاری هنری، معرفی اثر یا گفت‌وگو درباره موضوعات مرتبط با هنر و فرهنگ، می‌توانید از مسیر رسمی ماهون با ما در ارتباط باشید.
+
+پیام‌هایی که به نوشتار، تصویر، صدا، معرفی هنرمند یا پیشنهادهای تحریریه‌ای مربوط باشند، با دقت بررسی می‌شوند و در صورت تناسب، برای ادامه گفت‌وگو پیگیری خواهند شد.
+
+لطفاً پیام خود را روشن، کوتاه و دقیق ارسال کنید تا مسیر بررسی سریع‌تر و مؤثرتر باشد.`;
+
+async function fetchJsonWithTimeout(url: string, timeoutMs = 1500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (error) {
+    console.warn("contact settings fallback", error);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function loadSiteSettings() {
+  const payload = await fetchJsonWithTimeout(`${SITE.workerUrl.replace(/\/+$/, "")}/site-settings`);
+  return payload?.settings || {};
+}
+
+const siteSettings = await loadSiteSettings();
+const contactLead = siteSettings.contact_lead || "برای پیشنهاد، معرفی رویداد، همکاری هنری یا ارسال اثر با ماهون در ارتباط باشید.";
+const contactBody = siteSettings.contact_body || DEFAULT_CONTACT_BODY;
+const contactParagraphs = String(contactBody).split(/\n{2,}/).map((item) => item.trim()).filter(Boolean);
+const contactCtaText = siteSettings.contact_cta_text || "ورود به کانال تلگرام";
+const contactTelegramUrl = siteSettings.telegram_url || SITE.telegramUrl;
 ---
 
-<BaseLayout title="تماس با ماهون" description="راه‌های ارتباط با مجله هنری ماهون">
-  <main class="page-section">
+<BaseLayout title="ارتباط با ما" description="راه‌های ارتباط با مجله هنری ماهون">
+  <main class="page-section editorial-page">
     <div class="container">
-      <section class="page-card">
-        <span class="tag">تماس</span>
+      <section class="contact-editorial">
+        <div class="contact-editorial__copy">
+          <span class="tag">ارتباط با ما</span>
+          <h1>ارتباط با ما</h1>
+          <p class="editorial-lead">{contactLead}</p>
 
-        <h1>تماس با مجله هنری ماهون</h1>
+          <div class="editorial-copy">
+            {contactParagraphs.map((paragraph) => <p>{paragraph}</p>)}
+          </div>
 
-        <p>
-          برای ارتباط با مجله هنری ماهون، ارسال خبر، پیشنهاد همکاری، معرفی رویداد هنری یا ارسال یادداشت،
-          می‌توانید از طریق کانال تلگرام با ما در ارتباط باشید.
-        </p>
+          <div class="page-card__actions contact-editorial__actions">
+            <a class="btn btn-primary" href={contactTelegramUrl} target="_blank" rel="noopener">
+              {contactCtaText}
+            </a>
+          </div>
+        </div>
 
-        <p>
-          در نسخه‌های بعدی سایت، فرم تماس، صفحه معرفی نویسندگان، دسته‌بندی مطالب و پنل مدیریت کامل نیز اضافه خواهد شد.
-        </p>
+        <aside class="contact-panel" aria-label="مسیرهای ارتباطی">
+          <div class="contact-panel__cta">
+            <strong>مسیر رسمی ارتباط</strong>
+            <span>پیشنهادها و پیام‌های تحریریه‌ای از همین مسیر بررسی می‌شوند.</span>
+          </div>
 
-        <a class="btn btn-primary" href={SITE.telegramUrl} target="_blank" rel="noopener">
-          ورود به کانال تلگرام
-        </a>
+          <div class="contact-topics">
+            <span>پیشنهاد همکاری</span>
+            <span>معرفی رویداد</span>
+            <span>ارسال اثر</span>
+            <span>ارتباط تحریریه</span>
+          </div>
+        </aside>
       </section>
     </div>
   </main>

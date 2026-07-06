@@ -1,30 +1,72 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { SITE } from "../config";
+
+const DEFAULT_ABOUT_BODY = `ماهون جایی برای مکث، خواندن و دیدن است؛ جایی برای روایت‌هایی که از دل هنر، فرهنگ، تصویر، صدا و نوشتار می‌آیند و با زبانی آرام و دقیق کنار هم قرار می‌گیرند.
+
+در ماهون، هنر فقط موضوع خبر یا گزارش نیست؛ بهانه‌ای است برای گفت‌وگو با زندگی معاصر، با لحظه‌هایی که گاهی در شتاب روزمره از چشم دور می‌مانند.
+
+هویت ماهون بر پایه خلوت، کیفیت روایت، احترام به اثر و حفظ فاصله‌ای انسانی میان هنرمند، اثر و مخاطب شکل گرفته است.
+
+ماهون می‌خواهد فضایی باشد برای متن‌های خوش‌خوان، تصویرهای قابل تأمل، صداهای شنیدنی و یادداشت‌هایی که با حوصله خوانده می‌شوند.`;
+
+async function fetchJsonWithTimeout(url: string, timeoutMs = 1500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (error) {
+    console.warn("about settings fallback", error);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function loadSiteSettings() {
+  const payload = await fetchJsonWithTimeout(`${SITE.workerUrl.replace(/\/+$/, "")}/site-settings`);
+  return payload?.settings || {};
+}
+
+const siteSettings = await loadSiteSettings();
+const aboutLead = siteSettings.about_lead || "ماهون مجله‌ای برای روایت هنر، تصویر، صدا و نوشتار است.";
+const aboutBody = siteSettings.about_body || DEFAULT_ABOUT_BODY;
+const aboutParagraphs = String(aboutBody).split(/\n{2,}/).map((item) => item.trim()).filter(Boolean);
 ---
 
-<BaseLayout title="درباره ماهون" description="درباره مجله هنری ماهون">
-  <main class="page-section">
+<BaseLayout title="درباره ما" description="درباره مجله هنری ماهون">
+  <main class="page-section editorial-page about-page">
     <div class="container">
-      <section class="page-card">
-        <span class="tag">درباره ماهون</span>
-
+      <section class="about-editorial-card">
+        <span class="tag">درباره ما</span>
         <h1>مجله هنری ماهون</h1>
+        <p class="editorial-lead">{aboutLead}</p>
 
-        <p>
-          ماهون رسانه‌ای برای روایت هنر، فرهنگ و نگاه معاصر است؛ جایی برای ثبت و انتشار نوشته‌ها،
-          یادداشت‌ها، خبرها و روایت‌هایی که از دل جهان هنر و فرهنگ می‌آیند.
-        </p>
+        <div class="editorial-copy">
+          {aboutParagraphs.map((paragraph) => <p>{paragraph}</p>)}
+        </div>
 
-        <p>
-          این نسخه از سایت به صورت خودکار به کانال تلگرام متصل شده است. هر مطلبی که در کانال منتشر شود،
-          پس از دریافت توسط سیستم، به یک صفحه مستقل در وب‌سایت تبدیل می‌شود تا امکان جستجو، اشتراک‌گذاری
-          و دیده‌شدن در فضای وب فراهم شود.
-        </p>
-
-        <p>
-          هدف این نسخه اولیه، ساخت یک پایگاه آنلاین سبک، سریع و قابل توسعه برای محتوای ماهون است.
-        </p>
+        <div class="about-values" aria-label="هویت ماهون">
+          <div>
+            <strong>روایت</strong>
+            <span>متن‌هایی آرام، دقیق و خوش‌خوان</span>
+          </div>
+          <div>
+            <strong>تصویر</strong>
+            <span>نگاهی مکث‌دار به جهان بصری</span>
+          </div>
+          <div>
+            <strong>صدا</strong>
+            <span>شنیدن تجربه‌ها و لحظه‌های هنری</span>
+          </div>
+          <div>
+            <strong>نوشتار</strong>
+            <span>یادداشت‌هایی با حوصله و کیفیت</span>
+          </div>
+        </div>
       </section>
     </div>
   </main>

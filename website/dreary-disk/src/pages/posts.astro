@@ -1,0 +1,306 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { SITE } from "../config";
+
+const pageTitle = "همه مطالب";
+const pageDescription = "فهرست مطالب منتشرشده در مجله هنری ماهون";
+---
+
+<BaseLayout title={pageTitle} description={pageDescription}>
+  <main class="page-section posts-page" data-worker-url={SITE.workerUrl}>
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="/">خانه</a>
+        <span> / </span>
+        <span>همه مطالب</span>
+      </div>
+
+      <section class="page-card" style="margin-bottom: 28px;">
+        <span class="tag">آرشیو ماهون</span>
+        <h1>همه مطالب</h1>
+        <p class="page-card__note">
+          مجموعه روایت‌های منتشرشده در مجله هنری ماهون؛ از نوشتار و تصویر تا صدا و نگاه‌های کوتاه.
+        </p>
+
+        <label class="public-search" for="postsSearch">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="6" />
+            <path d="m16 16 4 4" />
+          </svg>
+          <input id="postsSearch" type="search" placeholder="جست‌وجو در مطالب..." autocomplete="off" />
+        </label>
+      </section>
+
+      <div id="postsStatus" class="client-status client-status-loading" aria-live="polite">
+        <div class="client-skeleton-card"></div>
+        <div class="client-skeleton-lines">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+
+      <section id="postsList" class="public-list" aria-label="فهرست مطالب"></section>
+      <nav id="postsPagination" class="public-pagination" aria-label="صفحه‌بندی مطالب"></nav>
+    </div>
+  </main>
+
+  <script is:inline>
+    (() => {
+      const root = document.querySelector(".posts-page");
+      const API_BASE = (
+        root?.dataset?.workerUrl ||
+        "https://tg-cms-api.morentoofficial.workers.dev"
+      ).replace(/\/+$/, "");
+
+      const listEl = document.getElementById("postsList");
+      const statusEl = document.getElementById("postsStatus");
+      const paginationEl = document.getElementById("postsPagination");
+      const searchEl = document.getElementById("postsSearch");
+      const PAGE_SIZE = 12;
+
+      let allPosts = [];
+      let filteredPosts = [];
+      let currentPage = 1;
+
+      function escapeHtml(value) {
+        return String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function escapeAttr(value) {
+        return escapeHtml(value).replace(/`/g, "&#096;");
+      }
+
+      function normalizeDigits(value) {
+        return String(value || "")
+          .replace(/۰/g, "0")
+          .replace(/۱/g, "1")
+          .replace(/۲/g, "2")
+          .replace(/۳/g, "3")
+          .replace(/۴/g, "4")
+          .replace(/۵/g, "5")
+          .replace(/۶/g, "6")
+          .replace(/۷/g, "7")
+          .replace(/۸/g, "8")
+          .replace(/۹/g, "9")
+          .replace(/٠/g, "0")
+          .replace(/١/g, "1")
+          .replace(/٢/g, "2")
+          .replace(/٣/g, "3")
+          .replace(/٤/g, "4")
+          .replace(/٥/g, "5")
+          .replace(/٦/g, "6")
+          .replace(/٧/g, "7")
+          .replace(/٨/g, "8")
+          .replace(/٩/g, "9");
+      }
+
+      function toPersianNumber(value) {
+        return String(value || "")
+          .replace(/0/g, "۰")
+          .replace(/1/g, "۱")
+          .replace(/2/g, "۲")
+          .replace(/3/g, "۳")
+          .replace(/4/g, "۴")
+          .replace(/5/g, "۵")
+          .replace(/6/g, "۶")
+          .replace(/7/g, "۷")
+          .replace(/8/g, "۸")
+          .replace(/9/g, "۹");
+      }
+
+      function cleanText(value) {
+        return String(value || "")
+          .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
+          .replace(/\u{1F539}/gu, "")
+          .replace(/https?:\/\/[^\s]+/giu, "")
+          .replace(/@[a-zA-Z0-9_]+/g, "")
+          .replace(/(^|\s)#([^\s#]+)/gu, " ")
+          .replace(/[•●▪▫◦]/g, "")
+          .replace(/\n{3,}/g, "\n\n")
+          .replace(/[ \t]{2,}/g, " ")
+          .trim();
+      }
+
+      function makeTitle(text) {
+        const source = cleanText(text) || "روایت ماهون";
+        const firstLine =
+          source
+            .split("\n")
+            .map((line) => line.trim())
+            .find(Boolean) || "روایت ماهون";
+
+        return firstLine.length <= 74 ? firstLine : `${firstLine.slice(0, 74).trim()}...`;
+      }
+
+      function makeExcerpt(text) {
+        const source = cleanText(text).replace(/\s+/g, " ").trim();
+        if (!source) return "روایتی تازه از مجله هنری ماهون";
+        return source.length <= 150 ? source : `${source.slice(0, 150).trim()}...`;
+      }
+
+      function formatDate(value) {
+        if (!value) return "";
+        try {
+          return new Intl.DateTimeFormat("fa-IR", {
+            year: "numeric",
+            month: "long",
+            day: "numeric"
+          }).format(new Date(String(value).replace(" ", "T")));
+        } catch {
+          return String(value);
+        }
+      }
+
+      function normalizePost(raw) {
+        const mediaFileId = raw?.media_file_id || raw?.photo_file_id || null;
+        const mediaType = raw?.media_type || (raw?.photo_file_id ? "photo" : null);
+        const mediaUrl =
+          raw?.media_url ||
+          (mediaFileId ? `${API_BASE}/media/${encodeURIComponent(mediaFileId)}` : null);
+        const photoUrl =
+          raw?.photo_url ||
+          (mediaType === "photo" ? mediaUrl : null) ||
+          null;
+
+        return {
+          id: Number(raw?.id || 0),
+          text: String(raw?.text || ""),
+          slug: String(raw?.slug || `post-${raw?.id || Date.now()}`),
+          created_at: String(raw?.created_at || ""),
+          photo_url: photoUrl,
+          seo_title: raw?.seo_title || null,
+          seo_description: raw?.seo_description || null,
+          media_type: mediaType
+        };
+      }
+
+      function extractPosts(payload) {
+        const rows = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.posts)
+            ? payload.posts
+            : Array.isArray(payload?.data)
+              ? payload.data
+              : [];
+
+        return rows.map(normalizePost).filter((post) => post.id);
+      }
+
+      function renderStatus(message, error) {
+        statusEl.style.display = "block";
+        statusEl.classList.remove("client-status-loading");
+        statusEl.classList.toggle("client-status-error", Boolean(error));
+        statusEl.innerHTML = `<strong>${escapeHtml(message)}</strong>`;
+      }
+
+      function renderList() {
+        const totalPages = Math.max(1, Math.ceil(filteredPosts.length / PAGE_SIZE));
+        currentPage = Math.min(Math.max(currentPage, 1), totalPages);
+        const start = (currentPage - 1) * PAGE_SIZE;
+        const pagePosts = filteredPosts.slice(start, start + PAGE_SIZE);
+
+        statusEl.style.display = filteredPosts.length ? "none" : "block";
+        if (!filteredPosts.length) {
+          renderStatus("مطلبی برای نمایش پیدا نشد.", false);
+        }
+
+        listEl.innerHTML = pagePosts
+          .map((post) => {
+            const title = post.seo_title || makeTitle(post.text);
+            const excerpt = post.seo_description || makeExcerpt(post.text);
+            const href = `/post/${encodeURIComponent(post.slug)}`;
+            const thumb = post.photo_url
+              ? `<img class="public-list-row__thumb" src="${escapeAttr(post.photo_url)}" alt="${escapeAttr(title)}" loading="lazy" />`
+              : "";
+
+            return `
+              <a class="public-list-row" href="${escapeAttr(href)}">
+                <div class="public-list-row__text">
+                  <strong class="public-list-row__title">${escapeHtml(title)}</strong>
+                  <span class="public-list-row__excerpt">${escapeHtml(excerpt)}</span>
+                  <span class="public-list-row__meta">${escapeHtml(formatDate(post.created_at))}</span>
+                </div>
+                ${thumb}
+                <span class="public-list-row__arrow" aria-hidden="true">‹</span>
+              </a>
+            `;
+          })
+          .join("");
+
+        paginationEl.innerHTML =
+          totalPages > 1
+            ? `
+              <button type="button" data-page="prev" ${currentPage === 1 ? "disabled" : ""}>‹</button>
+              <span>${toPersianNumber(currentPage)} از ${toPersianNumber(totalPages)}</span>
+              <button type="button" data-page="next" ${currentPage === totalPages ? "disabled" : ""}>›</button>
+            `
+            : "";
+      }
+
+      function applySearch() {
+        const q = normalizeDigits(String(searchEl.value || "").trim()).toLowerCase().replace(/^#/, "");
+        currentPage = 1;
+
+        filteredPosts = q
+          ? allPosts.filter((post) =>
+              normalizeDigits([
+                post.id,
+                `#${post.id}`,
+                post.text,
+                post.slug,
+                post.seo_title,
+                post.seo_description,
+                post.media_type
+              ].join(" "))
+                .toLowerCase()
+                .includes(q)
+            )
+          : allPosts;
+
+        renderList();
+      }
+
+      async function loadPosts() {
+        try {
+          const response = await fetch(`${API_BASE}/`, {
+            method: "GET",
+            headers: { Accept: "application/json" }
+          });
+
+          if (!response.ok) throw new Error(`API error ${response.status}`);
+
+          allPosts = extractPosts(await response.json()).sort((a, b) => {
+            const aTime = new Date(String(a.created_at).replace(" ", "T")).getTime();
+            const bTime = new Date(String(b.created_at).replace(" ", "T")).getTime();
+            return bTime !== aTime ? bTime - aTime : Number(b.id || 0) - Number(a.id || 0);
+          });
+          filteredPosts = allPosts;
+          renderList();
+        } catch (error) {
+          console.error("Mahoon posts page error:", error);
+          listEl.innerHTML = "";
+          paginationEl.innerHTML = "";
+          renderStatus("خطا در دریافت مطالب. لطفاً کمی بعد دوباره صفحه را باز کنید.", true);
+        }
+      }
+
+      searchEl?.addEventListener("input", applySearch);
+      paginationEl?.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-page]");
+        if (!button || button.disabled) return;
+
+        currentPage += button.dataset.page === "next" ? 1 : -1;
+        renderList();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+
+      loadPosts();
+    })();
+  </script>
+</BaseLayout>

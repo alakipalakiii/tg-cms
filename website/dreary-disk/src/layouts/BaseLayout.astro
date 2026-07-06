@@ -18,7 +18,42 @@ const {
   canonical
 } = Astro.props;
 
-const pageTitle = title === SITE.name ? SITE.name : `${title} | ${SITE.name}`;
+const DEFAULT_SITE_COPY = {
+  site_name: SITE.name,
+  header_description: SITE.description,
+  footer_title: "مجله هنری ماهون",
+  footer_description: "مجله‌ای برای روایت هنر، تصویر، صدا و نوشتار",
+  footer_copyright: "حقوق برای مجله هنری ماهون محفوظ است.",
+  telegram_url: SITE.telegramUrl
+};
+
+async function fetchJsonWithTimeout(url: string, timeoutMs = 1500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (error) {
+    console.warn("site settings fallback", error);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function loadSiteCopy() {
+  const payload = await fetchJsonWithTimeout(`${SITE.workerUrl.replace(/\/+$/, "")}/site-settings`);
+  return { ...DEFAULT_SITE_COPY, ...(payload?.settings || {}) };
+}
+
+const siteCopy = await loadSiteCopy();
+const displaySiteName = siteCopy.site_name || SITE.name;
+const displayDescription = siteCopy.header_description || SITE.description;
+const displayTelegramUrl = siteCopy.telegram_url || SITE.telegramUrl;
+
+const pageTitle = title === SITE.name ? displaySiteName : `${title} | ${displaySiteName}`;
 const siteUrl = SITE.url.replace(/\/+$/, "");
 const pagePath = Astro.url.pathname || "/";
 const canonicalUrl = canonical || `${siteUrl}${pagePath}`;
@@ -30,11 +65,16 @@ const absoluteImage = image?.startsWith("http")
 const websiteJsonLd = {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  name: SITE.name,
+  name: displaySiteName,
   url: SITE.url,
   description,
   inLanguage: "fa-IR"
 };
+
+const currentPath = Astro.url.pathname.replace(/\/+$/, "") || "/";
+const isHome = currentPath === "/";
+const isAbout = currentPath === "/about";
+const isContact = currentPath === "/contact";
 ---
 
 <html lang="fa" dir="rtl">
@@ -54,7 +94,7 @@ const websiteJsonLd = {
     <meta property="og:image" content={absoluteImage} />
     <meta property="og:type" content={type} />
     <meta property="og:url" content={canonicalUrl} />
-    <meta property="og:site_name" content={SITE.name} />
+    <meta property="og:site_name" content={displaySiteName} />
     <meta property="og:locale" content="fa_IR" />
 
     <meta name="twitter:card" content="summary_large_image" />
@@ -68,47 +108,85 @@ const websiteJsonLd = {
   </head>
 
   <body>
-    <header class="topbar">
-      <div class="container topbar-inner">
-        <a href="/" class="brand">
-          <img class="brand-logo" src={SITE.logo} alt="لوگوی مجله هنری ماهون" />
-          <div class="brand-text">
-            <strong>{SITE.name}</strong>
-            <span>{SITE.shortDescription}</span>
-          </div>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <a class="site-brand" href="/">
+          <span class="site-brand__logo">
+            <img src={SITE.logo} alt="لوگوی مجله هنری ماهون" />
+          </span>
+          <span class="site-brand__copy">
+            <span class="site-brand__name">{displaySiteName}</span>
+            <span class="site-brand__tagline">{displayDescription}</span>
+          </span>
         </a>
 
-        <nav class="nav" aria-label="Main navigation">
-          <a href="/">خانه</a>
-          <a href="/about">درباره ماهون</a>
-          <a href="/contact">تماس</a>
-          <a class="primary" href={SITE.telegramUrl} target="_blank" rel="noopener">کانال تلگرام</a>
+        <button
+          class="site-menu-toggle"
+          type="button"
+          aria-label="باز کردن منو"
+          aria-controls="mainNav"
+          aria-expanded="false"
+        >
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+
+        <nav id="mainNav" class="site-nav" aria-label="ناوبری اصلی">
+          <a class={isHome ? "is-active" : ""} aria-current={isHome ? "page" : undefined} href="/">خانه</a>
+          <a class={isAbout ? "is-active" : ""} aria-current={isAbout ? "page" : undefined} href="/about">درباره ما</a>
+          <a class={isContact ? "is-active" : ""} aria-current={isContact ? "page" : undefined} href="/contact">ارتباط با ما</a>
+          <a class="site-nav__telegram" href={displayTelegramUrl} target="_blank" rel="noopener">ورود به کانال تلگرام</a>
         </nav>
       </div>
     </header>
 
     <slot />
 
-    <footer class="footer">
-      <div class="container footer-inner">
-        <div class="footer-brand">
-          <strong>{SITE.name}</strong>
-          <p>{SITE.shortDescription}</p>
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <div class="site-footer__brand">
+          <strong>{siteCopy.footer_title || displaySiteName}</strong>
+          <span>{siteCopy.footer_description || displayDescription}</span>
         </div>
 
-        <nav class="footer-links" aria-label="Footer navigation">
-          <a href="/">خانه</a>
-          <a href="/about">درباره</a>
-          <a href="/contact">تماس</a>
-          <a href="/rss.xml">RSS</a>
-          <a href={SITE.telegramUrl} target="_blank" rel="noopener">تلگرام</a>
+        <nav class="site-footer__icons" aria-label="لینک‌های فوتر">
+          <a href="/" aria-label="خانه">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5" /><path d="M6.5 10.5V20h11v-9.5" /><path d="M10 20v-5h4v5" /></svg>
+          </a>
+          <a href="/about" aria-label="درباره">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5" /><path d="M5.5 19c1.3-3.2 3.5-4.8 6.5-4.8s5.2 1.6 6.5 4.8" /></svg>
+          </a>
+          <a href="/contact" aria-label="ارتباط با ما">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7.5h14v10H5z" /><path d="m5.5 8 6.5 5 6.5-5" /></svg>
+          </a>
+          <a href="/rss.xml" aria-label="RSS">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="17" r="1.5" /><path d="M6 11a7 7 0 0 1 7 7" /><path d="M6 6a12 12 0 0 1 12 12" /></svg>
+          </a>
+          <a href={displayTelegramUrl} target="_blank" rel="noopener" aria-label="تلگرام">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 5 4 11.5l6 2.2L16 8l-4.2 6.7 4.8 3.3z" /></svg>
+          </a>
         </nav>
-
-        <div class="footer-meta">
-          <span>© {new Date().getFullYear()} {SITE.footerText}</span>
-          <span>Powered by Cloudflare + Astro</span>
-        </div>
       </div>
+
+      <div class="site-footer__divider"></div>
+
+      <p class="site-footer__copyright">{siteCopy.footer_copyright || DEFAULT_SITE_COPY.footer_copyright}</p>
     </footer>
+
+    <script is:inline>
+      (() => {
+        const button = document.querySelector(".site-menu-toggle");
+        const nav = document.getElementById("mainNav");
+
+        if (!button || !nav) return;
+
+        button.addEventListener("click", () => {
+          const expanded = button.getAttribute("aria-expanded") === "true";
+          button.setAttribute("aria-expanded", String(!expanded));
+          nav.classList.toggle("is-open", !expanded);
+        });
+      })();
+    </script>
   </body>
 </html>
