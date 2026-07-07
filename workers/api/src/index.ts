@@ -760,7 +760,7 @@ ${link || "-"}
 async function getLastPost(env) {
   return await env.DB.prepare(
     `
-    SELECT 
+    SELECT
       id,
       text,
       slug,
@@ -801,7 +801,7 @@ async function getPostById(env, id) {
 
   return await env.DB.prepare(
     `
-    SELECT 
+    SELECT
       id,
       text,
       slug,
@@ -837,7 +837,7 @@ async function getPostById(env, id) {
 async function getDeletedPosts(env) {
   const { results } = await env.DB.prepare(
     `
-    SELECT 
+    SELECT
       id,
       text,
       slug,
@@ -1530,9 +1530,652 @@ ${postSummaryText(savedPost, env)}`;
   );
 }
 
+
+/* mahoon-analytics-api-v2 */
+function mahoonAnalyticsCorsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Token",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
+  };
+}
+
+function mahoonAnalyticsJson(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...mahoonAnalyticsCorsHeaders(),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
+function mahoonAnalyticsCleanText(value, maxLength = 500) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function mahoonAnalyticsCleanPath(value) {
+  const source = String(value || "/").trim();
+  if (!source || !source.startsWith("/")) return "/";
+  return source.slice(0, 400);
+}
+
+function mahoonAnalyticsHost(value) {
+  try {
+    const host = new URL(String(value || "")).hostname || "";
+    return host.replace(/^www\./i, "").slice(0, 160);
+  } catch {
+    return "";
+  }
+}
+
+function mahoonAnalyticsDevice(userAgent) {
+  const ua = String(userAgent || "").toLowerCase();
+
+  if (/bot|crawl|spider|slurp|facebookexternalhit|telegrambot|whatsapp|preview/.test(ua)) {
+    return "bot";
+  }
+
+  if (/tablet|ipad/.test(ua)) return "tablet";
+  if (/mobile|android|iphone|ipod/.test(ua)) return "mobile";
+
+  return "desktop";
+}
+
+function mahoonAnalyticsPostSlug(pathname) {
+  const match = String(pathname || "").match(/^\/post\/(.+)$/);
+  if (!match) return "";
+
+  try {
+    return decodeURIComponent(match[1]).slice(0, 500);
+  } catch {
+    return match[1].slice(0, 500);
+  }
+}
+
+function mahoonAnalyticsTag(pathname) {
+  const match = String(pathname || "").match(/^\/tag\/(.+)$/);
+  if (!match) return "";
+
+  try {
+    return decodeURIComponent(match[1]).slice(0, 300);
+  } catch {
+    return match[1].slice(0, 300);
+  }
+}
+
+function mahoonAnalyticsAdminToken(request) {
+  const direct = request.headers.get("X-Admin-Token") || "";
+  const authorization = request.headers.get("Authorization") || "";
+  const bearer = authorization.toLowerCase().startsWith("bearer ")
+    ? authorization.slice(7).trim()
+    : "";
+
+  return direct || bearer;
+}
+
+function mahoonAnalyticsIsAdmin(request, env) {
+  const expected = String(env.ADMIN_TOKEN || "").trim();
+  const received = String(mahoonAnalyticsAdminToken(request) || "").trim();
+
+  return Boolean(expected && received && expected === received);
+}
+
+async function mahoonTrackAnalytics(request, env) {
+  if (!env.DB) {
+    return mahoonAnalyticsJson({ ok: false, error: "DB binding is missing" }, 500);
+  }
+
+  let body = {};
+
+  try {
+    body = await request.json();
+  } catch {
+    body = {};
+  }
+
+  const eventType = mahoonAnalyticsCleanText(body.event_type || "page_view", 40) || "page_view";
+  const pathname = mahoonAnalyticsCleanPath(body.path || "/");
+  const url = mahoonAnalyticsCleanText(body.url || "", 900);
+  const title = mahoonAnalyticsCleanText(body.title || "", 240);
+  const referrer = mahoonAnalyticsCleanText(body.referrer || "", 900);
+  const referrerHost = mahoonAnalyticsHost(referrer);
+  const userAgent = mahoonAnalyticsCleanText(request.headers.get("User-Agent") || "", 700);
+  const device = mahoonAnalyticsDevice(userAgent);
+
+  if (device === "bot") {
+    return mahoonAnalyticsJson({ ok: true, skipped: true });
+  }
+
+  if (pathname.startsWith("/admin")) {
+    return mahoonAnalyticsJson({ ok: true, skipped: true });
+  }
+
+  const cf = request.cf || {};
+
+  await env.DB.prepare(
+    [
+      "INSERT INTO analytics_events",
+      "(event_type, path, url, title, referrer, referrer_host, visitor_id, session_id, post_slug, tag, device, country, city, user_agent, screen_width, screen_height, language)",
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ].join(" ")
+  )
+    .bind(
+      eventType,
+      pathname,
+      url,
+      title,
+      referrer,
+      referrerHost,
+      mahoonAnalyticsCleanText(body.visitor_id || "", 120),
+      mahoonAnalyticsCleanText(body.session_id || "", 120),
+      mahoonAnalyticsPostSlug(pathname),
+      mahoonAnalyticsTag(pathname),
+      device,
+      mahoonAnalyticsCleanText(cf.country || "", 80),
+      mahoonAnalyticsCleanText(cf.city || "", 160),
+      userAgent,
+      Number(body.screen_width || 0) || null,
+      Number(body.screen_height || 0) || null,
+      mahoonAnalyticsCleanText(body.language || "", 40)
+    )
+    .run();
+
+  return mahoonAnalyticsJson({ ok: true });
+}
+
+async function mahoonGetAnalytics(request, env) {
+  if (!mahoonAnalyticsIsAdmin(request, env)) {
+    return mahoonAnalyticsJson({ ok: false, error: "Unauthorized" }, 401);
+  }
+
+  if (!env.DB) {
+    return mahoonAnalyticsJson({ ok: false, error: "DB binding is missing" }, 500);
+  }
+
+  const url = new URL(request.url);
+
+    // mahoon-analytics-report-route-v3
+    if ((url.pathname === "/analytics/report" || url.pathname === "/analytics/admin") && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonAnalyticsCorsHeaders() });
+    }
+
+    if ((url.pathname === "/analytics/report" || url.pathname === "/analytics/admin") && request.method === "GET") {
+      return mahoonGetAnalytics(request, env);
+    }
+
+
+    // mahoon-analytics-routes-v2
+    if ((url.pathname === "/analytics/track" || url.pathname === "/admin/analytics") && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonAnalyticsCorsHeaders() });
+    }
+
+    if (url.pathname === "/analytics/track" && request.method === "POST") {
+      return mahoonTrackAnalytics(request, env);
+    }
+
+    if (url.pathname === "/admin/analytics" && request.method === "GET") {
+      return mahoonGetAnalytics(request, env);
+    }
+
+  const rawDays = Number(url.searchParams.get("days") || "30");
+  const days = Math.max(1, Math.min(365, Number.isFinite(rawDays) ? rawDays : 30));
+  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 19).replace("T", " ");
+
+  const totals = await env.DB.prepare(
+    [
+      "SELECT",
+      "COUNT(*) AS pageviews,",
+      "COUNT(DISTINCT NULLIF(visitor_id, '')) AS unique_visitors,",
+      "COUNT(DISTINCT NULLIF(session_id, '')) AS sessions",
+      "FROM analytics_events",
+      "WHERE created_at >= ?"
+    ].join(" ")
+  ).bind(since).first();
+
+  const today = await env.DB.prepare(
+    "SELECT COUNT(*) AS pageviews FROM analytics_events WHERE date(created_at) = date('now')"
+  ).first();
+
+  const yesterday = await env.DB.prepare(
+    "SELECT COUNT(*) AS pageviews FROM analytics_events WHERE date(created_at) = date('now', '-1 day')"
+  ).first();
+
+  const topPages = await env.DB.prepare(
+    [
+      "SELECT path, COALESCE(NULLIF(title, ''), path) AS title,",
+      "COUNT(*) AS views,",
+      "COUNT(DISTINCT NULLIF(visitor_id, '')) AS visitors",
+      "FROM analytics_events",
+      "WHERE created_at >= ?",
+      "GROUP BY path, title",
+      "ORDER BY views DESC",
+      "LIMIT 20"
+    ].join(" ")
+  ).bind(since).all();
+
+  const byDay = await env.DB.prepare(
+    [
+      "SELECT date(created_at) AS day,",
+      "COUNT(*) AS views,",
+      "COUNT(DISTINCT NULLIF(visitor_id, '')) AS visitors",
+      "FROM analytics_events",
+      "WHERE created_at >= ?",
+      "GROUP BY day",
+      "ORDER BY day ASC"
+    ].join(" ")
+  ).bind(since).all();
+
+  const referrers = await env.DB.prepare(
+    [
+      "SELECT COALESCE(NULLIF(referrer_host, ''), 'Direct') AS source,",
+      "COUNT(*) AS views",
+      "FROM analytics_events",
+      "WHERE created_at >= ?",
+      "GROUP BY source",
+      "ORDER BY views DESC",
+      "LIMIT 15"
+    ].join(" ")
+  ).bind(since).all();
+
+  const devices = await env.DB.prepare(
+    [
+      "SELECT COALESCE(NULLIF(device, ''), 'unknown') AS device,",
+      "COUNT(*) AS views",
+      "FROM analytics_events",
+      "WHERE created_at >= ?",
+      "GROUP BY device",
+      "ORDER BY views DESC"
+    ].join(" ")
+  ).bind(since).all();
+
+  const countries = await env.DB.prepare(
+    [
+      "SELECT COALESCE(NULLIF(country, ''), 'unknown') AS country,",
+      "COUNT(*) AS views",
+      "FROM analytics_events",
+      "WHERE created_at >= ?",
+      "GROUP BY country",
+      "ORDER BY views DESC",
+      "LIMIT 15"
+    ].join(" ")
+  ).bind(since).all();
+
+  const recent = await env.DB.prepare(
+    [
+      "SELECT path, title, device, country, referrer_host, created_at",
+      "FROM analytics_events",
+      "WHERE created_at >= ?",
+      "ORDER BY datetime(created_at) DESC, id DESC",
+      "LIMIT 25"
+    ].join(" ")
+  ).bind(since).all();
+
+  return mahoonAnalyticsJson({
+    ok: true,
+    days,
+    since,
+    totals: {
+      pageviews: Number(totals?.pageviews || 0),
+      unique_visitors: Number(totals?.unique_visitors || 0),
+      sessions: Number(totals?.sessions || 0),
+      today: Number(today?.pageviews || 0),
+      yesterday: Number(yesterday?.pageviews || 0)
+    },
+    topPages: topPages.results || [],
+    byDay: byDay.results || [],
+    referrers: referrers.results || [],
+    devices: devices.results || [],
+    countries: countries.results || [],
+    recent: recent.results || []
+  });
+}
+
+
+
+/* mahoon-analytics-v5 */
+function mahoonAnalyticsCorsHeadersV5() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Token",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
+  };
+}
+
+function mahoonAnalyticsJsonV5(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...mahoonAnalyticsCorsHeadersV5(),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
+function mahoonAnalyticsTextV5(value, maxLength = 500) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function mahoonAnalyticsPathV5(value) {
+  const source = String(value || "/").trim();
+  if (!source || !source.startsWith("/")) return "/";
+  return source.slice(0, 400);
+}
+
+function mahoonAnalyticsHostV5(value) {
+  try {
+    const host = new URL(String(value || "")).hostname || "";
+    return host.replace(/^www\./i, "").slice(0, 160);
+  } catch {
+    return "";
+  }
+}
+
+function mahoonAnalyticsDeviceV5(userAgent) {
+  const ua = String(userAgent || "").toLowerCase();
+
+  if (/bot|crawl|spider|slurp|facebookexternalhit|telegrambot|whatsapp|preview/.test(ua)) {
+    return "bot";
+  }
+
+  if (/tablet|ipad/.test(ua)) return "tablet";
+  if (/mobile|android|iphone|ipod/.test(ua)) return "mobile";
+
+  return "desktop";
+}
+
+function mahoonAnalyticsPostSlugV5(pathname) {
+  const match = String(pathname || "").match(/^\/post\/(.+)$/);
+  if (!match) return "";
+
+  try {
+    return decodeURIComponent(match[1]).slice(0, 500);
+  } catch {
+    return match[1].slice(0, 500);
+  }
+}
+
+function mahoonAnalyticsTagV5(pathname) {
+  const match = String(pathname || "").match(/^\/tag\/(.+)$/);
+  if (!match) return "";
+
+  try {
+    return decodeURIComponent(match[1]).slice(0, 300);
+  } catch {
+    return match[1].slice(0, 300);
+  }
+}
+
+function mahoonAnalyticsAdminTokenV5(request) {
+  const direct = request.headers.get("X-Admin-Token") || "";
+  const authorization = request.headers.get("Authorization") || "";
+  const bearer = authorization.toLowerCase().startsWith("bearer ")
+    ? authorization.slice(7).trim()
+    : "";
+
+  return direct || bearer;
+}
+
+function mahoonAnalyticsIsAdminV5(request, env) {
+  const expected = String(env.ADMIN_TOKEN || "").trim();
+  const received = String(mahoonAnalyticsAdminTokenV5(request) || "").trim();
+
+  return Boolean(expected && received && expected === received);
+}
+
+async function mahoonAnalyticsBodyV5(request) {
+  const raw = await request.text();
+
+  if (!raw) return {};
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+async function mahoonTrackAnalyticsV5(request, env) {
+  try {
+    if (!env.DB) {
+      return mahoonAnalyticsJsonV5({ ok: false, error: "DB binding is missing", version: "v5" }, 500);
+    }
+
+    const body = await mahoonAnalyticsBodyV5(request);
+
+    const pathname = mahoonAnalyticsPathV5(body.path || "/");
+    const userAgent = mahoonAnalyticsTextV5(request.headers.get("User-Agent") || "", 700);
+    const device = mahoonAnalyticsDeviceV5(userAgent);
+
+    if (device === "bot") {
+      return mahoonAnalyticsJsonV5({ ok: true, saved: false, skipped: true, reason: "bot", version: "v5" });
+    }
+
+    if (pathname.startsWith("/admin")) {
+      return mahoonAnalyticsJsonV5({ ok: true, saved: false, skipped: true, reason: "admin", version: "v5" });
+    }
+
+    const referrer = mahoonAnalyticsTextV5(body.referrer || "", 900);
+    const cf = request.cf || {};
+
+    await env.DB.prepare(
+      [
+        "INSERT INTO analytics_events",
+        "(event_type, path, url, title, referrer, referrer_host, visitor_id, session_id, post_slug, tag, device, country, city, user_agent, screen_width, screen_height, language)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ].join(" ")
+    )
+      .bind(
+        mahoonAnalyticsTextV5(body.event_type || "page_view", 40) || "page_view",
+        pathname,
+        mahoonAnalyticsTextV5(body.url || "", 900),
+        mahoonAnalyticsTextV5(body.title || "", 240),
+        referrer,
+        mahoonAnalyticsHostV5(referrer),
+        mahoonAnalyticsTextV5(body.visitor_id || "", 120),
+        mahoonAnalyticsTextV5(body.session_id || "", 120),
+        mahoonAnalyticsPostSlugV5(pathname),
+        mahoonAnalyticsTagV5(pathname),
+        device,
+        mahoonAnalyticsTextV5(cf.country || "", 80),
+        mahoonAnalyticsTextV5(cf.city || "", 160),
+        userAgent,
+        Number(body.screen_width || 0) || null,
+        Number(body.screen_height || 0) || null,
+        mahoonAnalyticsTextV5(body.language || "", 40)
+      )
+      .run();
+
+    return mahoonAnalyticsJsonV5({ ok: true, saved: true, version: "v5", path: pathname });
+  } catch (error) {
+    return mahoonAnalyticsJsonV5({
+      ok: false,
+      error: String(error?.message || error),
+      version: "v5"
+    }, 500);
+  }
+}
+
+async function mahoonGetAnalyticsV5(request, env) {
+  try {
+    if (!mahoonAnalyticsIsAdminV5(request, env)) {
+      return mahoonAnalyticsJsonV5({ ok: false, error: "Unauthorized", version: "v5" }, 401);
+    }
+
+    if (!env.DB) {
+      return mahoonAnalyticsJsonV5({ ok: false, error: "DB binding is missing", version: "v5" }, 500);
+    }
+
+    const url = new URL(request.url);
+    const rawDays = Number(url.searchParams.get("days") || "30");
+    const days = Math.max(1, Math.min(365, Number.isFinite(rawDays) ? rawDays : 30));
+    const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 19).replace("T", " ");
+
+    const totals = await env.DB.prepare(
+      [
+        "SELECT",
+        "COUNT(*) AS pageviews,",
+        "COUNT(DISTINCT NULLIF(visitor_id, '')) AS unique_visitors,",
+        "COUNT(DISTINCT NULLIF(session_id, '')) AS sessions",
+        "FROM analytics_events",
+        "WHERE created_at >= ?"
+      ].join(" ")
+    ).bind(since).first();
+
+    const today = await env.DB.prepare(
+      "SELECT COUNT(*) AS pageviews FROM analytics_events WHERE date(created_at) = date('now')"
+    ).first();
+
+    const yesterday = await env.DB.prepare(
+      "SELECT COUNT(*) AS pageviews FROM analytics_events WHERE date(created_at) = date('now', '-1 day')"
+    ).first();
+
+    const topPages = await env.DB.prepare(
+      [
+        "SELECT path, COALESCE(NULLIF(title, ''), path) AS title,",
+        "COUNT(*) AS views,",
+        "COUNT(DISTINCT NULLIF(visitor_id, '')) AS visitors",
+        "FROM analytics_events",
+        "WHERE created_at >= ?",
+        "GROUP BY path, title",
+        "ORDER BY views DESC",
+        "LIMIT 20"
+      ].join(" ")
+    ).bind(since).all();
+
+    const byDay = await env.DB.prepare(
+      [
+        "SELECT date(created_at) AS day,",
+        "COUNT(*) AS views,",
+        "COUNT(DISTINCT NULLIF(visitor_id, '')) AS visitors",
+        "FROM analytics_events",
+        "WHERE created_at >= ?",
+        "GROUP BY day",
+        "ORDER BY day ASC"
+      ].join(" ")
+    ).bind(since).all();
+
+    const referrers = await env.DB.prepare(
+      [
+        "SELECT COALESCE(NULLIF(referrer_host, ''), 'Direct') AS source,",
+        "COUNT(*) AS views",
+        "FROM analytics_events",
+        "WHERE created_at >= ?",
+        "GROUP BY source",
+        "ORDER BY views DESC",
+        "LIMIT 15"
+      ].join(" ")
+    ).bind(since).all();
+
+    const devices = await env.DB.prepare(
+      [
+        "SELECT COALESCE(NULLIF(device, ''), 'unknown') AS device,",
+        "COUNT(*) AS views",
+        "FROM analytics_events",
+        "WHERE created_at >= ?",
+        "GROUP BY device",
+        "ORDER BY views DESC"
+      ].join(" ")
+    ).bind(since).all();
+
+    const countries = await env.DB.prepare(
+      [
+        "SELECT COALESCE(NULLIF(country, ''), 'unknown') AS country,",
+        "COUNT(*) AS views",
+        "FROM analytics_events",
+        "WHERE created_at >= ?",
+        "GROUP BY country",
+        "ORDER BY views DESC",
+        "LIMIT 15"
+      ].join(" ")
+    ).bind(since).all();
+
+    const recent = await env.DB.prepare(
+      [
+        "SELECT path, title, device, country, referrer_host, created_at",
+        "FROM analytics_events",
+        "WHERE created_at >= ?",
+        "ORDER BY datetime(created_at) DESC, id DESC",
+        "LIMIT 25"
+      ].join(" ")
+    ).bind(since).all();
+
+    return mahoonAnalyticsJsonV5({
+      ok: true,
+      version: "v5",
+      days,
+      since,
+      totals: {
+        pageviews: Number(totals?.pageviews || 0),
+        unique_visitors: Number(totals?.unique_visitors || 0),
+        sessions: Number(totals?.sessions || 0),
+        today: Number(today?.pageviews || 0),
+        yesterday: Number(yesterday?.pageviews || 0)
+      },
+      topPages: topPages.results || [],
+      byDay: byDay.results || [],
+      referrers: referrers.results || [],
+      devices: devices.results || [],
+      countries: countries.results || [],
+      recent: recent.results || []
+    });
+  } catch (error) {
+    return mahoonAnalyticsJsonV5({
+      ok: false,
+      error: String(error?.message || error),
+      version: "v5"
+    }, 500);
+  }
+}
+
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+
+    // mahoon-analytics-route-v5
+    if (url.pathname === "/analytics/ping-v5" && request.method === "GET") {
+      return mahoonAnalyticsJsonV5({ ok: true, service: "mahoon-analytics", version: "v5" });
+    }
+
+    if ((url.pathname === "/analytics/collect" || url.pathname === "/analytics/report-v5") && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonAnalyticsCorsHeadersV5() });
+    }
+
+    if (url.pathname === "/analytics/collect" && request.method === "POST") {
+      return mahoonTrackAnalyticsV5(request, env);
+    }
+
+    if (url.pathname === "/analytics/report-v5" && request.method === "GET") {
+      return mahoonGetAnalyticsV5(request, env);
+    }
+
+    // mahoon-analytics-report-route-v4
+    if (url.pathname === "/analytics/ping" && request.method === "GET") {
+      return mahoonAnalyticsJson({ ok: true, service: "mahoon-analytics", version: "v4" });
+    }
+
+    if ((url.pathname === "/analytics/track" || url.pathname === "/analytics/report" || url.pathname === "/analytics/admin") && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonAnalyticsCorsHeaders() });
+    }
+
+    if (url.pathname === "/analytics/track" && request.method === "POST") {
+      return mahoonTrackAnalytics(request, env);
+    }
+
+    if ((url.pathname === "/analytics/report" || url.pathname === "/analytics/admin") && request.method === "GET") {
+      return mahoonGetAnalytics(request, env);
+    }
+
     const origin = url.origin;
 
     if (request.method === "OPTIONS") {
@@ -1681,7 +2324,7 @@ export default {
         if (request.method === "GET" && url.pathname === "/admin/posts") {
           const { results } = await env.DB.prepare(
             `
-            SELECT 
+            SELECT
               id,
               text,
               slug,
@@ -2004,7 +2647,7 @@ export default {
           await env.DB.prepare(
             `
             UPDATE posts
-            SET 
+            SET
               text = ?,
               slug = ?,
               is_published = ?,
@@ -2071,7 +2714,7 @@ export default {
           await env.DB.prepare(
             `
             UPDATE posts
-            SET 
+            SET
               deleted_at = CURRENT_TIMESTAMP,
               updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
@@ -2242,7 +2885,7 @@ export default {
 
         const post = await env.DB.prepare(
           `
-          SELECT 
+          SELECT
             id,
             text,
             slug,
@@ -2276,7 +2919,7 @@ export default {
           await env.DB.prepare(
             `
             UPDATE posts
-            SET 
+            SET
               view_count = COALESCE(view_count, 0) + 1,
               last_viewed_at = CURRENT_TIMESTAMP
             WHERE id = ?
@@ -2301,7 +2944,7 @@ export default {
 
         const post = await env.DB.prepare(
           `
-          SELECT 
+          SELECT
             id,
             text,
             slug,
@@ -2335,7 +2978,7 @@ export default {
           await env.DB.prepare(
             `
             UPDATE posts
-            SET 
+            SET
               view_count = COALESCE(view_count, 0) + 1,
               last_viewed_at = CURRENT_TIMESTAMP
             WHERE id = ?
@@ -2351,7 +2994,7 @@ export default {
       if (request.method === "GET" && url.pathname === "/") {
         const { results } = await env.DB.prepare(
           `
-          SELECT 
+          SELECT
             id,
             text,
             slug,
@@ -2431,7 +3074,7 @@ export default {
             await env.DB.prepare(
               `
               UPDATE posts
-              SET 
+              SET
                 text = ?,
                 media_type = ?,
                 media_file_id = ?,

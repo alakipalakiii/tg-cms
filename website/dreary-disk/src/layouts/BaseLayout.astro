@@ -207,5 +207,83 @@ const mahoonStructuredDataJson = stringifySchema(mahoonStructuredData);
         });
       })();
     </script>
-  </body>
+
+  <script is:inline>
+    (() => {
+      // mahoon-public-analytics-v2
+      const path = window.location.pathname || "/";
+
+      if (path.startsWith("/admin")) return;
+      if (/^(localhost|127\\.0\\.0\\.1)$/i.test(window.location.hostname)) return;
+      if (/bot|crawl|spider|slurp|facebookexternalhit|telegrambot|whatsapp|preview/i.test(navigator.userAgent || "")) return;
+
+      const endpoint = "https://api.mahoonartmagazine.ir/analytics/collect";
+
+      const makeId = () => {
+        try {
+          return window.crypto?.randomUUID?.() || String(Date.now()) + "-" + Math.random().toString(16).slice(2);
+        } catch {
+          return String(Date.now()) + "-" + Math.random().toString(16).slice(2);
+        }
+      };
+
+      const getVisitorId = () => {
+        try {
+          let value = window.localStorage.getItem("mahoon_visitor_id");
+          if (!value) {
+            value = makeId();
+            window.localStorage.setItem("mahoon_visitor_id", value);
+          }
+          return value;
+        } catch {
+          return "";
+        }
+      };
+
+      const getSessionId = () => {
+        try {
+          let value = window.sessionStorage.getItem("mahoon_session_id");
+          if (!value) {
+            value = makeId();
+            window.sessionStorage.setItem("mahoon_session_id", value);
+          }
+          return value;
+        } catch {
+          return "";
+        }
+      };
+
+      const payload = {
+        event_type: "page_view",
+        path,
+        url: window.location.href,
+        title: document.title || "",
+        referrer: document.referrer || "",
+        visitor_id: getVisitorId(),
+        session_id: getSessionId(),
+        screen_width: window.screen?.width || 0,
+        screen_height: window.screen?.height || 0,
+        language: navigator.language || ""
+      };
+
+      const body = JSON.stringify(payload);
+
+      try {
+        const blob = new Blob([body], { type: "text/plain;charset=UTF-8" });
+        if (navigator.sendBeacon && navigator.sendBeacon(endpoint, blob)) return;
+      } catch {}
+
+      try {
+        window.fetch(endpoint, {
+          method: "POST",
+          body,
+          headers: { "Content-Type": "text/plain;charset=UTF-8" },
+          keepalive: true,
+          cache: "no-store"
+        }).catch(() => {});
+      } catch {}
+    })();
+  </script>
+
+</body>
 </html>
