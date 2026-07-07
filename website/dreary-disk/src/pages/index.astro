@@ -32,7 +32,10 @@ const heroLabel = `${heroLineOne} ${heroLineTwo}`.trim();
 const latestTitle = siteSettings.home_latest_title || "تازه‌ترین روایت منتشرشده در ماهون";
 ---
 
-<BaseLayout title={pageTitle} description={pageDescription} siteSettings={siteSettings}>
+<BaseLayout
+  title="مجله هنری ماهون | روایت هنر، فرهنگ و نگاه معاصر"
+  description="مجله هنری ماهون رسانه‌ای برای روایت هنر، فرهنگ، شعر، متن، دیالوگ، صدا و نگاه معاصر؛ جایی برای خواندن و شنیدن روایت‌های هنری."
+  canonical="https://mahoonartmagazine.ir/" siteSettings={siteSettings}>
   <main class="home-page" data-worker-url={SITE.workerUrl}>
     <section class="home-hero" aria-label="شعار مجله هنری ماهون">
       <div class="home-hero__panel">

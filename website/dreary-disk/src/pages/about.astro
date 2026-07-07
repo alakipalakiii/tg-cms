@@ -37,7 +37,10 @@ const aboutBody = siteSettings.about_body || DEFAULT_ABOUT_BODY;
 const aboutParagraphs = String(aboutBody).split(/\n{2,}/).map((item) => item.trim()).filter(Boolean);
 ---
 
-<BaseLayout title="درباره ما" description="درباره مجله هنری ماهون">
+<BaseLayout
+  title="درباره مجله هنری ماهون | رسانه هنر و فرهنگ"
+  description="درباره مجله هنری ماهون؛ رسانه‌ای برای روایت هنر، فرهنگ، صدا، تصویر، نوشتار و نگاه معاصر."
+  canonical="https://mahoonartmagazine.ir/about">
   <main class="page-section editorial-page about-page">
     <div class="container">
       <section class="about-editorial-card">
