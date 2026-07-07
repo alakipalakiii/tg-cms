@@ -6,6 +6,6 @@ export const SITE = {
   logo: "/sources/mahoon-logo.jpg",
   defaultImage: "/sources/mahoon-logo.jpg",
   telegramUrl: "https://t.me/mahoonartmagazine",
-  workerUrl: "https://tg-cms-api.morentoofficial.workers.dev",
+  workerUrl: "https://api.mahoonartmagazine.ir",
   footerText: "مجله هنری ماهون"
 };
