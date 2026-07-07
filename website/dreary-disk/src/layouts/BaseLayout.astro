@@ -1,8 +1,10 @@
 ---
+import { organizationSchema, websiteSchema, stringifySchema } from "../lib/seoSchema";
 import "../styles/global.css";
 import { SITE } from "../config";
 
 interface Props {
+  schema?: unknown;
   title?: string;
   description?: string;
   image?: string;
@@ -81,6 +83,17 @@ const currentPath = Astro.url.pathname.replace(/\/+$/, "") || "/";
 const isHome = currentPath === "/";
 const isAbout = currentPath === "/about";
 const isContact = currentPath === "/contact";
+
+// mahoon-schema-base-v1
+const mahoonPageSchema = Astro.props?.schema;
+const mahoonStructuredData = [
+  organizationSchema(),
+  websiteSchema(),
+  ...(Array.isArray(mahoonPageSchema) ? mahoonPageSchema : mahoonPageSchema ? [mahoonPageSchema] : [])
+].filter(Boolean);
+const mahoonStructuredDataJson = stringifySchema(mahoonStructuredData);
+
+
 ---
 
 <html lang="fa" dir="rtl">
