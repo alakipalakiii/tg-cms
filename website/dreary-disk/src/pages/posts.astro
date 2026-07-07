@@ -119,6 +119,7 @@ const pageDescription = "فهرست مطالب منتشرشده در مجله ه
 
       function cleanPublicText(value) {
         return String(value || "")
+          .replace(/(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+(?=\n|$)/giu, "\n") // mahoon-clean-movie-line-from-cards
           .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
           .replace(/\u{1F539}/gu, "")
           .replace(/https?:\/\/(?:t\.me|telegram\.me|telegram\.dog)\/[^\s]+/giu, "")
