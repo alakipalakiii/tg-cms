@@ -152,6 +152,8 @@ function extractMediaFromMessage(source) {
   }
 
   if (source.audio) {
+    const audioCover = source.audio.thumbnail || source.audio.thumb || null;
+
     return {
       media_type: "audio",
       media_file_id: source.audio.file_id || null,
@@ -162,10 +164,10 @@ function extractMediaFromMessage(source) {
       media_width: null,
       media_height: null,
       media_size: source.audio.file_size || null,
-      photo_file_id: null,
-      photo_unique_id: null,
-      photo_width: null,
-      photo_height: null
+      photo_file_id: audioCover?.file_id || null,
+      photo_unique_id: audioCover?.file_unique_id || null,
+      photo_width: audioCover?.width || null,
+      photo_height: audioCover?.height || null
     };
   }
 
@@ -240,6 +242,17 @@ function extractMediaFromMessage(source) {
   };
 }
 
+
+function telegramUnixToSqlDate(value) {
+  const seconds = Number(value || 0);
+  if (!seconds) return null;
+
+  const date = new Date(seconds * 1000);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date.toISOString().slice(0, 19).replace("T", " ");
+}
+
 function extractTelegramPost(update) {
   const source = getTelegramSource(update);
 
@@ -278,26 +291,86 @@ function extractTelegramPost(update) {
     chat_username: source.chat?.username || "",
     text,
     created_at_unix: source.date || Math.floor(Date.now() / 1000),
+    created_at: telegramUnixToSqlDate(source.date),
     is_edited: Boolean(update.edited_channel_post || update.edited_message),
     ...media
   };
 }
 
+
+/* mahoon-public-category-filter-api */
+function normalizePublicTag(tag) {
+  return String(tag || "")
+    .replace(/^#/, "")
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/\u200c/g, "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function getPublicHashTags(text) {
+  return Array.from(String(text || "").matchAll(/(^|\s)#([^\s#]+)/gu))
+    .map((match) => match[2])
+    .filter(Boolean);
+}
+
+function hasRequiredCategoryHashTag(text) {
+  const categoryTags = new Set([
+    "کتاب",
+    "دیالوگ",
+    "دیالوگ‌ها",
+    "دیالوگ_ها",
+    "دیالوگها",
+    "صوتی",
+    "صدا",
+    "موسیقی",
+    "متن",
+    "متن‌ها",
+    "متن_ها",
+    "متنها",
+    "شعر",
+    "اشعار",
+    "شعرها",
+    "شعر_ها",
+    "نقاشی"
+  ].map(normalizePublicTag));
+
+  return getPublicHashTags(text)
+    .map(normalizePublicTag)
+    .some((tag) => categoryTags.has(tag));
+}
+
 function postWithMediaUrl(post, origin) {
   if (!post) return null;
 
-  const fallbackFileId = post.media_file_id || post.photo_file_id || null;
   const resolvedMediaType = post.media_type || (post.photo_file_id ? "photo" : null);
-  const mediaUrl = fallbackFileId
-    ? `${origin}/media/${encodeURIComponent(fallbackFileId)}`
+  const isAudioLike = resolvedMediaType === "audio" || resolvedMediaType === "voice";
+
+  const mediaFileId =
+    post.media_file_id ||
+    (!isAudioLike ? post.photo_file_id : null) ||
+    null;
+
+  const photoFileId = post.photo_file_id || null;
+
+  const mediaUrl = mediaFileId
+    ? `${origin}/media/${encodeURIComponent(mediaFileId)}`
+    : null;
+
+  const thumbnailUrl = photoFileId
+    ? `${origin}/media/${encodeURIComponent(photoFileId)}`
     : null;
 
   return {
     ...post,
     media_type: resolvedMediaType,
-    media_file_id: fallbackFileId,
+    media_file_id: mediaFileId,
     media_url: mediaUrl,
-    photo_url: resolvedMediaType === "photo" && mediaUrl ? mediaUrl : null
+    photo_url: resolvedMediaType === "photo" && thumbnailUrl ? thumbnailUrl : null,
+    thumbnail_url: thumbnailUrl
   };
 }
 
@@ -715,7 +788,7 @@ async function getLastPost(env) {
       last_viewed_at
     FROM posts
     WHERE deleted_at IS NULL
-    ORDER BY id DESC
+    ORDER BY datetime(created_at) DESC, id DESC
     LIMIT 1
     `
   ).first();
@@ -1639,7 +1712,7 @@ export default {
               last_viewed_at
             FROM posts
             WHERE deleted_at IS NULL
-            ORDER BY id DESC
+            ORDER BY datetime(created_at) DESC, id DESC
             LIMIT 500
             `
           ).all();
@@ -2303,12 +2376,17 @@ export default {
           WHERE slug IS NOT NULL
           AND deleted_at IS NULL
           AND COALESCE(is_published, 1) = 1
-          ORDER BY id DESC
-          LIMIT 100
+          ORDER BY datetime(created_at) DESC, id DESC
+          LIMIT 250
           `
         ).all();
 
-        return json((results || []).map(post => postWithMediaUrl(post, origin)));
+        const publicPosts = (results || [])
+          .filter((post) => hasRequiredCategoryHashTag(post.text))
+          .slice(0, 100)
+          .map(post => postWithMediaUrl(post, origin));
+
+        return json(publicPosts);
       }
 
       if (request.method === "POST") {
@@ -2389,6 +2467,17 @@ export default {
               existing.id
             ).run();
 
+            /* mahoon-update-original-telegram-date */
+            if (telegramPost.created_at) {
+              await env.DB.prepare(
+                `
+                UPDATE posts
+                SET created_at = ?
+                WHERE id = ?
+                `
+              ).bind(telegramPost.created_at, existing.id).run();
+            }
+
             const fresh = await getPostById(env, existing.id);
 
             await sendSavedPostConfirmation(
@@ -2455,6 +2544,17 @@ export default {
         ).run();
 
         const insertedId = result.meta?.last_row_id || null;
+
+        /* mahoon-insert-original-telegram-date */
+        if (insertedId && telegramPost.created_at) {
+          await env.DB.prepare(
+            `
+            UPDATE posts
+            SET created_at = ?
+            WHERE id = ?
+            `
+          ).bind(telegramPost.created_at, insertedId).run();
+        }
         const savedPost = insertedId ? await getPostById(env, insertedId) : null;
 
         await sendSavedPostConfirmation(

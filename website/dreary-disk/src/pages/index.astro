@@ -216,6 +216,7 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
         return String(value || "")
           .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
           .replace(/\u{1F539}/gu, "")
+          .replace(/(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+/giu, "\n")
           .replace(/https?:\/\/(?:t\.me|telegram\.me|telegram\.dog)\/[^\s]+/giu, "")
           .replace(/https?:\/\/[^\s]+/giu, "")
           .replace(/@[a-zA-Z0-9_]+/g, "")
@@ -240,6 +241,67 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
           .trim()
           .toLowerCase();
       }
+
+      /* mahoon-dialogue-movie-v2 */
+      function extractMovieTitle(value) {
+        const lines = String(value || "").split(/\r?\n/);
+
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          const match = line.match(/^(?:🎥|🎬|فیلم\s*:?)\s*#?\s*(.+)$/iu);
+
+          if (!match) continue;
+
+          const title = match[1]
+            .replace(/[🔹•●▪▫◦]+/gu, "")
+            .replace(/@mahoonartmagazine/giu, "")
+            .replace(/_/g, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .replace(/^#/, "")
+            .trim();
+
+          if (title) return title;
+        }
+
+        return "";
+      }
+
+      function getRawHashTags(text) {
+        return Array.from(String(text || "").matchAll(/(^|\s)#([^\s#]+)/gu))
+          .map((match) => match[2])
+          .filter(Boolean);
+      }
+
+      function hasRawTag(text, variants) {
+        const expected = new Set(variants.map(normalizeTag));
+        return getRawHashTags(text).some((tag) => expected.has(normalizeTag(tag)));
+      }
+
+      function isDialoguePost(post) {
+        return hasRawTag(post?.text, ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"]);
+      }
+
+      function makeAutoDisplayTitle(post, mode = "card") {
+        const movieTitle = extractMovieTitle(post?.text);
+
+        if (!movieTitle || !isDialoguePost(post)) return "";
+
+        const title = "دیالوگی از فیلم \u2066" + movieTitle + "\u2069";
+        if (mode === "post") return title;
+
+        return buildShortTitle(title, mode) || title;
+      }
+
+      function getPostCategory(post) {
+        if (hasRawTag(post?.text, ["کتاب"])) return "کتاب";
+        if (hasRawTag(post?.text, ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"])) return "دیالوگ ها";
+        if (hasRawTag(post?.text, ["صوتی", "صدا", "موسیقی"])) return "صوتی";
+        if (hasRawTag(post?.text, ["متن", "متن‌ها", "متن_ها", "شعر", "اشعار", "شعرها", "شعر_ها"])) return "شعر و متن";
+        if (hasRawTag(post?.text, ["نقاشی"])) return "نقاشی";
+        return "";
+      }
+
 
       function truncateText(value, maxLength) {
         const source = String(value || "").replace(/\s+/g, " ").trim();
@@ -286,6 +348,9 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
       }
 
       function makeDisplayTitle(post, mode = "card") {
+        const autoTitle = makeAutoDisplayTitle(post, mode);
+        if (autoTitle) return autoTitle;
+
         const seoTitle = cleanPublicText(post?.seo_title).replace(/\s+/g, " ").trim();
         if (isSeoTitleUsable(post, seoTitle)) {
           return buildShortTitle(seoTitle, mode) || "مطلبی از ماهون";
@@ -358,14 +423,55 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
         return null;
       }
 
+
+      function getAudioSrc(post) {
+        const type = String(post?.media_type || "").toLowerCase();
+        if (type !== "audio" && type !== "voice") return "";
+
+        const direct = validMediaValue(post?.media_url);
+        if (direct && !looksLikeImageUrl(direct)) return direct;
+
+        const mediaFileId = String(post?.media_file_id || "").trim();
+        if (mediaFileId) return `${API_BASE}/media/${encodeURIComponent(mediaFileId)}`;
+
+        return "";
+      }
+
       function getTags(text) {
-        return Array.from(
-          new Set(
-            Array.from(String(text || "").matchAll(/(^|\s)#([^\s#]+)/gu))
-              .map((match) => match[2])
-              .filter(Boolean)
-          )
-        );
+        const tags = getRawHashTags(text);
+        const movieTitle = extractMovieTitle(text);
+
+        if (movieTitle) tags.push(movieTitle);
+
+        return Array.from(new Set(tags.filter(Boolean)));
+      }
+
+
+      /* mahoon-require-category-tag-hard */
+      function hasRequiredCategoryHashTag(post) {
+        const categoryTags = new Set([
+          "کتاب",
+          "دیالوگ",
+          "دیالوگ‌ها",
+          "دیالوگ_ها",
+          "دیالوگها",
+          "صوتی",
+          "صدا",
+          "موسیقی",
+          "متن",
+          "متن‌ها",
+          "متن_ها",
+          "متنها",
+          "شعر",
+          "اشعار",
+          "شعرها",
+          "شعر_ها",
+          "نقاشی"
+        ].map((tag) => normalizeTag(tag)));
+
+        return Array.from(String(post?.text || "").matchAll(/(^|\s)#([^\s#]+)/gu))
+          .map((match) => normalizeTag(match[2]))
+          .some((tag) => categoryTags.has(tag));
       }
 
       function getPublicTags(text) {
@@ -425,9 +531,9 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
       }
 
       function extractPosts(payload) {
-        if (Array.isArray(payload)) return payload.map(normalizePost).filter((post) => post.id);
-        if (Array.isArray(payload?.posts)) return payload.posts.map(normalizePost).filter((post) => post.id);
-        if (Array.isArray(payload?.data)) return payload.data.map(normalizePost).filter((post) => post.id);
+        if (Array.isArray(payload)) return payload.map(normalizePost).filter((post) => post.id).filter(hasRequiredCategoryHashTag);
+        if (Array.isArray(payload?.posts)) return payload.posts.map(normalizePost).filter((post) => post.id).filter(hasRequiredCategoryHashTag);
+        if (Array.isArray(payload?.data)) return payload.data.map(normalizePost).filter((post) => post.id).filter(hasRequiredCategoryHashTag);
         return [];
       }
 
@@ -519,19 +625,24 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
 
         if (isAudioPost(post)) {
           const duration = formatDuration(post.media_duration);
-          const disabledAttr = post.media_url ? "" : " disabled";
+          const audioSrc = getAudioSrc(post);
+          const coverSrc = getMediaSrc(post);
+          const disabledAttr = audioSrc ? "" : " disabled";
+          const cover = coverSrc
+            ? `<img src="${escapeAttr(coverSrc)}" alt="${escapeAttr(makeDisplayTitle(post, "card"))}" width="320" height="190" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-empty')" />`
+            : "<span>♪</span>";
 
           return `
             <div class="${className} client-audio-card-media">
-              <div class="client-audio-cover">
-                <span>♪</span>
+              <div class="client-audio-cover" data-media-wrap>
+                ${cover}
               </div>
               <div class="client-audio-panel">
                 <small>${escapeHtml(mediaLabel(post.media_type))}</small>
                 <button
                   class="client-audio-play"
                   type="button"
-                  data-audio-src="${escapeAttr(post.media_url || "")}"
+                  data-audio-src="${escapeAttr(audioSrc)}"
                   aria-label="پخش صوت"
                   ${disabledAttr}
                 >
@@ -756,7 +867,7 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
       }
 
       function buildPostGroups(posts) {
-        const rest = posts.slice(1);
+        const rest = posts;
         const groups = CATEGORY_DEFINITIONS.map((category) => ({
           title: category.title,
           posts: rest.filter((post) => postHasCategory(post, category)).slice(0, 8),

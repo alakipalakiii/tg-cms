@@ -23,6 +23,7 @@ const siteUrl = SITE.url.replace(/\/+$/, "");
 function cleanMetaText(value: string | null | undefined): string {
   return String(value || "")
     .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
+    .replace(/(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+/giu, "\n")
     .replace(/https?:\/\/[^\s]+/giu, "")
     .replace(/@[a-zA-Z0-9_]+/g, "")
     .replace(/(^|\s)#([^\s#]+)/gu, " ")
@@ -30,6 +31,45 @@ function cleanMetaText(value: string | null | undefined): string {
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
+}
+
+
+function extractMovieTitleFromText(value: string | null | undefined): string {
+  const lines = String(value || "").split(/\r?\n/);
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    const match = line.match(/^(?:🎥|🎬|فیلم\s*:?)\s*#?\s*(.+)$/iu);
+
+    if (!match) continue;
+
+    const title = match[1]
+      .replace(/[🔹•●▪▫◦]+/gu, "")
+      .replace(/@mahoonartmagazine/giu, "")
+      .replace(/_/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^#/, "")
+      .trim();
+
+    if (title) return title;
+  }
+
+  return "";
+}
+
+function hasDialogueTagInText(value: string | null | undefined): boolean {
+  return /(^|\s)#(?:دیالوگ|دیالوگ‌ها|دیالوگ_ها)(?=\s|$)/u.test(String(value || ""));
+}
+
+function makeAutoMetaTitle(text: string | null | undefined): string {
+  const movieTitle = extractMovieTitleFromText(text);
+
+  if (movieTitle && hasDialogueTagInText(text)) {
+    return "دیالوگی از فیلم \u2066" + movieTitle + "\u2069";
+  }
+
+  return "";
 }
 
 function makeMetaTitle(text: string | null | undefined): string {
@@ -95,7 +135,7 @@ async function fetchSeoPost(postSlug: string): Promise<SeoPost | null> {
 }
 
 const seoPost = await fetchSeoPost(slug);
-const metaTitle = seoPost?.seo_title || makeMetaTitle(seoPost?.text) || SITE.name;
+const metaTitle = seoPost?.seo_title || makeAutoMetaTitle(seoPost?.text) || makeMetaTitle(seoPost?.text) || SITE.name;
 const metaDescription =
   seoPost?.seo_description || makeMetaDescription(seoPost?.text) || SITE.description;
 const metaImage =
@@ -243,6 +283,7 @@ const articleJsonLdHtml = articleJsonLd
         return String(value || "")
           .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
           .replace(/\u{1F539}/gu, "")
+          .replace(/(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+/giu, "\n")
           .replace(/https?:\/\/(?:t\.me|telegram\.me|telegram\.dog)\/[^\s]+/giu, "")
           .replace(/https?:\/\/[^\s]+/giu, "")
           .replace(/@[a-zA-Z0-9_]+/g, "")
@@ -267,6 +308,67 @@ const articleJsonLdHtml = articleJsonLd
           .trim()
           .toLowerCase();
       }
+
+      /* mahoon-dialogue-movie-v2 */
+      function extractMovieTitle(value) {
+        const lines = String(value || "").split(/\r?\n/);
+
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          const match = line.match(/^(?:🎥|🎬|فیلم\s*:?)\s*#?\s*(.+)$/iu);
+
+          if (!match) continue;
+
+          const title = match[1]
+            .replace(/[🔹•●▪▫◦]+/gu, "")
+            .replace(/@mahoonartmagazine/giu, "")
+            .replace(/_/g, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .replace(/^#/, "")
+            .trim();
+
+          if (title) return title;
+        }
+
+        return "";
+      }
+
+      function getRawHashTags(text) {
+        return Array.from(String(text || "").matchAll(/(^|\s)#([^\s#]+)/gu))
+          .map((match) => match[2])
+          .filter(Boolean);
+      }
+
+      function hasRawTag(text, variants) {
+        const expected = new Set(variants.map(normalizeTag));
+        return getRawHashTags(text).some((tag) => expected.has(normalizeTag(tag)));
+      }
+
+      function isDialoguePost(post) {
+        return hasRawTag(post?.text, ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"]);
+      }
+
+      function makeAutoDisplayTitle(post, mode = "card") {
+        const movieTitle = extractMovieTitle(post?.text);
+
+        if (!movieTitle || !isDialoguePost(post)) return "";
+
+        const title = "دیالوگی از فیلم \u2066" + movieTitle + "\u2069";
+        if (mode === "post") return title;
+
+        return buildShortTitle(title, mode) || title;
+      }
+
+      function getPostCategory(post) {
+        if (hasRawTag(post?.text, ["کتاب"])) return "کتاب";
+        if (hasRawTag(post?.text, ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"])) return "دیالوگ ها";
+        if (hasRawTag(post?.text, ["صوتی", "صدا", "موسیقی"])) return "صوتی";
+        if (hasRawTag(post?.text, ["متن", "متن‌ها", "متن_ها", "شعر", "اشعار", "شعرها", "شعر_ها"])) return "شعر و متن";
+        if (hasRawTag(post?.text, ["نقاشی"])) return "نقاشی";
+        return "";
+      }
+
 
       function truncateText(value, maxLength) {
         const source = String(value || "").replace(/\s+/g, " ").trim();
@@ -313,6 +415,9 @@ const articleJsonLdHtml = articleJsonLd
       }
 
       function makeDisplayTitle(post, mode = "card") {
+        const autoTitle = makeAutoDisplayTitle(post, mode);
+        if (autoTitle) return autoTitle;
+
         const seoTitle = cleanPublicText(post?.seo_title).replace(/\s+/g, " ").trim();
         if (isSeoTitleUsable(post, seoTitle)) {
           return buildShortTitle(seoTitle, mode) || "مطلبی از ماهون";
@@ -376,14 +481,27 @@ const articleJsonLdHtml = articleJsonLd
         return null;
       }
 
+
+      function getAudioSrc(post) {
+        const type = String(post?.media_type || "").toLowerCase();
+        if (type !== "audio" && type !== "voice") return "";
+
+        const direct = validMediaValue(post?.media_url);
+        if (direct && !looksLikeImageUrl(direct)) return direct;
+
+        const mediaFileId = String(post?.media_file_id || "").trim();
+        if (mediaFileId) return `${API_BASE}/media/${encodeURIComponent(mediaFileId)}`;
+
+        return "";
+      }
+
       function getTags(text) {
-        return Array.from(
-          new Set(
-            Array.from(String(text || "").matchAll(/(^|\s)#([^\s#]+)/gu))
-              .map((match) => match[2])
-              .filter(Boolean)
-          )
-        );
+        const tags = getRawHashTags(text);
+        const movieTitle = extractMovieTitle(text);
+
+        if (movieTitle) tags.push(movieTitle);
+
+        return Array.from(new Set(tags.filter(Boolean)));
       }
 
       function getPublicTags(text) {
@@ -486,18 +604,29 @@ const articleJsonLdHtml = articleJsonLd
       }
 
       function renderText(text) {
-        const cleaned = cleanText(text);
-
-        if (!cleaned) {
-          return `<p>روایتی تازه از مجله هنری ماهون</p>`;
-        }
-
-        return cleaned
+        const blocks = String(text || "")
           .split(/\n+/)
           .map((line) => line.trim())
           .filter(Boolean)
-          .map((line) => `<p>${escapeHtml(line)}</p>`)
-          .join("");
+          .map((line) => {
+            const movieTitle = extractMovieTitle(line);
+
+            if (movieTitle) {
+              return "";
+            }
+
+            const cleaned = cleanText(line);
+            if (!cleaned) return "";
+
+            return `<p>${escapeHtml(cleaned)}</p>`;
+          })
+          .filter(Boolean);
+
+        if (!blocks.length) {
+          return `<p>روایتی تازه از مجله هنری ماهون</p>`;
+        }
+
+        return blocks.join("");
       }
 
       function renderTags(post) {
@@ -517,14 +646,43 @@ const articleJsonLdHtml = articleJsonLd
       }
 
       function renderMedia(post) {
-        const url = validMediaValue(post.media_url || post.photo_url);
         const imageSrc = getMediaSrc(post);
+        const audioSrc = getAudioSrc(post);
         const title = makeDisplayTitle(post, "post");
+        const url = validMediaValue(post.media_url || post.photo_url);
+
+        if (post.media_type === "audio" || post.media_type === "voice") {
+          const cover = imageSrc
+            ? `
+              <figure class="client-single-media client-single-audio-cover" data-media-wrap>
+                <img src="${escapeAttr(imageSrc)}" alt="${escapeAttr(title)}" width="960" height="620" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
+              </figure>
+            `
+            : "";
+
+          const player = audioSrc
+            ? `
+              <div class="client-audio-box">
+                <div class="client-audio-icon">♪</div>
+                <div class="client-audio-info">
+                  <strong>${escapeHtml(post.media_file_name || mediaLabel(post.media_type))}</strong>
+                  <span>
+                    ${escapeHtml(formatDuration(post.media_duration))}
+                    ${post.media_size ? " · " + escapeHtml(formatFileSize(post.media_size)) : ""}
+                  </span>
+                </div>
+                <audio controls preload="metadata" src="${escapeAttr(audioSrc)}"></audio>
+              </div>
+            `
+            : "";
+
+          return cover + player;
+        }
 
         if (imageSrc) {
           return `
             <figure class="client-single-media" data-media-wrap>
-              <img src="${escapeAttr(cacheBustMediaUrl(imageSrc, post.id))}" alt="${escapeAttr(title)}" width="960" height="620" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
+              <img src="${escapeAttr(imageSrc)}" alt="${escapeAttr(title)}" width="960" height="620" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
             </figure>
           `;
         }
@@ -539,22 +697,6 @@ const articleJsonLdHtml = articleJsonLd
                 <strong>${escapeHtml(title)}</strong>
               </div>
               <video controls preload="metadata" src="${escapeAttr(url)}"></video>
-            </div>
-          `;
-        }
-
-        if (post.media_type === "audio" || post.media_type === "voice") {
-          return `
-            <div class="client-audio-box">
-              <div class="client-audio-icon">♪</div>
-              <div class="client-audio-info">
-                <strong>${escapeHtml(post.media_file_name || mediaLabel(post.media_type))}</strong>
-                <span>
-                  ${escapeHtml(formatDuration(post.media_duration))}
-                  ${post.media_size ? " · " + escapeHtml(formatFileSize(post.media_size)) : ""}
-                </span>
-              </div>
-              <audio controls preload="metadata" src="${escapeAttr(url)}"></audio>
             </div>
           `;
         }
@@ -639,6 +781,7 @@ const articleJsonLdHtml = articleJsonLd
           `
           : "";
         const publicMediaLabel = mediaLabel(post.media_type);
+        const publicCategoryLabel = getPostCategory(post);
 
         article.innerHTML = `
           <div class="client-single-layout">
@@ -648,6 +791,7 @@ const articleJsonLdHtml = articleJsonLd
               <div class="client-single-body">
                 <div class="client-single-meta">
                   <span>${escapeHtml(formatDate(post.created_at))}</span>
+                  ${publicCategoryLabel ? `<span>${escapeHtml(publicCategoryLabel)}</span>` : ""}
                   ${publicMediaLabel ? `<span>${escapeHtml(publicMediaLabel)}</span>` : ""}
                 </div>
 

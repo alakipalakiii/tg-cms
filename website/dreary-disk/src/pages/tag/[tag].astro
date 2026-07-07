@@ -1,31 +1,37 @@
 ---
-export const prerender = false;
-
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { SITE } from "../../config";
-import { getPosts, parsePostContent, formatDate, makeExcerpt, makeTitle } from "../../lib/posts";
 
-const SYSTEM_TAGS = new Set(
-  [
-    "کتاب",
-    "دیالوگ",
-    "دیالوگ‌ها",
-    "دیالوگ_ها",
-    "صوتی",
-    "صدا",
-    "موسیقی",
-    "متن",
-    "متن‌ها",
-    "متن_ها",
-    "شعر",
-    "اشعار",
-    "شعرها",
-    "شعر_ها",
-    "نقاشی"
-  ].map(normalizeTag)
-);
+export const prerender = false;
 
-function safeDecode(value: string) {
+type RawPost = {
+  id?: number | string;
+  text?: string | null;
+  slug?: string | null;
+  created_at?: string | null;
+  media_type?: string | null;
+  media_url?: string | null;
+  photo_url?: string | null;
+  photo_file_id?: string | null;
+  media_file_id?: string | null;
+  file_id?: string | null;
+  telegram_file_id?: string | null;
+  image_url?: string | null;
+  thumbnail_url?: string | null;
+  file_url?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
+};
+
+type Post = Required<Pick<RawPost, "text" | "slug" | "created_at">> & RawPost & {
+  id: number;
+};
+
+const rawTag = Astro.params.tag || "";
+const workerUrl = SITE.workerUrl.replace(/\/+$/, "");
+const siteUrl = SITE.url.replace(/\/+$/, "");
+
+function safeDecode(value: string): string {
   try {
     return decodeURIComponent(value || "");
   } catch {
@@ -33,21 +39,62 @@ function safeDecode(value: string) {
   }
 }
 
-function normalizeTag(value: string) {
-  return String(value || "")
+function normalizeTag(tag: string | null | undefined): string {
+  return String(tag || "")
     .replace(/^#/, "")
     .replace(/[يى]/g, "ی")
     .replace(/ك/g, "ک")
     .replace(/\u200c/g, "")
+    .replace(/_/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
 }
 
-function cleanUiText(value: string | null | undefined) {
+function extractMovieTitle(value: string | null | undefined): string {
+  const lines = String(value || "").split(/\r?\n/);
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    const match = line.match(/^(?:🎥|🎬|فیلم\s*:?)\s*#?\s*(.+)$/iu);
+
+    if (!match) continue;
+
+    const title = match[1]
+      .replace(/[🔹•●▪▫◦]+/gu, "")
+      .replace(/@mahoonartmagazine/giu, "")
+      .replace(/_/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^#/, "")
+      .trim();
+
+    if (title) return title;
+  }
+
+  return "";
+}
+
+function getRawHashTags(text: string | null | undefined): string[] {
+  return Array.from(String(text || "").matchAll(/(^|\s)#([^\s#]+)/gu))
+    .map((match) => match[2])
+    .filter(Boolean);
+}
+
+function getTags(text: string | null | undefined): string[] {
+  const tags = getRawHashTags(text);
+  const movieTitle = extractMovieTitle(text);
+
+  if (movieTitle) tags.push(movieTitle);
+
+  return Array.from(new Set(tags.filter(Boolean)));
+}
+
+function cleanPublicText(value: string | null | undefined): string {
   return String(value || "")
     .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
     .replace(/\u{1F539}/gu, "")
+    .replace(/(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+/giu, "\n")
     .replace(/https?:\/\/(?:t\.me|telegram\.me|telegram\.dog)\/[^\s]+/giu, "")
     .replace(/https?:\/\/[^\s]+/giu, "")
     .replace(/@[a-zA-Z0-9_]+/g, "")
@@ -58,20 +105,13 @@ function cleanUiText(value: string | null | undefined) {
     .trim();
 }
 
-const rawTag = Astro.params.tag || "";
-const tag = safeDecode(rawTag).replace(/^#/, "").trim();
-const normalizedCurrentTag = normalizeTag(tag);
-const workerUrl = SITE.workerUrl.replace(/\/+$/, "");
-
-const rawPosts = await getPosts();
-
-function truncateText(value: string | null | undefined, maxLength: number) {
+function truncateText(value: string | null | undefined, maxLength: number): string {
   const source = String(value || "").replace(/\s+/g, " ").trim();
   if (!source) return "";
-  return source.length <= maxLength ? source : `${source.slice(0, maxLength).trim()}…`;
+  return source.length <= maxLength ? source : source.slice(0, maxLength).trim() + "…";
 }
 
-function firstWords(value: string | null | undefined, maxWords: number) {
+function firstWords(value: string | null | undefined, maxWords: number): string {
   return String(value || "")
     .replace(/\s+/g, " ")
     .trim()
@@ -81,179 +121,200 @@ function firstWords(value: string | null | undefined, maxWords: number) {
     .join(" ");
 }
 
-function buildShortTitle(value: string | null | undefined) {
-  const source = cleanUiText(value).replace(/\s+/g, " ").trim();
+function hasDialogueTag(text: string | null | undefined): boolean {
+  const expected = new Set(["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"].map(normalizeTag));
+  return getRawHashTags(text).some((tag) => expected.has(normalizeTag(tag)));
+}
+
+function buildShortTitle(value: string | null | undefined, mode = "card"): string {
+  const source = cleanPublicText(value).replace(/\s+/g, " ").trim();
+  const maxChars = mode === "suggestion" ? 34 : 38;
+  const maxWords = mode === "suggestion" ? 6 : 6;
   if (!source) return "";
-  const phrase = firstWords(source.split(/\n|[.!؟?؛]/).find(Boolean) || source, 6);
-  const limited = truncateText(phrase, 38);
-  const wasShortened = phrase.length > 38 || source.split(/\s+/).filter(Boolean).length > 6;
-  return wasShortened && !limited.endsWith("…") ? `${limited}…` : limited;
+  const phrase = firstWords(source.split(/\n|[.!؟?؛]/).find(Boolean) || source, maxWords);
+  return truncateText(phrase, maxChars);
 }
 
-function isSeoTitleUsable(post: (typeof rawPosts)[number], seoTitle: string | null | undefined) {
-  const cleanTitle = cleanUiText(seoTitle).replace(/\s+/g, " ").trim();
-  if (!cleanTitle || cleanTitle.length > 65) return false;
-  const cleanBody = cleanUiText(post.text).replace(/\s+/g, " ").trim();
-  if (cleanBody && cleanBody.length > 90 && cleanBody.startsWith(cleanTitle)) return false;
-  return cleanTitle.split(/\s+/).filter(Boolean).length <= 10;
-}
+function makeDisplayTitle(post: Post, mode = "card"): string {
+  const movieTitle = extractMovieTitle(post.text);
 
-function makeTagPostTitle(post: (typeof rawPosts)[number], parsed: ReturnType<typeof parsePostContent>) {
-  const seoTitle = cleanUiText(post.seo_title).replace(/\s+/g, " ").trim();
-  if (isSeoTitleUsable(post, seoTitle)) return buildShortTitle(seoTitle) || "مطلبی از ماهون";
-
-  const parsedTitle = cleanUiText(makeTitle(post.text));
-  if (parsedTitle) return buildShortTitle(parsedTitle) || "مطلبی از ماهون";
-
-  const firstLine = cleanUiText(parsed.cleanText)
-    .split(/\n|[.!؟?؛]/)
-    .map((line) => line.trim())
-    .find(Boolean);
-  if (firstLine) return buildShortTitle(firstLine) || "مطلبی از ماهون";
-
-  const excerpt = cleanUiText(makeExcerpt(post.text, 42));
-  return buildShortTitle(excerpt) || "مطلبی از ماهون";
-}
-
-function getPostHref(post: (typeof rawPosts)[number]) {
-  const slug = String(post.slug || "").trim();
-  if (slug && slug !== "#" && !/^javascript:/i.test(slug)) {
-    return `/post/${encodeURIComponent(slug)}`;
+  if (movieTitle && hasDialogueTag(post.text)) {
+    return "دیالوگی از فیلم \u2066" + movieTitle + "\u2069";
   }
 
-  const id = String(post.id || "").trim();
-  if (id) return `/post/${encodeURIComponent(id)}`;
+  const seoTitle = cleanPublicText(post.seo_title).replace(/\s+/g, " ").trim();
+  if (seoTitle && seoTitle.length <= 65) return buildShortTitle(seoTitle, mode) || "مطلبی از ماهون";
 
-  return "#";
+  return buildShortTitle(post.text, mode) || "مطلبی از ماهون";
 }
 
-function validMediaValue(value: unknown) {
+function makeExcerpt(post: Post): string {
+  const source = cleanPublicText(post.seo_description || post.text).replace(/\s+/g, " ").trim();
+  return source ? truncateText(source, 145) : "روایتی تازه از مجله هنری ماهون";
+}
+
+function formatDate(value: string | null | undefined): string {
+  if (!value) return "";
+  try {
+    return new Intl.DateTimeFormat("fa-IR", {
+      year: "numeric",
+      month: "long",
+      day: "numeric"
+    }).format(new Date(String(value).replace(" ", "T")));
+  } catch {
+    return String(value || "");
+  }
+}
+
+function validMediaValue(value: string | null | undefined): string | null {
   const source = String(value || "").trim();
   if (!source || source.toLowerCase() === "about:blank" || /^javascript:/i.test(source)) return null;
   return source;
 }
 
-function looksLikeImageUrl(value: unknown) {
-  return /\.(avif|webp|png|jpe?g|gif|bmp|svg)(\?|#|$)/i.test(String(value || ""));
-}
-
-function getMediaSrc(post: Record<string, any>) {
+function getMediaSrc(post: Post): string | null {
   const directImage = [
     post.photo_url,
     post.image_url,
     post.thumbnail_url,
-    post.media?.url,
     post.file_url
   ].map(validMediaValue).find(Boolean);
+
   if (directImage) return directImage;
 
   const mediaUrl = validMediaValue(post.media_url);
-  if (mediaUrl && (post.media_type === "photo" || post.media_type === "image" || looksLikeImageUrl(mediaUrl))) {
-    return mediaUrl;
-  }
+  if (mediaUrl && (post.media_type === "photo" || post.media_type === "image")) return mediaUrl;
 
-  const fileId = String(post.photo_file_id || post.telegram_file_id || post.file_id || "").trim();
-  if (fileId) return `${workerUrl}/media/${encodeURIComponent(fileId)}`;
-
-  const mediaFileId = String(post.media_file_id || "").trim();
-  if (mediaFileId && (post.media_type === "photo" || post.media_type === "image")) {
-    return `${workerUrl}/media/${encodeURIComponent(mediaFileId)}`;
-  }
+  const fileId = String(post.photo_file_id || post.telegram_file_id || post.file_id || post.media_file_id || "").trim();
+  if (fileId) return workerUrl + "/media/" + encodeURIComponent(fileId);
 
   return null;
 }
 
-const posts = rawPosts
-  .map((post) => {
-    const parsed = parsePostContent(post.text);
-    const publicHashtags = parsed.hashtags.filter((item) => !SYSTEM_TAGS.has(normalizeTag(item)));
+function getPostHref(post: Post): string {
+  const slug = String(post.slug || "").trim();
+  if (slug) return "/post/" + encodeURIComponent(slug);
+  return "/post/" + encodeURIComponent(String(post.id));
+}
 
-    return {
-      ...post,
-      title: makeTagPostTitle(post, parsed),
-      excerpt: cleanUiText(makeExcerpt(post.text, 150)),
-      href: getPostHref(post),
-      mediaSrc: getMediaSrc(post),
-      content: cleanUiText(parsed.cleanText),
-      hashtags: publicHashtags,
-      allHashtags: parsed.hashtags,
-      searchText: [post.seo_title, post.text, post.slug].filter(Boolean).join(" "),
-      date: formatDate(post.created_at)
-    };
-  })
-  .filter((post) =>
-    post.allHashtags.some((item) => normalizeTag(item) === normalizedCurrentTag)
-  );
+function normalizePost(raw: RawPost): Post | null {
+  const id = Number(raw.id || 0);
+  if (!id) return null;
 
-const title = tag ? `#${tag}` : "برچسب";
-const description = tag
-  ? `مطالب مرتبط با برچسب ${tag} در مجله هنری ماهون`
-  : SITE.description;
+  return {
+    ...raw,
+    id,
+    text: String(raw.text || ""),
+    slug: String(raw.slug || ""),
+    created_at: String(raw.created_at || "")
+  };
+}
+
+function extractPosts(payload: any): Post[] {
+  const source = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.posts)
+      ? payload.posts
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : [];
+
+  return source.map(normalizePost).filter(Boolean) as Post[];
+}
+
+async function loadPosts(): Promise<Post[]> {
+  try {
+    const response = await fetch(workerUrl + "/", {
+      method: "GET",
+      headers: {
+        Accept: "application/json"
+      }
+    });
+
+    if (!response.ok) return [];
+
+    return extractPosts(await response.json());
+  } catch {
+    return [];
+  }
+}
+
+const currentTag = safeDecode(rawTag).replace(/^#/, "").replace(/_/g, " ").trim();
+const normalizedCurrentTag = normalizeTag(currentTag);
+const allPosts = await loadPosts();
+const matchingPosts = allPosts.filter((post) =>
+  getTags(post.text).some((tag) => normalizeTag(tag) === normalizedCurrentTag)
+);
+
+const displayTag = currentTag || "برچسب";
+const pageTitle = "#" + displayTag + " | " + SITE.name;
+const pageDescription = matchingPosts.length
+  ? "مطالب منتشرشده با برچسب " + displayTag + " در مجله هنری ماهون"
+  : "برچسب " + displayTag + " در مجله هنری ماهون";
+const canonicalUrl = siteUrl + "/tag/" + encodeURIComponent(displayTag);
 ---
 
-<BaseLayout title={title} description={description}>
-  <main class="page-section">
+<BaseLayout title={pageTitle} description={pageDescription} canonical={canonicalUrl}>
+  <main class="page-section tag-page">
     <div class="container">
       <div class="breadcrumb">
         <a href="/">خانه</a>
-        <span> / </span>
+        <span>/</span>
         <span>برچسب</span>
       </div>
 
-      <section class="page-card" style="margin-bottom: 28px;">
+      <section class="page-card tag-hero-card" style="margin-bottom: 28px;">
         <span class="tag">برچسب ماهون</span>
-
-        <h1>{title}</h1>
-
+        <h1 dir="ltr">#{displayTag}</h1>
         <p>
-          {posts.length > 0
-            ? `${posts.length} مطلب مرتبط با این برچسب در مجله هنری ماهون منتشر شده است.`
-            : "هنوز مطلبی برای این برچسب پیدا نشد."
-          }
+          {matchingPosts.length
+            ? "همه روایت‌های مرتبط با این برچسب در ماهون."
+            : "هنوز مطلبی برای این برچسب پیدا نشد."}
         </p>
       </section>
 
-      {posts.length > 0 ? (
-        <div class="public-list">
-          {posts.map((post) => (
-            <a
-              class="public-list-row"
-              href={post.href}
-              data-post-card
-              data-search={post.searchText}
-            >
-              <div class="public-list-row__text">
-                <strong class="public-list-row__title public-card-title">{post.title}</strong>
-                <span class="public-list-row__excerpt">{post.excerpt}</span>
-                <span class="public-list-row__meta">{post.date}</span>
-              </div>
+      {
+        matchingPosts.length ? (
+          <section class="public-list tag-post-list">
+            {
+              matchingPosts.map((post) => {
+                const image = getMediaSrc(post);
+                const title = makeDisplayTitle(post, "card");
 
-              {post.mediaSrc && (
-                <span data-media-wrap>
-                  <img
-                    class="public-list-row__thumb"
-                    src={post.mediaSrc}
-                    alt={post.title}
-                    width="72"
-                    height="72"
-                    loading="lazy"
-                    decoding="async"
-                    onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')"
-                  />
-                </span>
-              )}
+                return (
+                  <a class="public-list-row" href={getPostHref(post)}>
+                    <span class="public-list-row__text">
+                      <strong class="public-list-row__title">{title}</strong>
+                      <span class="public-list-row__excerpt">{makeExcerpt(post)}</span>
+                      <small>{formatDate(post.created_at)}</small>
+                    </span>
 
-              <span class="public-list-row__arrow" aria-hidden="true">‹</span>
-            </a>
-          ))}
-        </div>
-      ) : (
-        <section class="not-found">
-          <h1>مطلبی پیدا نشد</h1>
-          <p>برای این برچسب هنوز مطلبی در سایت ثبت نشده است.</p>
-          <a class="btn btn-primary" href="/">بازگشت به خانه</a>
-        </section>
-      )}
+                    {
+                      image && (
+                        <img
+                          class="public-list-row__thumb"
+                          src={image}
+                          alt={title}
+                          width="72"
+                          height="72"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      )
+                    }
+                  </a>
+                );
+              })
+            }
+          </section>
+        ) : (
+          <section class="not-found">
+            <h1>مطلبی پیدا نشد</h1>
+            <p>برای این برچسب هنوز مطلبی در سایت ثبت نشده است.</p>
+            <a class="btn" href="/">بازگشت به خانه</a>
+          </section>
+        )
+      }
     </div>
   </main>
 </BaseLayout>
