@@ -2814,3 +2814,18 @@ p {
 .client-audio-box {
   margin-top: 0;
 }
+
+
+/* mahoon-bidi-dialogue-title-v2 */
+.featured-card__title,
+.category-card__title,
+.public-card-title {
+  direction: rtl;
+  unicode-bidi: isolate;
+}
+
+.featured-card__excerpt,
+.category-card__excerpt {
+  direction: rtl;
+  unicode-bidi: plaintext;
+}

@@ -215,11 +215,23 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
         return escapeHtml(value).replace(/`/g, "&#096;");
       }
 
-      function cleanPublicText(value) {
+      function stripMovieCreditLines(value) {
         return String(value || "")
+          .split(/\r?\n/)
+          .filter((line) => {
+            const trimmed = line.trim();
+
+            if (!trimmed) return true;
+
+            return !/^(?:🎥|🎬|فیلم\s*:?)\s*#?\s*.+$/iu.test(trimmed);
+          })
+          .join("\n");
+      }
+
+      function cleanPublicText(value) {
+        return stripMovieCreditLines(value)
           .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
           .replace(/\u{1F539}/gu, "")
-          .replace(/(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+/giu, "\n")
           .replace(/https?:\/\/(?:t\.me|telegram\.me|telegram\.dog)\/[^\s]+/giu, "")
           .replace(/https?:\/\/[^\s]+/giu, "")
           .replace(/@[a-zA-Z0-9_]+/g, "")
@@ -290,7 +302,7 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
 
         if (!movieTitle || !isDialoguePost(post)) return "";
 
-        const title = "دیالوگی از فیلم \u2066" + movieTitle + "\u2069";
+        const title = "دیالوگی از فیلم \u200E" + movieTitle + "\u200E";
         if (mode === "post") return title;
 
         return buildShortTitle(title, mode) || title;
@@ -305,6 +317,10 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
         return "";
       }
 
+
+      function escapeRegExp(value) {
+        return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\      function truncateText(value, maxLength)");
+      }
 
       function truncateText(value, maxLength) {
         const source = String(value || "").replace(/\s+/g, " ").trim();
@@ -362,13 +378,22 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
         return buildShortTitle(post?.text, mode) || "مطلبی از ماهون";
       }
 
-      function makeExcerpt(input) {
-        const value = typeof input === "object" && input !== null
-          ? input.seo_description || input.text
-          : input;
-        const source = cleanPublicText(value).replace(/\s+/g, " ").trim();
-        if (!source) return "روایتی تازه از مجله هنری ماهون";
-        return truncateText(source, 145);
+      function makeExcerpt(post) {
+        const movieTitle = extractMovieTitle(post?.text);
+        let source = cleanPublicText(post?.seo_description || post?.text)
+          .replace(/\s+/g, " ")
+          .trim();
+
+        if (movieTitle) {
+          source = source
+            .replace(new RegExp(escapeRegExp(movieTitle), "giu"), "")
+            .replace(/🎥|🎬/gu, "")
+            .replace(/\s+/g, " ")
+            .replace(/^[،,؛:؛.\-\s]+|[،,؛:؛.\-\s]+$/g, "")
+            .trim();
+        }
+
+        return source ? truncateText(source, 145) : "روایتی تازه از مجله هنری ماهون";
       }
 
       function validMediaValue(value) {
@@ -961,6 +986,13 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
           }
 
           const payload = await response.json();
+
+          try {
+            window.localStorage.setItem(MAHOON_POSTS_CACHE_KEY, JSON.stringify({
+              savedAt: Date.now(),
+              payload
+            }));
+          } catch {}
 
           allPosts = extractPosts(payload).sort((a, b) => {
             const aTime = new Date(String(a.created_at).replace(" ", "T")).getTime();
