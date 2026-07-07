@@ -1,114 +1,70 @@
 ---
-import BaseLayout from "../../layouts/BaseLayout.astro";
-import { SITE } from "../../config";
-
-export const prerender = false;
-
-const apiBase = SITE.workerUrl.replace(/\/+$/, "");
+const target = "/admin?v=analytics-integrated#analytics";
 ---
 
-<BaseLayout
-  title="آمار پیشرفته ماهون | پنل مدیریت"
-  description="داشبورد آمار بازدید مجله هنری ماهون"
-  canonical={`${SITE.url.replace(/\/+$/, "")}/admin/analytics`}
->
-  <main class="page-section admin-analytics-page" data-api-base={apiBase}>
-    <div class="container">
-      <section class="analytics-head">
-        <div>
-          <span class="eyebrow">پنل مدیریت ماهون</span>
-          <h1>آمار پیشرفته بازدید سایت</h1>
-          <p>نمایش بازدیدها، کاربران یکتا، صفحات پربازدید، منابع ورودی، دستگاه‌ها و روند روزانه.</p>
-        </div>
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="refresh" content="0; url=/admin?v=analytics-integrated#analytics" />
+    <title>انتقال به آمار بازدید | ماهون</title>
+    <script is:inline>
+      window.location.replace("/admin?v=analytics-integrated#analytics");
+    </script>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        direction: rtl;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f5e8dc;
+        color: #4b0d0d;
+      }
 
-        <div class="analytics-actions">
-          <a class="btn btn-soft" href="/admin">بازگشت به پنل</a>
-          <button class="btn" type="button" data-refresh>به‌روزرسانی</button>
-        </div>
-      </section>
+      main {
+        width: min(520px, calc(100% - 32px));
+        border: 1px solid rgba(75, 13, 13, 0.12);
+        border-radius: 28px;
+        background: rgba(255, 250, 242, 0.9);
+        box-shadow: 0 24px 64-shadow: 0 24px 64px rgba(75, 13, 13, 0.12);
+        padding: 34px;
+        text-align: center;
+      }
 
-      <section class="analytics-login" data-login-box>
-        <h2>ورود به آمار</h2>
-        <p>رمز پنل مدیریت را وارد کن.</p>
+      h1 {
+        margin: 0 0 12px;
+        font-size: 28px;
+      }
 
-        <form data-login-form>
-          <input data-token-input type="password" placeholder="رمز پنل مدیریت" autocomplete="current-password" />
-          <button class="btn" type="submit">ورود</button>
-        </form>
-      </section>
+      p {
+        margin: 0 0 22px;
+        color: rgba(75, 13, 13, 0.68);
+        line-height: 2;
+      }
 
-      <section class="analytics-dashboard is-hidden" data-dashboard>
-        <div class="analytics-toolbar">
-          <label>
-            بازه زمانی
-            <select data-days>
-              <option value="7">۷ روز اخیر</option>
-              <option value="30" selected>۳۰ روز اخیر</option>
-              <option value="90">۹۰ روز اخیر</option>
-              <option value="365">۳۶۵ روز اخیر</option>
-            </select>
-          </label>
-
-          <span data-status>در حال آماده‌سازی...</span>
-        </div>
-
-        <div class="analytics-kpis">
-          <article><small>کل بازدید</small><strong data-kpi="pageviews">۰</strong></article>
-          <article><small>کاربران یکتا</small><strong data-kpi="unique_visitors">۰</strong></article>
-          <article><small>نشست‌ها</small><strong data-kpi="sessions">۰</strong></article>
-          <article><small>بازدید امروز</small><strong data-kpi="today">۰</strong></article>
-          <article><small>بازدید دیروز</small><strong data-kpi="yesterday">۰</strong></article>
-        </div>
-
-        <section class="analytics-card">
-          <h2>روند روزانه</h2>
-          <div class="analytics-bars" data-daily></div>
-        </section>
-
-        <div class="analytics-grid">
-          <section class="analytics-card"><h2>صفحات پربازدید</h2><div data-table="topPages"></div></section>
-          <section class="analytics-card"><h2>منابع ورودی</h2><div data-table="referrers"></div></section>
-          <section class="analytics-card"><h2>دستگاه‌ها</h2><div data-table="devices"></div></section>
-          <section class="analytics-card"><h2>کشورها</h2><div data-table="countries"></div></section>
-        </div>
-
-        <section class="analytics-card">
-          <h2>آخرین بازدیدها</h2>
-          <div data-table="recent"></div>
-        </section>
-      </section>
-    </div>
-  </main>
-
-
-  <style>
-    html.mahoon-analytics-embedded body {
-      background: transparent !important;
-    }
-
-    html.mahoon-analytics-embedded header,
-    html.mahoon-analytics-embedded footer,
-    html.mahoon-analytics-embedded .site-header,
-    html.mahoon-analytics-embedded .site-footer {
-      display: none !important;
-    }
-
-    html.mahoon-analytics-embedded .admin-analytics-page {
-      padding-top: 0 !important;
-      padding-bottom: 0 !important;
-      min-height: auto !important;
-      background: transparent !important;
-    }
-
-    html.mahoon-analytics-embedded .admin-analytics-page .container {
-      width: 100% !important;
-      max-width: none !important;
-      padding: 0 20px 24px !important;
-    }
-
-    html.mahoon-analytics-embedded .analytics-head {
-      display: none !important;
-    }
-  </style>
-
-</BaseLayout>
+      a {
+        display: inline-flex;
+        min-height: 44px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: #5a0f0f;
+        color: #fff8ef;
+        padding: 0 18px;
+        text-decoration: none;
+        font-weight: 900;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>انتقال به پنل آمار</h1>
+      <p>صفحه آمار اکنون داخل پنل اصلی مدیریت نمایش داده می‌شود.</p>
+      <a href={target}>ورود به آمار بازدید</a>
+    </main>
+  </body>
+</html>

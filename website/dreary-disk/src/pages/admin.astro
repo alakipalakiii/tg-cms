@@ -1959,6 +1959,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                 <a href="#seo" data-section-link="seo"><span>⌁</span>سئو</a>
                 <a href="#site-copy" data-section-link="site-copy"><span>✎</span>متن‌های سایت</a>
                 <a href="#deleted" data-section-link="deleted"><span>×</span>حذف‌شده‌ها</a>
+                <a href="#analytics" data-section-link="analytics"><span>◌</span>آمار بازدید</a>
                 <a href="#export" data-section-link="export"><span>⇩</span>خروجی</a>
                 <a href="#settings" data-section-link="settings"><span>⚙</span>تنظیمات محلی</a>
               </nav>
@@ -2338,6 +2339,109 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                   </div>
                 </section>
 
+
+                <section class="panel admin-section" id="analyticsPanel" data-section="analytics" data-admin-section="analytics" hidden>
+                  <div class="panel-head">
+                    <div>
+                      <h2>آمار بازدید</h2>
+                      <p class="admin-help analytics-help">نمای تحلیلی بازدید سایت، کاربران یکتا، نشست‌ها، منابع ورودی، صفحات پربازدید و آخرین بازدیدهای ثبت‌شده.</p>
+                    </div>
+                    <div class="actions">
+                      <select class="admin-select select analytics-range-select" id="analyticsRangeSelect">
+                        <option value="7">۷ روز اخیر</option>
+                        <option value="30" selected>۳۰ روز اخیر</option>
+                        <option value="90">۹۰ روز اخیر</option>
+                        <option value="365">۳۶۵ روز اخیر</option>
+                      </select>
+                      <button class="admin-btn btn btn-primary" id="analyticsRefreshBtn" type="button">بروزرسانی آمار</button>
+                    </div>
+                  </div>
+
+                  <div class="panel-body analytics-panel-body">
+                    <div class="message analytics-message show ok" id="analyticsStatus">برای دریافت آمار، بروزرسانی آمار را بزن.</div>
+
+                    <div class="analytics-kpi-grid">
+                      <article class="analytics-kpi-card">
+                        <span>کل بازدید</span>
+                        <strong id="analyticsPageviews">۰</strong>
+                      </article>
+                      <article class="analytics-kpi-card">
+                        <span>کاربران یکتا</span>
+                        <strong id="analyticsVisitors">۰</strong>
+                      </article>
+                      <article class="analytics-kpi-card">
+                        <span>نشست‌ها</span>
+                        <strong id="analyticsSessions">۰</strong>
+                      </article>
+                      <article class="analytics-kpi-card">
+                        <span>بازدید امروز</span>
+                        <strong id="analyticsToday">۰</strong>
+                      </article>
+                      <article class="analytics-kpi-card">
+                        <span>بازدید دیروز</span>
+                        <strong id="analyticsYesterday">۰</strong>
+                      </article>
+                    </div>
+
+                    <div class="analytics-layout">
+                      <section class="analytics-card analytics-card-wide">
+                        <div class="analytics-card-head">
+                          <h3>روند روزانه بازدید</h3>
+                          <span id="analyticsDailyCount">—</span>
+                        </div>
+                        <div class="analytics-bars" id="analyticsDailyChart">
+                          <div class="empty">هنوز داده‌ای برای نمایش وجود ندارد.</div>
+                        </div>
+                      </section>
+
+                      <section class="analytics-card">
+                        <div class="analytics-card-head">
+                          <h3>صفحات پربازدید</h3>
+                        </div>
+                        <div class="analytics-list" id="analyticsTopPages">
+                          <div class="empty">داده‌ای ثبت نشده است.</div>
+                        </div>
+                      </section>
+
+                      <section class="analytics-card">
+                        <div class="analytics-card-head">
+                          <h3>منابع ورودی</h3>
+                        </div>
+                        <div class="analytics-list" id="analyticsReferrers">
+                          <div class="empty">داده‌ای ثبت نشده است.</div>
+                        </div>
+                      </section>
+
+                      <section class="analytics-card">
+                        <div class="analytics-card-head">
+                          <h3>دستگاه‌ها</h3>
+                        </div>
+                        <div class="analytics-list" id="analyticsDevices">
+                          <div class="empty">داده‌ای ثبت نشده است.</div>
+                        </div>
+                      </section>
+
+                      <section class="analytics-card">
+                        <div class="analytics-card-head">
+                          <h3>کشورها</h3>
+                        </div>
+                        <div class="analytics-list" id="analyticsCountries">
+                          <div class="empty">داده‌ای ثبت نشده است.</div>
+                        </div>
+                      </section>
+
+                      <section class="analytics-card analytics-card-wide">
+                        <div class="analytics-card-head">
+                          <h3>آخرین بازدیدها</h3>
+                        </div>
+                        <div class="analytics-list analytics-recent-list" id="analyticsRecent">
+                          <div class="empty">هنوز بازدیدی ثبت نشده است.</div>
+                        </div>
+                      </section>
+                    </div>
+                  </div>
+                </section>
+
                 <section class="panel admin-section" id="exportPanel" data-section="export" data-admin-section="export" hidden>
                   <div class="panel-head">
                     <h2>خروجی و ابزارها</h2>
@@ -2517,12 +2621,29 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       const sectionLinks = Array.from(document.querySelectorAll("[data-section-link]"));
       const adminSections = Array.from(document.querySelectorAll("[data-admin-section]"));
 
+      const analyticsRangeSelect = document.getElementById("analyticsRangeSelect");
+      const analyticsRefreshBtn = document.getElementById("analyticsRefreshBtn");
+      const analyticsStatus = document.getElementById("analyticsStatus");
+      const analyticsPageviews = document.getElementById("analyticsPageviews");
+      const analyticsVisitors = document.getElementById("analyticsVisitors");
+      const analyticsSessions = document.getElementById("analyticsSessions");
+      const analyticsToday = document.getElementById("analyticsToday");
+      const analyticsYesterday = document.getElementById("analyticsYesterday");
+      const analyticsDailyCount = document.getElementById("analyticsDailyCount");
+      const analyticsDailyChart = document.getElementById("analyticsDailyChart");
+      const analyticsTopPages = document.getElementById("analyticsTopPages");
+      const analyticsReferrers = document.getElementById("analyticsReferrers");
+      const analyticsDevices = document.getElementById("analyticsDevices");
+      const analyticsCountries = document.getElementById("analyticsCountries");
+      const analyticsRecent = document.getElementById("analyticsRecent");
+
       let posts = [];
       let deletedPosts = [];
       let selectedPost = null;
       let selectedIds = new Set();
       let currentMedia = null;
       let currentView = "active";
+      let analyticsLoaded = false;
       let editorDirty = false;
       let editorBaseline = "";
       let messageTimer = null;
@@ -2565,6 +2686,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         seo: { title: "سئو", kicker: "وضعیت عنوان، توضیح و پیش‌نمایش", visible: "seo" },
         "site-copy": { title: "متن‌ها و تنظیمات سایت", kicker: "ویرایش متن‌های عمومی سایت", visible: "site-copy" },
         deleted: { title: "حذف‌شده‌ها", kicker: "بازگردانی امن با ID ثابت", visible: "deleted" },
+        analytics: { title: "آمار بازدید", kicker: "تحلیل رفتار مخاطبان و بازدیدهای سایت", visible: "analytics" },
         export: { title: "خروجی و ابزارها", kicker: "JSON، کپی لینک و ابزارهای سریع", visible: "export" },
         settings: { title: "تنظیمات محلی", kicker: "Token و داده‌های سمت مرورگر", visible: "settings" }
       };
@@ -2575,7 +2697,10 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       }
 
       function setActiveNav(sectionKey) {
-        sectionLinks.forEach(link => {
+        analyticsRefreshBtn?.addEventListener("click", () => loadAnalyticsReport(true));
+      analyticsRangeSelect?.addEventListener("change", () => loadAnalyticsReport(true));
+
+      sectionLinks.forEach(link => {
           const active = link.getAttribute("data-section-link") === sectionKey;
           link.classList.toggle("active", active);
           link.setAttribute("aria-current", active ? "page" : "false");
@@ -2610,6 +2735,10 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
           if (key === "site-copy") {
             await loadSiteCopy();
+          }
+
+          if (key === "analytics") {
+            await loadAnalyticsReport();
           }
 
           if (key === "media") {
@@ -2725,13 +2854,15 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       function authHeaders() {
         return {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${getToken()}`
+          "Authorization": `Bearer ${getToken()}`,
+          "X-Admin-Token": getToken()
         };
       }
 
       function authOnlyHeaders() {
         return {
-          "Authorization": `Bearer ${getToken()}`
+          "Authorization": `Bearer ${getToken()}`,
+          "X-Admin-Token": getToken()
         };
       }
 
@@ -3262,6 +3393,195 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           setButtonLoading(button, false);
         }
       }
+
+
+      function formatAdminNumber(value) {
+        return String(Number(value || 0).toLocaleString("fa-IR"));
+      }
+
+      function analyticsRows(payload, ...keys) {
+        for (const key of keys) {
+          if (Array.isArray(payload?.[key])) return payload[key];
+        }
+
+        return [];
+      }
+
+      function analyticsTotal(payload, key) {
+        const totals = payload?.totals || {};
+        return totals[key] ?? payload?.[key] ?? 0;
+      }
+
+      function analyticsLabel(row, ...keys) {
+        for (const key of keys) {
+          const value = row?.[key];
+          if (value !== undefined && value !== null && String(value).trim()) return String(value);
+        }
+
+        return "نامشخص";
+      }
+
+      function analyticsValue(row, ...keys) {
+        for (const key of keys) {
+          const value = row?.[key];
+          if (value !== undefined && value !== null && value !== "") return Number(value || 0);
+        }
+
+        return 0;
+      }
+
+      function setAnalyticsStatus(text, type = "ok") {
+        if (!analyticsStatus) return;
+        analyticsStatus.textContent = text;
+        analyticsStatus.className = `message analytics-message show ${type === "error" ? "error" : "ok"}`;
+      }
+
+      async function loadAnalyticsReport(force = false) {
+        if (!analyticsStatus) return;
+
+        if (analyticsLoaded && !force) return;
+
+        const days = analyticsRangeSelect?.value || "30";
+
+        setAnalyticsStatus("در حال دریافت آمار بازدید...");
+
+        try {
+          const data = await api(`/analytics/report-v5?days=${encodeURIComponent(days)}`, {
+            method: "GET",
+            timeoutMs: 15000
+          });
+
+          if (!data?.ok) {
+            throw new Error(data?.error || "Analytics report failed");
+          }
+
+          analyticsLoaded = true;
+          renderAnalyticsReport(data);
+          setAnalyticsStatus(`آمار بازدید بروزرسانی شد. بازه انتخابی: ${formatAdminNumber(days)} روز اخیر`);
+        } catch (error) {
+          console.error(error);
+          setAnalyticsStatus(userFriendlyError(error, "دریافت آمار بازدید انجام نشد."), "error");
+        }
+      }
+
+      function renderAnalyticsReport(data) {
+        if (analyticsPageviews) analyticsPageviews.textContent = formatAdminNumber(analyticsTotal(data, "pageviews"));
+        if (analyticsVisitors) analyticsVisitors.textContent = formatAdminNumber(analyticsTotal(data, "unique_visitors"));
+        if (analyticsSessions) analyticsSessions.textContent = formatAdminNumber(analyticsTotal(data, "sessions"));
+        if (analyticsToday) analyticsToday.textContent = formatAdminNumber(analyticsTotal(data, "today"));
+        if (analyticsYesterday) analyticsYesterday.textContent = formatAdminNumber(analyticsTotal(data, "yesterday"));
+
+        renderAnalyticsDaily(analyticsRows(data, "byDay", "daily", "days", "timeline"));
+        renderAnalyticsList(analyticsTopPages, analyticsRows(data, "topPages", "top_pages", "pages"), {
+          titleKeys: ["title", "path", "url"],
+          subtitleKeys: ["path", "url"],
+          valueKeys: ["views", "pageviews", "count"]
+        });
+        renderAnalyticsList(analyticsReferrers, analyticsRows(data, "referrers", "sources", "topReferrers"), {
+          titleKeys: ["referrer_host", "source", "host", "referrer"],
+          subtitleKeys: ["referrer", "url"],
+          valueKeys: ["views", "pageviews", "count"]
+        });
+        renderAnalyticsList(analyticsDevices, analyticsRows(data, "devices", "byDevice"), {
+          titleKeys: ["device", "name", "label"],
+          subtitleKeys: ["device"],
+          valueKeys: ["views", "pageviews", "count"]
+        });
+        renderAnalyticsList(analyticsCountries, analyticsRows(data, "countries", "byCountry"), {
+          titleKeys: ["country", "name", "label"],
+          subtitleKeys: ["city", "country"],
+          valueKeys: ["views", "pageviews", "count"]
+        });
+        renderAnalyticsRecent(analyticsRows(data, "recent", "recentEvents", "latest"));
+      }
+
+      function renderAnalyticsDaily(rows) {
+        if (!analyticsDailyChart) return;
+
+        if (analyticsDailyCount) {
+          analyticsDailyCount.textContent = rows.length ? `${formatAdminNumber(rows.length)} روز` : "بدون داده";
+        }
+
+        if (!rows.length) {
+          analyticsDailyChart.innerHTML = '<div class="empty">هنوز داده‌ای برای نمایش وجود ندارد.</div>';
+          return;
+        }
+
+        const normalized = rows.slice(-31).map((row) => ({
+          label: analyticsLabel(row, "day", "date", "created_at"),
+          value: analyticsValue(row, "views", "pageviews", "count")
+        }));
+
+        const max = Math.max(...normalized.map((row) => row.value), 1);
+
+        analyticsDailyChart.innerHTML = normalized.map((row) => {
+          const width = Math.max(4, Math.round((row.value / max) * 100));
+
+          return `
+            <div class="analytics-bar-row">
+              <span>${escapeHtml(row.label)}</span>
+              <div class="analytics-bar-track"><i style="width:${width}%"></i></div>
+              <strong>${formatAdminNumber(row.value)}</strong>
+            </div>
+          `;
+        }).join("");
+      }
+
+      function renderAnalyticsList(container, rows, config) {
+        if (!container) return;
+
+        if (!rows.length) {
+          container.innerHTML = '<div class="empty">داده‌ای ثبت نشده است.</div>';
+          return;
+        }
+
+        container.innerHTML = rows.slice(0, 10).map((row) => {
+          const title = analyticsLabel(row, ...config.titleKeys);
+          const subtitle = analyticsLabel(row, ...config.subtitleKeys);
+          const value = analyticsValue(row, ...config.valueKeys);
+
+          return `
+            <div class="analytics-list-row">
+              <div>
+                <strong>${escapeHtml(title)}</strong>
+                ${subtitle && subtitle !== title ? `<small>${escapeHtml(subtitle)}</small>` : ""}
+              </div>
+              <b>${formatAdminNumber(value)}</b>
+            </div>
+          `;
+        }).join("");
+      }
+
+      function renderAnalyticsRecent(rows) {
+        if (!analyticsRecent) return;
+
+        if (!rows.length) {
+          analyticsRecent.innerHTML = '<div class="empty">هنوز بازدیدی ثبت نشده است.</div>';
+          return;
+        }
+
+        analyticsRecent.innerHTML = rows.slice(0, 12).map((row) => {
+          const title = analyticsLabel(row, "title", "path", "url");
+          const path = analyticsLabel(row, "path", "url");
+          const meta = [
+            analyticsLabel(row, "device"),
+            analyticsLabel(row, "country"),
+            analyticsLabel(row, "created_at")
+          ].filter(Boolean).join(" · ");
+          const referrer = analyticsLabel(row, "referrer_host", "source", "referrer");
+
+          return `
+            <div class="analytics-list-row">
+              <div>
+                <strong>${escapeHtml(title)}</strong>
+                <small>${escapeHtml(path)}${meta ? " · " + escapeHtml(meta) : ""}</small>
+              </div>
+              <b>${escapeHtml(referrer || "Direct")}</b>
+            </div>
+          `;
+        }).join("");
+      }
+
 
       function renderStats() {
         const published = posts.filter(post => Number(post.is_published) === 1).length;
@@ -4426,3 +4746,324 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
     </script>
   </body>
 </html>
+
+
+  <style is:global>
+    /* admin-analytics-final-ui-v3 */
+    #analyticsPanel {
+      overflow: hidden !important;
+      border-radius: 34px !important;
+      background:
+        radial-gradient(circle at 8% 0%, rgba(184, 135, 70, 0.18), transparent 35%),
+        linear-gradient(135deg, rgba(255, 250, 242, 0.98), rgba(243, 229, 217, 0.92)) !important;
+      box-shadow: 0 28px 80px rgba(74, 9, 13, 0.14) !important;
+    }
+
+    #analyticsPanel .panel-head {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) auto !important;
+      gap: 24px !important;
+      align-items: start !important;
+      padding: 32px !important;
+      border-bottom: 1px solid rgba(74, 9, 13, 0.1) !important;
+      background:
+        linear-gradient(rgba(255, 253, 248, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 253, 248, 0.05) 1px, transparent 1px),
+        linear-gradient(145deg, #6d0f14, #2a1713) !important;
+      background-size: 38px 38px, 38px 38px, auto !important;
+      color: #fff8ef !important;
+    }
+
+    #analyticsPanel .panel-head h2 {
+      margin: 0 0 10px !important;
+      color: #fff8ef !important;
+      font-size: clamp(34px, 4.5vw, 58px) !important;
+      line-height: 1.25 !important;
+      font-weight: 1000 !important;
+    }
+
+    #analyticsPanel .analytics-help {
+      max-width: 760px !important;
+      margin: 0 !important;
+      color: rgba(255, 248, 239, 0.72) !important;
+      line-height: 2 !important;
+      font-size: 15px !important;
+    }
+
+    #analyticsPanel .panel-head .actions {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      justify-content: flex-end !important;
+      gap: 10px !important;
+    }
+
+    #analyticsPanel .panel-head .actions select,
+    #analyticsPanel .panel-head .actions button,
+    #analyticsPanel .panel-head .actions a {
+      min-height: 48px !important;
+      border-radius: 999px !important;
+      border: 1px solid rgba(255, 248, 239, 0.22) !important;
+      background: rgba(255, 248, 239, 0.94) !important;
+      color: #5a0f0f !important;
+      padding: 10px 18px !important;
+      font-weight: 900 !important;
+      box-shadow: 0 14px 32px rgba(0, 0, 0, 0.12) !important;
+    }
+
+    #analyticsPanel #analyticsRefreshBtn {
+      background: #fff8ef !important;
+      color: #5a0f0f !important;
+    }
+
+    #analyticsPanel .analytics-panel-body {
+      display: grid !important;
+      gap: 22px !important;
+      padding: 28px !important;
+      background:
+        radial-gradient(circle at 88% 10%, rgba(109, 15, 20, 0.07), transparent 28%),
+        rgba(255, 252, 246, 0.76) !important;
+    }
+
+    #analyticsPanel .analytics-message {
+      display: block !important;
+      margin: 0 !important;
+      padding: 15px 18px !important;
+      border-radius: 20px !important;
+      border: 1px solid rgba(47, 133, 90, 0.18) !important;
+      background: rgba(47, 133, 90, 0.08) !important;
+      color: #246342 !important;
+      font-weight: 800 !important;
+      box-shadow: none !important;
+    }
+
+    #analyticsPanel .analytics-kpi-grid {
+      display: grid !important;
+      grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+      gap: 14px !important;
+      margin: 0 !important;
+    }
+
+    #analyticsPanel .analytics-kpi-card {
+      position: relative !important;
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: space-between !important;
+      min-height: 150px !important;
+      overflow: hidden !important;
+      border: 1px solid rgba(255, 248, 239, 0.16) !important;
+      border-radius: 30px !important;
+      padding: 22px !important;
+      background:
+        radial-gradient(circle at 18% 0%, rgba(255, 248, 239, 0.22), transparent 36%),
+        linear-gradient(145deg, #6d0f14, #2a1713) !important;
+      box-shadow: 0 24px 58px rgba(74, 9, 13, 0.18) !important;
+    }
+
+    #analyticsPanel .analytics-kpi-card:nth-child(2),
+    #analyticsPanel .analytics-kpi-card:nth-child(4) {
+      background:
+        radial-gradient(circle at 18% 0%, rgba(255, 248, 239, 0.22), transparent 36%),
+        linear-gradient(145deg, #b88746, #6d0f14) !important;
+    }
+
+    #analyticsPanel .analytics-kpi-card::after {
+      content: "" !important;
+      position: absolute !important;
+      width: 120px !important;
+      height: 120px !important;
+      left: -34px !important;
+      bottom: -46px !important;
+      border-radius: 999px !important;
+      background: rgba(255, 248, 239, 0.09) !important;
+    }
+
+    #analyticsPanel .analytics-kpi-card span {
+      position: relative !important;
+      z-index: 1 !important;
+      display: block !important;
+      margin: 0 !important;
+      color: rgba(255, 248, 239, 0.72) !important;
+      font-size: 13px !important;
+      font-weight: 900 !important;
+      line-height: 1.8 !important;
+    }
+
+    #analyticsPanel .analytics-kpi-card strong {
+      position: relative !important;
+      z-index: 1 !important;
+      display: block !important;
+      margin-top: 18px !important;
+      color: #fff8ef !important;
+      font-size: clamp(36px, 4vw, 56px) !important;
+      line-height: 1 !important;
+      font-weight: 1000 !important;
+      letter-spacing: -1px !important;
+    }
+
+    #analyticsPanel .analytics-layout {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr) !important;
+      gap: 16px !important;
+      align-items: start !important;
+    }
+
+    #analyticsPanel .analytics-card {
+      min-width: 0 !important;
+      overflow: hidden !important;
+      border: 1px solid rgba(74, 9, 13, 0.1) !important;
+      border-radius: 30px !important;
+      padding: 22px !important;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 250, 242, 0.78)) !important;
+      box-shadow: 0 24px 62px rgba(74, 9, 13, 0.08) !important;
+    }
+
+    #analyticsPanel .analytics-card-wide {
+      grid-column: 1 / -1 !important;
+    }
+
+    #analyticsPanel .analytics-card-head {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 12px !important;
+      margin: 0 0 18px !important;
+      padding-bottom: 14px !important;
+      border-bottom: 1px solid rgba(74, 9, 13, 0.08) !important;
+    }
+
+    #analyticsPanel .analytics-card-head h3 {
+      margin: 0 !important;
+      color: #5a0f0f !important;
+      font-size: 21px !important;
+      line-height: 1.7 !important;
+      font-weight: 1000 !important;
+    }
+
+    #analyticsPanel .analytics-card-head span {
+      color: rgba(42, 23, 19, 0.54) !important;
+      font-size: 12px !important;
+      font-weight: 900 !important;
+    }
+
+    #analyticsPanel .analytics-bars {
+      display: grid !important;
+      gap: 12px !important;
+    }
+
+    #analyticsPanel .analytics-bar-row {
+      display: grid !important;
+      grid-template-columns: 132px minmax(0, 1fr) 70px !important;
+      align-items: center !important;
+      gap: 12px !important;
+      min-height: 46px !important;
+      padding: 9px 12px !important;
+      border-radius: 18px !important;
+      background: rgba(247, 239, 230, 0.58) !important;
+      color: #2a1713 !important;
+      font-size: 13px !important;
+      font-weight: 900 !important;
+    }
+
+    #analyticsPanel .analytics-bar-track {
+      height: 14px !important;
+      overflow: hidden !important;
+      border-radius: 999px !important;
+      background: rgba(74, 9, 13, 0.1) !important;
+    }
+
+    #analyticsPanel .analytics-bar-track i {
+      display: block !important;
+      height: 100% !important;
+      border-radius: inherit !important;
+      background: linear-gradient(90deg, #6d0f14, #b88746) !important;
+      box-shadow: 0 8px 18px rgba(109, 15, 20, 0.24) !important;
+    }
+
+    #analyticsPanel .analytics-list {
+      display: grid !important;
+      gap: 10px !important;
+    }
+
+    #analyticsPanel .analytics-list-row {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) auto !important;
+      gap: 14px !important;
+      align-items: center !important;
+      padding: 14px 16px !important;
+      border: 1px solid rgba(74, 9, 13, 0.08) !important;
+      border-radius: 20px !important;
+      background: rgba(255, 255, 255, 0.72) !important;
+      box-shadow: 0 12px 30px rgba(74, 9, 13, 0.04) !important;
+    }
+
+    #analyticsPanel .analytics-list-row strong {
+      display: block !important;
+      color: #5a0f0f !important;
+      font-size: 13.5px !important;
+      line-height: 1.8 !important;
+      font-weight: 900 !important;
+      overflow-wrap: anywhere !important;
+    }
+
+    #analyticsPanel .analytics-list-row small {
+      display: block !important;
+      margin-top: 4px !important;
+      color: rgba(42, 23, 19, 0.52) !important;
+      font-size: 11.5px !important;
+      line-height: 1.7 !important;
+      direction: ltr !important;
+      text-align: right !important;
+      overflow-wrap: anywhere !important;
+    }
+
+    #analyticsPanel .analytics-list-row b {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      min-width: 48px !important;
+      height: 34px !important;
+      padding: 0 10px !important;
+      border-radius: 999px !important;
+      background: rgba(109, 15, 20, 0.08) !important;
+      color: #6d0f14 !important;
+      font-size: 14px !important;
+      font-weight: 1000 !important;
+      white-space: nowrap !important;
+    }
+
+    #analyticsPanel .empty {
+      padding: 16px !important;
+      border-radius: 18px !important;
+      background: rgba(247, 239, 230, 0.58) !important;
+      color: rgba(42, 23, 19, 0.58) !important;
+      font-weight: 800 !important;
+      line-height: 2 !important;
+    }
+
+    @media (max-width: 1180px) {
+      #analyticsPanel .panel-head {
+        grid-template-columns: 1fr !important;
+      }
+
+      #analyticsPanel .analytics-kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+
+      #analyticsPanel .analytics-layout {
+        grid-template-columns: 1fr !important;
+      }
+    }
+
+    @media (max-width: 620px) {
+      #analyticsPanel .analytics-kpi-grid {
+        grid-template-columns: 1fr !important;
+      }
+
+      #analyticsPanel .analytics-bar-row {
+        grid-template-columns: 86px minmax(0, 1fr) 48px !important;
+      }
+    }
+    /* end-admin-analytics-final-ui-v3 */
+  </style>
+
