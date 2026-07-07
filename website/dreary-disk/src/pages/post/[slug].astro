@@ -327,6 +327,13 @@ const articleJsonLdHtml = articleJsonLd
         return source;
       }
 
+      function cacheBustMediaUrl(value, postId) {
+        const source = validMediaValue(value);
+        if (!source) return "";
+        if (!source.includes("/media/")) return source;
+        const separator = source.includes("?") ? "&" : "?";
+        return `${source}${separator}v=${encodeURIComponent(String(postId || "media"))}`;
+      }
       function looksLikeImageUrl(value) {
         return /\.(avif|webp|png|jpe?g|gif|bmp|svg)(\?|#|$)/i.test(String(value || ""));
       }
@@ -517,7 +524,7 @@ const articleJsonLdHtml = articleJsonLd
         if (imageSrc) {
           return `
             <figure class="client-single-media" data-media-wrap>
-              <img src="${escapeAttr(imageSrc)}" alt="${escapeAttr(title)}" width="960" height="620" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
+              <img src="${escapeAttr(cacheBustMediaUrl(imageSrc, post.id))}" alt="${escapeAttr(title)}" width="960" height="620" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
             </figure>
           `;
         }
@@ -600,7 +607,7 @@ const articleJsonLdHtml = articleJsonLd
                   const href = getPostHref(item);
                   const imageSrc = getMediaSrc(item);
                   const thumb = imageSrc
-                    ? `<span class="client-related-thumb" data-media-wrap><img src="${escapeAttr(imageSrc)}" alt="${escapeAttr(title)}" width="58" height="58" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden');this.closest('.client-related-item')?.classList.add('client-related-item--text')" /></span>`
+                    ? `<span class="client-related-thumb" data-media-wrap><img src="${escapeAttr(cacheBustMediaUrl(imageSrc, item.id))}" alt="${escapeAttr(title)}" width="58" height="58" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden');this.closest('.client-related-item')?.classList.add('client-related-item--text')" /></span>`
                     : "";
 
                   return `

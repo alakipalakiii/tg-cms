@@ -309,6 +309,13 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
         return source;
       }
 
+      function cacheBustMediaUrl(value, postId) {
+        const source = validMediaValue(value);
+        if (!source) return "";
+        if (!source.includes("/media/")) return source;
+        const separator = source.includes("?") ? "&" : "?";
+        return `${source}${separator}v=${encodeURIComponent(String(postId || "media"))}`;
+      }
       function looksLikeImageUrl(value) {
         return /\.(avif|webp|png|jpe?g|gif|bmp|svg)(\?|#|$)/i.test(String(value || ""));
       }
@@ -543,7 +550,7 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
         if (imageSrc) {
           return `
             <div class="${className}" data-media-wrap>
-                <img src="${escapeAttr(imageSrc)}" alt="${escapeAttr(makeDisplayTitle(post, "card"))}" width="320" height="190" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
+                <img src="${escapeAttr(cacheBustMediaUrl(imageSrc, post.id))}" alt="${escapeAttr(makeDisplayTitle(post, "card"))}" width="320" height="190" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
             </div>
           `;
         }
@@ -592,7 +599,7 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
           imageSrc && hasHref
             ? `
               <a class="featured-card__media" href="${escapeAttr(href)}" aria-label="${escapeAttr(title)}" data-media-wrap>
-                <img src="${escapeAttr(imageSrc)}" alt="${escapeAttr(title)}" width="560" height="360" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
+                <img src="${escapeAttr(cacheBustMediaUrl(imageSrc, post.id))}" alt="${escapeAttr(title)}" width="560" height="360" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
               </a>
             `
             : "";
@@ -654,7 +661,7 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
             const href = getPostHref(post);
             const imageSrc = getMediaSrc(post);
             const thumb = imageSrc
-              ? `<span data-media-wrap><img class="all-post-row__thumb" src="${escapeAttr(imageSrc)}" alt="${escapeAttr(title)}" width="72" height="72" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" /></span>`
+              ? `<span data-media-wrap><img class="all-post-row__thumb" src="${escapeAttr(cacheBustMediaUrl(imageSrc, post.id))}" alt="${escapeAttr(title)}" width="72" height="72" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" /></span>`
               : "";
 
             return `
@@ -680,7 +687,7 @@ const latestTitle = siteSettings.home_latest_title || "تازه‌ترین رو�
         if (imageSrc) {
           return `
             <div class="client-card-media" data-media-wrap>
-              <img src="${escapeAttr(imageSrc)}" alt="${escapeAttr(title)}" width="274" height="163" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
+              <img src="${escapeAttr(cacheBustMediaUrl(imageSrc, post.id))}" alt="${escapeAttr(title)}" width="274" height="163" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
             </div>
           `;
         }
