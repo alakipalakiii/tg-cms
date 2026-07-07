@@ -2137,10 +2137,158 @@ async function mahoonGetAnalyticsV5(request, env) {
 }
 
 
+
+/* mahoon-telegram-webhook-refresh-v1 */
+function mahoonTelegramWebhookCorsV1() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Token",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
+  };
+}
+
+function mahoonTelegramWebhookJsonV1(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...mahoonTelegramWebhookCorsV1(),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
+function mahoonTelegramWebhookAdminTokenV1(request) {
+  const direct = request.headers.get("X-Admin-Token") || "";
+  const authorization = request.headers.get("Authorization") || "";
+  const bearer = authorization.toLowerCase().startsWith("bearer ")
+    ? authorization.slice(7).trim()
+    : "";
+
+  return direct || bearer;
+}
+
+function mahoonTelegramWebhookIsAdminV1(request, env) {
+  const expected = String(env.ADMIN_TOKEN || "").trim();
+  const received = String(mahoonTelegramWebhookAdminTokenV1(request) || "").trim();
+
+  return Boolean(expected && received && expected === received);
+}
+
+async function mahoonTelegramBotApiV1(env, method, payload = null) {
+  const token = String(env.BOT_TOKEN || "").trim();
+
+  if (!token) {
+    throw new Error("BOT_TOKEN is missing");
+  }
+
+  const response = await fetch("https://api.telegram.org/bot" + token + "/" + method, {
+    method: payload ? "POST" : "GET",
+    headers: payload ? { "Content-Type": "application/json" } : {},
+    body: payload ? JSON.stringify(payload) : undefined
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.description || "Telegram API request failed");
+  }
+
+  return data;
+}
+
+function mahoonTelegramPublicWebhookUrlV1(request, currentUrl) {
+  const publicOrigin = new URL(request.url).origin;
+
+  try {
+    const current = new URL(String(currentUrl || ""));
+    return publicOrigin + current.pathname + current.search;
+  } catch {
+    return publicOrigin + "/telegram";
+  }
+}
+
+async function mahoonTelegramWebhookInfoV1(request, env) {
+  if (!mahoonTelegramWebhookIsAdminV1(request, env)) {
+    return mahoonTelegramWebhookJsonV1({ ok: false, error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const info = await mahoonTelegramBotApiV1(env, "getWebhookInfo");
+
+    return mahoonTelegramWebhookJsonV1({
+      ok: true,
+      webhook: info.result || null
+    });
+  } catch (error) {
+    return mahoonTelegramWebhookJsonV1({
+      ok: false,
+      error: String(error?.message || error)
+    }, 500);
+  }
+}
+
+async function mahoonTelegramWebhookRefreshV1(request, env) {
+  if (!mahoonTelegramWebhookIsAdminV1(request, env)) {
+    return mahoonTelegramWebhookJsonV1({ ok: false, error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const before = await mahoonTelegramBotApiV1(env, "getWebhookInfo");
+    const currentUrl = before?.result?.url || "";
+    const nextUrl = mahoonTelegramPublicWebhookUrlV1(request, currentUrl);
+
+    const allowedUpdates = [
+      "message",
+      "edited_message",
+      "channel_post",
+      "edited_channel_post"
+    ];
+
+    const setResult = await mahoonTelegramBotApiV1(env, "setWebhook", {
+      url: nextUrl,
+      allowed_updates: allowedUpdates,
+      drop_pending_updates: false
+    });
+
+    const after = await mahoonTelegramBotApiV1(env, "getWebhookInfo");
+
+    return mahoonTelegramWebhookJsonV1({
+      ok: true,
+      refreshed: true,
+      webhook_url: nextUrl,
+      allowed_updates: allowedUpdates,
+      telegram_set_result: setResult.result,
+      before: before.result || null,
+      after: after.result || null
+    });
+  } catch (error) {
+    return mahoonTelegramWebhookJsonV1({
+      ok: false,
+      error: String(error?.message || error)
+    }, 500);
+  }
+}
+
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+
+
+    // mahoon-telegram-webhook-routes-v1
+    if ((url.pathname === "/admin/telegram/webhook-info" || url.pathname === "/admin/telegram/webhook-refresh") && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonTelegramWebhookCorsV1() });
+    }
+
+    if (url.pathname === "/admin/telegram/webhook-info" && request.method === "GET") {
+      return mahoonTelegramWebhookInfoV1(request, env);
+    }
+
+    if (url.pathname === "/admin/telegram/webhook-refresh" && request.method === "POST") {
+      return mahoonTelegramWebhookRefreshV1(request, env);
+    }
 
     // mahoon-analytics-route-v5
     if (url.pathname === "/analytics/ping-v5" && request.method === "GET") {
