@@ -54,13 +54,13 @@ const homeConfig = {
   }
 };
 
-function safeJson(value: any) {
+function safeJson(value: unknown) {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 ---
 
 <BaseLayout title={pageTitle} description={pageDescription} siteSettings={siteSettings}>
-  <main class="m-home m-home-clean-v2">
+  <main class="m-home m-home-clean-v4">
     <section class="m-hero" aria-label="شعار مجله هنری ماهون">
       <div class="m-hero__panel">
         <h1 class="m-typewriter" aria-label={heroLineOne + " " + heroLineTwo}>
@@ -93,6 +93,7 @@ function safeJson(value: any) {
         <h2 id="mAllTitle">همه مطالب</h2>
         <a href="/posts">مشاهده همه مطالب</a>
       </div>
+
       <div class="m-all-scroll">
         <div id="mAllGrid" class="m-all-grid"></div>
       </div>
@@ -119,7 +120,8 @@ function safeJson(value: any) {
 
   <script is:inline>
     (() => {
-      const config = JSON.parse(document.getElementById("mHomeConfig")?.textContent || "{}");
+      const configEl = document.getElementById("mHomeConfig");
+      const config = JSON.parse(configEl?.textContent || "{}");
       const API_BASE = String(config.apiBase || "https://api.mahoonartmagazine.ir").replace(/\/+$/, "");
       const categories = Array.isArray(config.categories) ? config.categories : [];
 
@@ -137,7 +139,6 @@ function safeJson(value: any) {
 
       function startTypewriter() {
         const lines = Array.from(document.querySelectorAll(".m-type-line"));
-
         lines.forEach((line) => {
           line.textContent = "";
         });
@@ -182,6 +183,12 @@ function safeJson(value: any) {
         return escapeHtml(value);
       }
 
+      function escapeRegex(value) {
+        return String(value || "")
+          .replace(/[.*+?^$()|[\]\\]/g, "\\$&")
+          .replace(/[{}]/g, "\\$&");
+      }
+
       function toPersianNumber(value) {
         return String(value ?? "")
           .replace(/0/g, "۰")
@@ -207,7 +214,9 @@ function safeJson(value: any) {
           .toLowerCase();
       }
 
-      const categoryTags = new Set(categories.flatMap((category) => category.tags.map(normalizeTag)));
+      const categoryTags = new Set(
+        categories.flatMap((category) => category.tags.map(normalizeTag))
+      );
 
       function getTags(text) {
         return Array.from(new Set(
@@ -223,10 +232,46 @@ function safeJson(value: any) {
           .filter((line) => {
             const trimmed = line.trim();
             if (!trimmed) return true;
-            if (/^(?:🎥|🎬|فیلم\s*:?)\s*#?\s*.+$/iu.test(trimmed)) return false;
-            return true;
+            return !/^(?:🎥|🎬|فیلم\s*:?)\s*#?\s*.+$/iu.test(trimmed);
           })
           .join("\n");
+      }
+
+      function extractMovieTitle(value) {
+        const lines = String(value || "").split(/\r?\n/);
+
+        for (const line of lines) {
+          const match = line.trim().match(/^(?:🎥|🎬|فیلم\s*:?)\s*#?\s*(.+)$/iu);
+          if (match?.[1]) {
+            return match[1].replace(/^#/, "").trim();
+          }
+        }
+
+        return "";
+      }
+
+      function removeMovieNames(value, post) {
+        let text = String(value || "");
+        const movieTitle = extractMovieTitle(post?.text || "");
+
+        const names = [
+          movieTitle,
+          "The Walking Dead",
+          "House M.D",
+          "House MD",
+          "Indecent Proposal",
+          "Funny Face"
+        ].filter(Boolean);
+
+        names.forEach((name) => {
+          text = text.replace(new RegExp(escapeRegex(name), "giu"), " ");
+        });
+
+        return text
+          .replace(/🎥|🎬/g, " ")
+          .replace(/\s+([،؛,.!])/g, "$1")
+          .replace(/\s{2,}/g, " ")
+          .trim();
       }
 
       function cleanPublicText(value) {
@@ -240,6 +285,10 @@ function safeJson(value: any) {
           .replace(/[•●▪▫◦]/g, "")
           .replace(/\s+/g, " ")
           .trim();
+      }
+
+      function cleanPostText(post, value) {
+        return cleanPublicText(removeMovieNames(value, post));
       }
 
       function truncateText(value, max) {
@@ -258,38 +307,25 @@ function safeJson(value: any) {
           .join(" ");
       }
 
-      function extractMovieTitle(value) {
-        const lines = String(value || "").split(/\r?\n/);
-
-        for (const line of lines) {
-          const match = line.trim().match(/^(?:🎥|🎬|فیلم\s*:?)\s*#?\s*(.+)$/iu);
-          if (match?.[1]) return match[1].replace(/^#/, "").trim();
-        }
-
-        return "";
-      }
-
       function isDialoguePost(post) {
         return /#(?:دیالوگ|دیالوگ‌ها|دیالوگ_ها)/u.test(String(post.text || ""));
       }
 
       function makeTitle(post) {
-        const movie = extractMovieTitle(post.text);
-
-        if (movie && isDialoguePost(post)) {
-          return "دیالوگی از فیلم ‎" + movie + "‎";
-        }
-
-        const seoTitle = cleanPublicText(post.seo_title);
+        const seoTitle = cleanPostText(post, post.seo_title);
         if (seoTitle && seoTitle.length <= 70) return truncateText(seoTitle, 70);
 
-        const source = cleanPublicText(post.text);
-        return truncateText(firstWords(source, 9), 72) || "مطلبی از ماهون";
+        const source = cleanPostText(post, post.text);
+        const title = truncateText(firstWords(source, 8), 64);
+
+        if (title) return title;
+        if (isDialoguePost(post)) return "دیالوگی از فیلم";
+        return "مطلبی از ماهون";
       }
 
-      function makeExcerpt(post) {
-        const source = cleanPublicText(post.seo_description) || cleanPublicText(post.text);
-        return truncateText(source || "روایتی تازه از مجله هنری ماهون", 145);
+      function makeExcerpt(post, max = 72) {
+        const source = cleanPostText(post, post.seo_description) || cleanPostText(post, post.text);
+        return truncateText(source || "روایتی تازه از مجله هنری ماهون", max);
       }
 
       function formatDate(value) {
@@ -311,23 +347,43 @@ function safeJson(value: any) {
         return "/post/" + encodeURIComponent(slug);
       }
 
+      function isAudioPost(post) {
+        return ["audio", "voice", "music"].includes(String(post.media_type || "").toLowerCase());
+      }
+
+      function isVideoPost(post) {
+        return ["video", "animation"].includes(String(post.media_type || "").toLowerCase());
+      }
+
       function mediaSrc(post, forceTextOnly = false) {
         if (forceTextOnly) return "";
 
         const type = String(post.media_type || "").toLowerCase();
-        if (type && !["photo", "image"].includes(type)) return "";
 
-        const direct = post.photo_url || post.image_url || post.thumbnail_url || post.media_url;
-        if (direct && /\.(avif|webp|png|jpe?g|gif|bmp|svg)(\?|#|$)/i.test(String(direct))) {
-          return direct;
+        const direct = post.photo_url || post.image_url || post.thumbnail_url;
+        if (direct) return direct;
+
+        if (post.photo_file_id) {
+          return API_BASE + "/media/" + encodeURIComponent(post.photo_file_id);
         }
 
-        const fileId = post.photo_file_id || post.media_file_id;
-        return fileId ? API_BASE + "/media/" + encodeURIComponent(fileId) : "";
+        if ((type === "photo" || type === "image") && post.media_file_id) {
+          return API_BASE + "/media/" + encodeURIComponent(post.media_file_id);
+        }
+
+        return "";
       }
 
       function pencilIcon() {
         return '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M43.6 8.8a6.5 6.5 0 0 1 9.2 9.2L25.1 45.7l-12.3 3.5 3.5-12.3L43.6 8.8Z"></path><path d="M38.8 13.6 48 22.8"></path><path d="M12 55h40"></path></svg>';
+      }
+
+      function audioIcon() {
+        return '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M22 44H12a4 4 0 0 1-4-4V24a4 4 0 0 1 4-4h10l18-12v48L22 44Z"></path><path d="M47 23a12 12 0 0 1 0 18"></path><path d="M52 16a22 22 0 0 1 0 32"></path></svg>';
+      }
+
+      function videoIcon() {
+        return '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="8" y="14" width="36" height="36" rx="7"></rect><path d="M44 27l12-8v26l-12-8V27Z"></path></svg>';
       }
 
       function normalizePost(raw) {
@@ -360,9 +416,15 @@ function safeJson(value: any) {
       }
 
       function publicTags(post) {
+        const movieTitle = normalizeTag(extractMovieTitle(post.text));
+
         return getTags(post.text)
           .filter((tag) => !categoryTags.has(normalizeTag(tag)))
+          .filter((tag) => normalizeTag(tag) !== movieTitle)
           .filter((tag) => !/^the\s+walking\s+dead$/i.test(String(tag).trim()))
+          .filter((tag) => !/^house\s*m\.?d$/i.test(String(tag).trim()))
+          .filter((tag) => !/^indecent\s+proposal$/i.test(String(tag).trim()))
+          .filter((tag) => !/^funny\s+face$/i.test(String(tag).trim()))
           .slice(0, 3);
       }
 
@@ -383,17 +445,23 @@ function safeJson(value: any) {
 
         const title = makeTitle(post);
         const image = mediaSrc(post);
-        const imageHtml = image
-          ? '<a class="m-featured__media" href="' + escapeAttr(href(post)) + '"><img src="' + escapeAttr(image) + '" alt="' + escapeAttr(title) + '" loading="lazy" decoding="async"></a>'
-          : '<a class="m-featured__media m-featured__media--text" href="' + escapeAttr(href(post)) + '">' + pencilIcon() + '</a>';
+        let media = "";
+
+        if (image) {
+          media = '<a class="m-featured__media" href="' + escapeAttr(href(post)) + '"><img src="' + escapeAttr(image) + '" alt="' + escapeAttr(title) + '" loading="lazy" decoding="async"></a>';
+        } else if (isAudioPost(post)) {
+          media = '<a class="m-featured__media m-featured__media--icon" href="' + escapeAttr(href(post)) + '">' + audioIcon() + '</a>';
+        } else if (isVideoPost(post)) {
+          media = '<a class="m-featured__media m-featured__media--icon" href="' + escapeAttr(href(post)) + '">' + videoIcon() + '</a>';
+        }
 
         featuredEl.innerHTML =
-          '<article class="m-featured">' +
-            imageHtml +
+          '<article class="m-featured ' + (!media ? "m-featured--text" : "") + '">' +
+            media +
             '<div class="m-featured__body">' +
               '<div class="m-meta"><span>' + escapeHtml(formatDate(post.created_at)) + '</span></div>' +
               '<h2>' + escapeHtml(title) + '</h2>' +
-              '<p>' + escapeHtml(makeExcerpt(post)) + '</p>' +
+              '<p>' + escapeHtml(makeExcerpt(post, 86)) + '</p>' +
               renderTags(post) +
               '<a class="m-btn" href="' + escapeAttr(href(post)) + '">ادامه مطلب</a>' +
             '</div>' +
@@ -417,12 +485,25 @@ function safeJson(value: any) {
         allGridEl.innerHTML = posts.slice(0, 20).map((post) => {
           const title = makeTitle(post);
           const image = mediaSrc(post);
-          const thumb = image
-            ? '<img src="' + escapeAttr(image) + '" alt="' + escapeAttr(title) + '" loading="lazy" decoding="async">'
-            : pencilIcon();
+
+          let thumb = "";
+          let thumbClass = "";
+
+          if (image) {
+            thumb = '<img src="' + escapeAttr(image) + '" alt="' + escapeAttr(title) + '" loading="lazy" decoding="async">';
+          } else if (isAudioPost(post)) {
+            thumb = audioIcon();
+            thumbClass = "m-list-row__thumb--icon";
+          } else if (isVideoPost(post)) {
+            thumb = videoIcon();
+            thumbClass = "m-list-row__thumb--icon";
+          } else {
+            thumb = pencilIcon();
+            thumbClass = "m-list-row__thumb--icon";
+          }
 
           return '<a class="m-list-row" href="' + escapeAttr(href(post)) + '">' +
-            '<span class="m-list-row__thumb ' + (!image ? "m-list-row__thumb--icon" : "") + '">' + thumb + '</span>' +
+            '<span class="m-list-row__thumb ' + thumbClass + '">' + thumb + '</span>' +
             '<span class="m-list-row__copy">' +
               '<strong>' + escapeHtml(title) + '</strong>' +
               '<small>' + escapeHtml(formatDate(post.created_at)) + '</small>' +
@@ -434,27 +515,35 @@ function safeJson(value: any) {
       function renderCard(post, forceTextOnly = false) {
         const title = makeTitle(post);
         const image = mediaSrc(post, forceTextOnly);
-        const imageHtml = image
-          ? '<a class="m-card__media" href="' + escapeAttr(href(post)) + '"><img src="' + escapeAttr(image) + '" alt="' + escapeAttr(title) + '" loading="lazy" decoding="async"></a>'
-          : '<a class="m-card__media m-card__media--icon" href="' + escapeAttr(href(post)) + '">' + pencilIcon() + '</a>';
 
-        return '<article class="m-card">' +
-          imageHtml +
+        let media = "";
+
+        if (image) {
+          media = '<a class="m-card__media" href="' + escapeAttr(href(post)) + '"><img src="' + escapeAttr(image) + '" alt="' + escapeAttr(title) + '" loading="lazy" decoding="async"></a>';
+        } else if (!forceTextOnly && isAudioPost(post)) {
+          media = '<a class="m-card__media m-card__media--icon" href="' + escapeAttr(href(post)) + '">' + audioIcon() + '</a>';
+        } else if (!forceTextOnly && isVideoPost(post)) {
+          media = '<a class="m-card__media m-card__media--icon" href="' + escapeAttr(href(post)) + '">' + videoIcon() + '</a>';
+        }
+
+        return '<article class="m-card ' + (!media ? "m-card--no-media" : "") + '" data-post-href="' + escapeAttr(href(post)) + '">' +
+          media +
           '<div class="m-card__body">' +
             '<span class="m-card__date">' + escapeHtml(formatDate(post.created_at)) + '</span>' +
             '<h3>' + escapeHtml(title) + '</h3>' +
-            '<p>' + escapeHtml(makeExcerpt(post)) + '</p>' +
+            '<p>' + escapeHtml(makeExcerpt(post, 68)) + '</p>' +
             '<a class="m-card__cta" href="' + escapeAttr(href(post)) + '">ادامه مطلب</a>' +
           '</div>' +
         '</article>';
       }
 
-      function bindRailButtons() {
+      function bindRailButtonsAndDrag() {
         document.querySelectorAll("[data-rail-btn]").forEach((button) => {
           button.addEventListener("click", () => {
             const rail = button.closest(".m-rail");
             const scroller = rail?.querySelector(".m-card-strip");
             const dir = Number(button.getAttribute("data-dir") || "1");
+
             if (!scroller) return;
 
             scroller.scrollBy({
@@ -462,6 +551,65 @@ function safeJson(value: any) {
               behavior: "smooth"
             });
           });
+        });
+
+        document.querySelectorAll(".m-card-strip").forEach((scroller) => {
+          let isDown = false;
+          let startX = 0;
+          let startScroll = 0;
+          let moved = false;
+
+          scroller.addEventListener("pointerdown", (event) => {
+            if (event.pointerType !== "mouse") return;
+
+            if (event.target?.closest?.("a, button")) return;
+
+            isDown = true;
+            moved = false;
+            startX = event.pageX;
+            startScroll = scroller.scrollLeft;
+            scroller.classList.add("is-dragging");
+
+            try {
+              scroller.setPointerCapture(event.pointerId);
+            } catch {}
+          });
+
+          scroller.addEventListener("pointermove", (event) => {
+            if (!isDown || event.pointerType !== "mouse") return;
+
+            const dx = event.pageX - startX;
+            if (Math.abs(dx) > 5) moved = true;
+
+            scroller.scrollLeft = startScroll - dx;
+          });
+
+          function stopDrag(event) {
+            if (!isDown) return;
+
+            isDown = false;
+            scroller.classList.remove("is-dragging");
+            scroller.dataset.dragged = moved ? "1" : "0";
+
+            window.setTimeout(() => {
+              scroller.dataset.dragged = "0";
+            }, 100);
+
+            try {
+              scroller.releasePointerCapture(event.pointerId);
+            } catch {}
+          }
+
+          scroller.addEventListener("pointerup", stopDrag);
+          scroller.addEventListener("pointercancel", stopDrag);
+          scroller.addEventListener("pointerleave", stopDrag);
+
+          scroller.addEventListener("click", (event) => {
+            if (scroller.dataset.dragged === "1") {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          }, true);
         });
       }
 
@@ -494,11 +642,12 @@ function safeJson(value: any) {
           '</section>';
         }).join("");
 
-        bindRailButtons();
+        bindRailButtonsAndDrag();
       }
 
       async function api(path, params = {}) {
         const url = new URL(API_BASE + path);
+
         Object.entries(params).forEach(([key, value]) => {
           if (value !== undefined && value !== null && value !== "") {
             url.searchParams.set(key, String(value));
@@ -588,7 +737,53 @@ function safeJson(value: any) {
       loadHome();
     })();
   </script>
+  <script is:inline>
+    /* mahoon-category-card-link-fix-v1 */
+    (() => {
+      if (window.__mahoonCategory  <script is:inline>
+    /* mahoon-category-card-link-fix-v1 */
+    (() => {
+      if (window.__mahoonCategoryCardLinkFixV1) return;
+      window.__mahoonCategoryCardLinkFixV1 = true;
 
+      function getSafeHref(target) {
+        const link = target?.closest?.(".m-categories .m-card__cta, .m-categories .m-card__media");
+        if (!link) return "";
+
+        const strip = link.closest(".m-card-strip");
+        if (strip?.dataset?.dragged === "1") return "";
+
+        const card = link.closest(".m-card");
+        const href =
+          link.getAttribute("href") ||
+          card?.getAttribute("data-post-href") ||
+          card?.querySelector("a[href]")?.getAttribute("href") ||
+          "";
+
+        if (!href || href === "#" || /undefined|null/i.test(href)) return "";
+        return href;
+      }
+
+      document.addEventListener("pointerdown", (event) => {
+        const link = event.target?.closest?.(".m-categories .m-card__cta, .m-categories .m-card__media");
+        if (!link) return;
+
+        event.stopPropagation();
+      }, true);
+
+      document.addEventListener("click", (event) => {
+        const href = getSafeHref(event.target);
+        if (!href) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const url = new URL(href, window.location.origin);
+        window.location.assign(url.href);
+      }, true);
+    })();
+    /* end-mahoon-category-card-link-fix-v1 */
+  </script>
 
   <style is:global>
     .m-home {
@@ -684,11 +879,20 @@ function safeJson(value: any) {
       box-shadow: 0 22px 58px rgba(75, 13, 13, 0.08);
     }
 
+    .m-featured--text {
+      direction: rtl;
+      grid-template-columns: 1fr;
+      grid-template-areas: "body";
+    }
+
     .m-featured__media {
       grid-area: media;
-      min-height: 330px;
+      height: 318px;
+      min-height: 318px;
+      max-height: 318px;
       display: grid;
       place-items: center;
+      overflow: hidden;
       background: #e8d3cc;
       color: #6d0f14;
       text-decoration: none;
@@ -699,11 +903,12 @@ function safeJson(value: any) {
       height: 100%;
       display: block;
       object-fit: cover;
+      object-position: center;
     }
 
-    .m-featured__media svg {
-      width: 88px;
-      height: 88px;
+    .m-featured__media svg,
+    .m-card__media svg,
+    .m-list-row__thumb svg {
       fill: none;
       stroke: currentColor;
       stroke-width: 4;
@@ -711,14 +916,19 @@ function safeJson(value: any) {
       stroke-linejoin: round;
     }
 
+    .m-featured__media svg {
+      width: 84px;
+      height: 84px;
+    }
+
     .m-featured__body {
       grid-area: body;
       direction: rtl;
-      min-height: 330px;
+      min-height: 318px;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      padding: 36px;
+      padding: 34px;
     }
 
     .m-meta {
@@ -740,17 +950,21 @@ function safeJson(value: any) {
     }
 
     .m-featured h2 {
-      margin: 0 0 14px;
+      margin: 0 0 12px;
       color: #6d0f14;
-      font-size: clamp(26px, 3.2vw, 40px);
+      font-size: clamp(25px, 3vw, 38px);
       line-height: 1.55;
     }
 
-    .m-featured p,
-    .m-card p {
+    .m-featured p {
+      max-width: 620px;
       margin: 0;
       color: #6a5550;
       line-height: 2;
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
     }
 
     .m-btn,
@@ -775,14 +989,14 @@ function safeJson(value: any) {
     }
 
     .m-btn {
-      margin-top: 22px;
+      margin-top: 20px;
     }
 
     .m-tags {
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
-      margin-top: 14px;
+      margin-top: 12px;
     }
 
     .m-tags a {
@@ -803,7 +1017,7 @@ function safeJson(value: any) {
     }
 
     .m-stats article {
-      min-height: 118px;
+      min-height: 132px;
       display: grid;
       place-items: center;
       gap: 4px;
@@ -812,11 +1026,11 @@ function safeJson(value: any) {
       color: #fff8ef;
       box-shadow: 0 18px 44px rgba(75, 13, 13, 0.12);
       text-align: center;
-      padding: 14px;
+      padding: 16px 12px;
     }
 
     .m-stats strong {
-      font-size: clamp(28px, 3.5vw, 42px);
+      font-size: clamp(25px, 3.1vw, 36px);
       line-height: 1;
       font-weight: 900;
     }
@@ -918,25 +1132,21 @@ function safeJson(value: any) {
       height: 100%;
       display: block;
       object-fit: cover;
+      object-position: center;
     }
 
     .m-list-row__thumb--icon {
       display: grid;
       place-items: center;
+      color: #6d0f14;
       background:
         radial-gradient(circle at 30% 20%, rgba(255, 248, 239, 0.9), transparent 45%),
         linear-gradient(145deg, #fff8ef, #e8d3cc);
-      color: #6d0f14;
     }
 
     .m-list-row__thumb svg {
       width: 34px;
       height: 34px;
-      fill: none;
-      stroke: currentColor;
-      stroke-width: 4;
-      stroke-linecap: round;
-      stroke-linejoin: round;
     }
 
     .m-list-row__copy {
@@ -1057,15 +1267,19 @@ function safeJson(value: any) {
     }
 
     .m-rail__actions button {
-      width: 38px;
-      height: 38px;
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
       border-radius: 999px;
       border: 1px solid rgba(75, 13, 13, 0.16);
       background: #fff8ef;
       color: #4b0d0d;
       font: inherit;
-      font-size: 22px;
+      font-size: 26px;
       font-weight: 900;
+      line-height: 1;
+      padding: 0 0 3px;
       cursor: pointer;
     }
 
@@ -1081,13 +1295,22 @@ function safeJson(value: any) {
       overscroll-behavior-x: contain;
       overscroll-behavior-y: auto;
       touch-action: pan-x pan-y;
+      cursor: grab;
+      user-select: none;
       scrollbar-color: rgba(255, 248, 239, 0.3) transparent;
       scrollbar-width: thin;
     }
 
+    .m-card-strip.is-dragging {
+      cursor: grabbing;
+    }
+
     .m-card {
       width: 255px;
+      height: 422px;
       flex: 0 0 255px;
+      display: flex;
+      flex-direction: column;
       scroll-snap-align: start;
       overflow: hidden;
       border-radius: 22px;
@@ -1096,10 +1319,18 @@ function safeJson(value: any) {
       box-shadow: 0 16px 36px rgba(75, 13, 13, 0.07);
     }
 
+    .m-card--no-media {
+      height: 300px;
+    }
+
     .m-card__media {
       height: 172px;
+      min-height: 172px;
+      max-height: 172px;
+      flex: 0 0 172px;
       display: grid;
       place-items: center;
+      overflow: hidden;
       background: #e8d3cc;
       color: #6d0f14;
     }
@@ -1108,31 +1339,32 @@ function safeJson(value: any) {
       width: 100%;
       height: 100%;
       object-fit: cover;
+      object-position: center;
       display: block;
     }
 
     .m-card__media svg {
-      width: 64px;
-      height: 64px;
-      fill: none;
-      stroke: currentColor;
-      stroke-width: 4;
-      stroke-linecap: round;
-      stroke-linejoin: round;
+      width: 62px;
+      height: 62px;
     }
 
     .m-card__body {
-      min-height: 244px;
+      height: 250px;
+      flex: 1 1 auto;
       display: flex;
       flex-direction: column;
-      padding: 18px;
+      padding: 16px;
+    }
+
+    .m-card--no-media .m-card__body {
+      height: 300px;
     }
 
     .m-card h3 {
-      min-height: 64px;
-      margin: 12px 0 8px;
+      min-height: 58px;
+      margin: 10px 0 8px;
       color: #4b0d0d;
-      font-size: 17px;
+      font-size: 16px;
       line-height: 1.75;
       display: -webkit-box;
       overflow: hidden;
@@ -1141,16 +1373,21 @@ function safeJson(value: any) {
     }
 
     .m-card p {
-      min-height: 76px;
+      min-height: 48px;
+      margin: 0;
+      color: #6a5550;
       font-size: 13px;
+      line-height: 2;
       display: -webkit-box;
       overflow: hidden;
       -webkit-box-orient: vertical;
-      -webkit-line-clamp: 3;
+      -webkit-line-clamp: 2;
     }
 
     .m-card__cta {
       margin-top: auto;
+      margin-right: auto;
+      margin-left: 0;
     }
 
     .m-empty {
@@ -1173,7 +1410,9 @@ function safeJson(value: any) {
       }
 
       .m-featured__media {
+        height: auto;
         min-height: auto;
+        max-height: none;
         aspect-ratio: 16 / 10;
       }
 
@@ -1198,7 +1437,7 @@ function safeJson(value: any) {
 
     @media (max-width: 560px) {
       .m-home {
-        width: min(100% - 20px, 1180px);
+        width: min(1180px, calc(100% - 20px));
         padding-top: 18px;
       }
 
@@ -1230,7 +1469,7 @@ function safeJson(value: any) {
       }
 
       .m-featured h2 {
-        font-size: 24px;
+        font-size: 23px;
       }
 
       .m-stats {
@@ -1239,13 +1478,13 @@ function safeJson(value: any) {
       }
 
       .m-stats article {
-        min-height: 78px;
+        min-height: 88px;
         border-radius: 16px;
         padding: 10px 8px;
       }
 
       .m-stats strong {
-        font-size: 25px;
+        font-size: 24px;
       }
 
       .m-stats span {
@@ -1292,22 +1531,91 @@ function safeJson(value: any) {
         gap: 12px;
         padding-bottom: 10px;
         scroll-snap-type: x proximity;
+        cursor: auto;
       }
 
       .m-card {
         width: min(78vw, 310px);
         flex-basis: min(78vw, 310px);
+        height: 420px;
+      }
+
+      .m-card--no-media {
+        height: 292px;
       }
 
       .m-card__media {
-        height: 178px;
+        height: 176px;
+        min-height: 176px;
+        max-height: 176px;
+        flex-basis: 176px;
       }
 
       .m-card__body {
-        min-height: 230px;
+        height: 244px;
+      }
+
+      .m-card--no-media .m-card__body {
+        height: 292px;
       }
     }
 
+    /* mahoon-featured-image-fit-v1 */
+    .m-home-clean-v4 .m-featured {
+      align-items: stretch !important;
+    }
+
+    .m-home-clean-v4 .m-featured__media {
+      position: relative !important;
+      height: auto !important;
+      min-height: 100% !important;
+      max-height: none !important;
+      align-self: stretch !important;
+      overflow: hidden !important;
+    }
+
+    .m-home-clean-v4 .m-featured__media img {
+      position: absolute !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;
+      object-position: center !important;
+      display: block !important;
+    }
+
+    .m-home-clean-v4 .m-featured__media--icon {
+      min-height: 318px !important;
+    }
+
+    @media (max-width: 980px) {
+      .m-home-clean-v4 .m-featured__media {
+        height: auto !important;
+        min-height: auto !important;
+        aspect-ratio: 16 / 10 !important;
+      }
+
+      .m-home-clean-v4 .m-featured__media img {
+        position: static !important;
+        width: 100% !important;
+        height: 100% !important;
+      }
+    }
+    /* end-mahoon-featured-image-fit-v1 */
+
+
+    /* mahoon-category-card-link-fix-v1-css */
+    .m-home-clean-v4 .m-categories .m-card__cta,
+    .m-home-clean-v4 .m-categories .m-card__media {
+      position: relative !important;
+      z-index: 10 !important;
+      pointer-events: auto !important;
+    }
+
+    .m-home-clean-v4 .m-categories .m-card__cta {
+      cursor: pointer !important;
+    }
+    /* end-mahoon-category-card-link-fix-v1-css */
 
   </style>
 </BaseLayout>
