@@ -2335,6 +2335,100 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                       <label for="homeAdLeftUrlInput">لینک تبلیغ چپ</label>
                       <input class="admin-input input" id="homeAdLeftUrlInput" type="url" dir="ltr" placeholder="https://..." />
                     </div>
+                    <div class="field field-wide">
+                      <div class="api-card">
+                        <strong>تنظیمات پیشرفته تبلیغات</strong>
+                        <span>برای هر باکس می‌توانی روشن/خاموش، متن دکمه، جایگاه نمایش و تصویر جداگانه تعریف کنی.</span>
+                      </div>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdRightEnabledInput">نمایش تبلیغ راست</label>
+                      <label class="check-row">
+                        <input id="homeAdRightEnabledInput" type="checkbox" />
+                        <span>فعال باشد</span>
+                      </label>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdLeftEnabledInput">نمایش تبلیغ چپ</label>
+                      <label class="check-row">
+                        <input id="homeAdLeftEnabledInput" type="checkbox" />
+                        <span>فعال باشد</span>
+                      </label>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdRightButtonInput">نام دکمه تبلیغ راست</label>
+                      <input class="admin-input input" id="homeAdRightButtonInput" type="text" placeholder="مثلاً: مشاهده" />
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdLeftButtonInput">نام دکمه تبلیغ چپ</label>
+                      <input class="admin-input input" id="homeAdLeftButtonInput" type="text" placeholder="مثلاً: مشاهده" />
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdRightPositionInput">جایگاه تبلیغ راست</label>
+                      <select class="admin-input input" id="homeAdRightPositionInput">
+                        <option value="after_latest">زیر تازه‌ترین مطلب</option>
+                        <option value="after_all_posts">بعد از همه مطالب</option>
+                        <option value="before_categories">بالای دسته‌بندی‌ها</option>
+                        <option value="after_category_1">بعد از کتاب</option>
+                        <option value="after_category_2">بعد از دیالوگ‌ها</option>
+                        <option value="after_category_3">بعد از صوتی</option>
+                        <option value="after_category_4">بعد از شعر و متن</option>
+                        <option value="after_category_5">بعد از نقاشی</option>
+                        <option value="after_categories">زیر همه دسته‌بندی‌ها</option>
+                      </select>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdLeftPositionInput">جایگاه تبلیغ چپ</label>
+                      <select class="admin-input input" id="homeAdLeftPositionInput">
+                        <option value="after_latest">زیر تازه‌ترین مطلب</option>
+                        <option value="after_all_posts">بعد از همه مطالب</option>
+                        <option value="before_categories">بالای دسته‌بندی‌ها</option>
+                        <option value="after_category_1">بعد از کتاب</option>
+                        <option value="after_category_2">بعد از دیالوگ‌ها</option>
+                        <option value="after_category_3">بعد از صوتی</option>
+                        <option value="after_category_4">بعد از شعر و متن</option>
+                        <option value="after_category_5">بعد از نقاشی</option>
+                        <option value="after_categories">زیر همه دسته‌بندی‌ها</option>
+                      </select>
+                    </div>
+
+                    <div class="field">
+
+                    <!-- mahoon-ad-image-size-help-v1 -->
+                    <div class="field field-wide">
+                      <div class="api-card">
+                        <strong>راهنمای کوتاه عکس تبلیغ</strong>
+                        <span>بهترین ابعاد: 1600×900 پیکسل با نسبت 16:9. سایز سبک‌تر: 1200×675 پیکسل. متن مهم را نزدیک لبه‌ها نگذار؛ ممکن است عکس کمی کراپ شود.</span>
+                      </div>
+                    </div>
+                    <!-- end-mahoon-ad-image-size-help-v1 -->
+
+                      <label for="homeAdRightImageInput">عکس تبلیغ راست</label>
+                      <input class="admin-input input" id="homeAdRightImageInput" type="url" dir="ltr" placeholder="https://... یا آپلود کن" />
+                      <small class="admin-help">پیشنهاد: 1600×900px یا 1200×675px، فرمت JPG/WebP، حجم بهتر زیر 1MB.</small>
+                      <input class="admin-input input" type="file" accept="image/*" data-site-ad-file="home_ad_right_image" />
+                      <div class="tool-panel">
+                        <button class="admin-btn btn btn-line" type="button" data-site-ad-upload="home_ad_right_image">آپلود عکس راست</button>
+                        <button class="admin-btn btn btn-danger" type="button" data-site-ad-clear="home_ad_right_image">حذف عکس راست</button>
+                      </div>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdLeftImageInput">عکس تبلیغ چپ</label>
+                      <input class="admin-input input" id="homeAdLeftImageInput" type="url" dir="ltr" placeholder="https://... یا آپلود کن" />
+                      <small class="admin-help">پیشنهاد: 1600×900px یا 1200×675px، نسبت 16:9، با حاشیه امن از اطراف.</small>
+                      <input class="admin-input input" type="file" accept="image/*" data-site-ad-file="home_ad_left_image" />
+                      <div class="tool-panel">
+                        <button class="admin-btn btn btn-line" type="button" data-site-ad-upload="home_ad_left_image">آپلود عکس چپ</button>
+                        <button class="admin-btn btn btn-danger" type="button" data-site-ad-clear="home_ad_left_image">حذف عکس چپ</button>
+                      </div>
+                    </div>
                       <div class="field">
                         <label for="telegramUrlInput">لینک کانال تلگرام</label>
                         <input class="admin-input input" id="telegramUrlInput" type="url" dir="ltr" />
@@ -2603,6 +2697,14 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         home_ad_left_title: document.getElementById("homeAdLeftTitleInput"),
         home_ad_left_text: document.getElementById("homeAdLeftTextInput"),
         home_ad_left_url: document.getElementById("homeAdLeftUrlInput"),
+        home_ad_right_enabled: document.getElementById("homeAdRightEnabledInput"),
+        home_ad_right_button: document.getElementById("homeAdRightButtonInput"),
+        home_ad_right_position: document.getElementById("homeAdRightPositionInput"),
+        home_ad_right_image: document.getElementById("homeAdRightImageInput"),
+        home_ad_left_enabled: document.getElementById("homeAdLeftEnabledInput"),
+        home_ad_left_button: document.getElementById("homeAdLeftButtonInput"),
+        home_ad_left_position: document.getElementById("homeAdLeftPositionInput"),
+        home_ad_left_image: document.getElementById("homeAdLeftImageInput"),
         about_lead: document.getElementById("aboutLeadInput"),
         about_body: document.getElementById("aboutBodyInput"),
         contact_lead: document.getElementById("contactLeadInput"),
@@ -2967,20 +3069,148 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         telegram_url: TELEGRAM_URL
       };
 
+      function siteCopyIsEnabledValue(value) {
+        const text = String(value ?? "").trim().toLowerCase();
+
+        if (!text) return false;
+
+        return !["0", "false", "off", "no", "خاموش", "غیرفعال"].includes(text);
+      }
+
       function fillSiteCopyForm(settings = {}) {
         const values = { ...SITE_COPY_DEFAULTS, ...(settings || {}) };
 
         Object.entries(siteCopyFields).forEach(([key, field]) => {
           if (!field) return;
-          field.value = values[key] || "";
+
+          const value = values[key] ?? "";
+
+          if (field.type === "checkbox") {
+            field.checked = siteCopyIsEnabledValue(value);
+            return;
+          }
+
+          field.value = value;
         });
       }
 
       function collectSiteCopyForm() {
-        return Object.fromEntries(
-          Object.entries(siteCopyFields).map(([key, field]) => [key, normalizeText(field?.value || "")])
-        );
+        const result = {};
+
+        Object.entries(siteCopyFields).forEach(([key, field]) => {
+          if (!field) return;
+
+          if (field.type === "checkbox") {
+            result[key] = field.checked ? "1" : "0";
+            return;
+          }
+
+          result[key] = normalizeText(field.value || "");
+        });
+
+        return result;
       }
+
+      async function uploadSiteAdImage(targetKey, button) {
+        if (!getToken()) {
+          showMessage(siteCopyMessage, "برای آپلود عکس ابتدا وارد پنل شو.", "error");
+          return;
+        }
+
+        const fileInput = document.querySelector('[data-site-ad-file="' + targetKey + '"]');
+        const urlInput = siteCopyFields[targetKey];
+        const file = fileInput?.files?.[0];
+
+        if (!file) {
+          showMessage(siteCopyMessage, "ابتدا یک عکس انتخاب کن.", "error");
+          return;
+        }
+
+        const oldText = button?.textContent || "آپلود";
+        const base = String(typeof API_BASE !== "undefined" ? API_BASE : "https://api.mahoonartmagazine.ir").replace(/\/+$/, "");
+        const endpoint = base + "/admin/upload";
+
+        if (button) {
+          button.disabled = true;
+          button.textContent = "در حال آپلود...";
+        }
+
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 60000);
+
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+
+          const headers = { ...authHeaders() };
+
+          delete headers["Content-Type"];
+          delete headers["content-type"];
+
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers,
+            body: formData,
+            signal: controller.signal
+          });
+
+          const data = await res.json().catch(() => null);
+
+          if (!res.ok || !data?.ok) {
+            throw new Error(data?.error || "آپلود عکس تبلیغ انجام نشد.");
+          }
+
+          const media = data.media || {};
+          const fileId = media.photo_file_id || media.media_file_id || media.file_id || "";
+          const mediaUrl =
+            media.photo_url ||
+            media.media_url ||
+            media.url ||
+            media.src ||
+            (fileId ? base + "/media/" + encodeURIComponent(fileId) : "");
+
+          if (!mediaUrl) {
+            throw new Error("عکس آپلود شد اما آدرس قابل نمایش برنگشت.");
+          }
+
+          if (urlInput) {
+            urlInput.value = mediaUrl;
+          }
+
+          if (fileInput) {
+            fileInput.value = "";
+          }
+
+          showMessage(siteCopyMessage, "عکس تبلیغ آپلود شد. برای اعمال در سایت، دکمه ذخیره تنظیمات را بزن.", "ok");
+        } catch (error) {
+          showMessage(siteCopyMessage, userFriendlyError(error, "آپلود عکس تبلیغ انجام نشد."), "error");
+        } finally {
+          window.clearTimeout(timer);
+
+          if (button) {
+            button.disabled = false;
+            button.textContent = oldText;
+          }
+        }
+      }
+
+      function clearSiteAdImage(targetKey) {
+        const input = siteCopyFields[targetKey];
+
+        if (input) {
+          input.value = "";
+        }
+
+        showMessage(siteCopyMessage, "آدرس عکس حذف شد. برای اعمال در سایت، ذخیره تنظیمات را بزن.", "ok");
+      }
+
+      document.querySelectorAll("[data-site-ad-upload]").forEach((button) => {
+        button.addEventListener("click", () => uploadSiteAdImage(button.getAttribute("data-site-ad-upload"), button));
+      });
+
+      document.querySelectorAll("[data-site-ad-clear]").forEach((button) => {
+        button.addEventListener("click", () => clearSiteAdImage(button.getAttribute("data-site-ad-clear")));
+      });
 
       async function loadSiteCopy() {
         if (!getToken()) {

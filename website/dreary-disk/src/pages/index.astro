@@ -45,12 +45,20 @@ const homeConfig = {
     { title: "نقاشی", tags: ["نقاشی"] }
   ],
   ads: {
+    rightEnabled: siteSettings.home_ad_right_enabled ?? "1",
     rightTitle: siteSettings.home_ad_right_title || "جایگاه تبلیغات",
     rightText: siteSettings.home_ad_right_text || "معرفی رویداد، کتاب، نمایشگاه یا همکاری فرهنگی",
     rightUrl: siteSettings.home_ad_right_url || "",
+    rightButton: siteSettings.home_ad_right_button || "مشاهده",
+    rightPosition: siteSettings.home_ad_right_position || "before_categories",
+    rightImage: siteSettings.home_ad_right_image || "",
+    leftEnabled: siteSettings.home_ad_left_enabled ?? "1",
     leftTitle: siteSettings.home_ad_left_title || "جایگاه تبلیغات",
     leftText: siteSettings.home_ad_left_text || "معرفی برندها و پروژه‌های همسو با فضای هنری ماهون",
-    leftUrl: siteSettings.home_ad_left_url || ""
+    leftUrl: siteSettings.home_ad_left_url || "",
+    leftButton: siteSettings.home_ad_left_button || "مشاهده",
+    leftPosition: siteSettings.home_ad_left_position || "before_categories",
+    leftImage: siteSettings.home_ad_left_image || ""
   }
 };
 
@@ -79,6 +87,8 @@ function safeJson(value: unknown) {
       <div id="mStatus" class="m-status">در حال دریافت مطالب...</div>
     </section>
 
+    <section id="mAdsAfterLatest" class="m-ads m-ads-slot" aria-label="تبلیغات بعد از تازه‌ترین مطلب"></section>
+
     <section id="mStats" class="m-stats" aria-label="آمار مطالب ماهون"></section>
 
     <section class="m-search-wrap">
@@ -99,21 +109,14 @@ function safeJson(value: unknown) {
       </div>
     </section>
 
-    <section class="m-ads" aria-label="تبلیغات">
-      <article class="m-ad-card">
-        <strong>{homeConfig.ads.rightTitle}</strong>
-        <p>{homeConfig.ads.rightText}</p>
-        {homeConfig.ads.rightUrl ? <a href={homeConfig.ads.rightUrl} target="_blank" rel="noopener">مشاهده</a> : <span>جایگاه قابل مدیریت</span>}
-      </article>
 
-      <article class="m-ad-card">
-        <strong>{homeConfig.ads.leftTitle}</strong>
-        <p>{homeConfig.ads.leftText}</p>
-        {homeConfig.ads.leftUrl ? <a href={homeConfig.ads.leftUrl} target="_blank" rel="noopener">مشاهده</a> : <span>جایگاه قابل مدیریت</span>}
-      </article>
-    </section>
+    <section id="mAdsAfterAllPosts" class="m-ads m-ads-slot" aria-label="تبلیغات بعد از همه مطالب"></section>
+
+    <section id="mAdsBeforeCategories" class="m-ads m-ads-slot" aria-label="تبلیغات بالای دسته‌بندی‌ها"></section>
 
     <section id="mCategories" class="m-categories" aria-label="دسته‌بندی مطالب ماهون"></section>
+
+    <section id="mAdsAfterCategories" class="m-ads m-ads-slot" aria-label="تبلیغات زیر دسته‌بندی‌ها"></section>
 
     <script id="mHomeConfig" type="application/json" set:html={safeJson(homeConfig)}></script>
   </main>
@@ -132,6 +135,10 @@ function safeJson(value: unknown) {
       const allGridEl = document.getElementById("mAllGrid");
       const allTitleEl = document.getElementById("mAllTitle");
       const categoriesEl = document.getElementById("mCategories");
+      const adsAfterLatestEl = document.getElementById("mAdsAfterLatest");
+      const adsAfterAllPostsEl = document.getElementById("mAdsAfterAllPosts");
+      const adsBeforeCategoriesEl = document.getElementById("mAdsBeforeCategories");
+      const adsAfterCategoriesEl = document.getElementById("mAdsAfterCategories");
 
       let latestPosts = [];
       let stats = null;
@@ -613,6 +620,115 @@ function safeJson(value: unknown) {
         });
       }
 
+
+      function normalizeAdPosition(value) {
+        const allowed = new Set([
+          "after_latest",
+          "after_all_posts",
+          "before_categories",
+          "after_category_1",
+          "after_category_2",
+          "after_category_3",
+          "after_category_4",
+          "after_category_5",
+          "after_categories"
+        ]);
+
+        const position = String(value || "").trim();
+        return allowed.has(position) ? position : "before_categories";
+      }
+
+      function isAdEnabled(value) {
+        const text = String(value ?? "").trim().toLowerCase();
+
+        if (!text) return false;
+
+        return !["0", "false", "off", "no", "خاموش", "غیرفعال"].includes(text);
+      }
+
+      function homeAds() {
+        const ads = config.ads || {};
+
+        return [
+          {
+            key: "right",
+            enabled: isAdEnabled(ads.rightEnabled ?? "1"),
+            title: ads.rightTitle || "",
+            text: ads.rightText || "",
+            url: ads.rightUrl || "",
+            button: ads.rightButton || "مشاهده",
+            position: normalizeAdPosition(ads.rightPosition),
+            image: ads.rightImage || ""
+          },
+          {
+            key: "left",
+            enabled: isAdEnabled(ads.leftEnabled ?? "1"),
+            title: ads.leftTitle || "",
+            text: ads.leftText || "",
+            url: ads.leftUrl || "",
+            button: ads.leftButton || "مشاهده",
+            position: normalizeAdPosition(ads.leftPosition),
+            image: ads.leftImage || ""
+          }
+        ].filter((ad) => ad.enabled && (ad.title || ad.text || ad.image));
+      }
+
+      function adsForPosition(position) {
+        return homeAds().filter((ad) => ad.position === position);
+      }
+
+      function renderAdCard(ad) {
+        const title = ad.title || "جایگاه تبلیغات";
+        const text = ad.text || "";
+        const button = ad.button || "مشاهده";
+        const image = ad.image || "";
+
+        const imageHtml = image
+          ? '<div class="m-ad-card__image"><img src="' + escapeAttr(image) + '" alt="' + escapeAttr(title) + '" loading="lazy" decoding="async"></div>'
+          : "";
+
+        const actionHtml = ad.url
+          ? '<a href="' + escapeAttr(ad.url) + '" target="_blank" rel="noopener">' + escapeHtml(button) + '</a>'
+          : '<span>' + escapeHtml(button) + '</span>';
+
+        return '<article class="m-ad-card ' + (image ? "m-ad-card--with-image" : "") + '">' +
+          imageHtml +
+          '<strong>' + escapeHtml(title) + '</strong>' +
+          (text ? '<p>' + escapeHtml(text) + '</p>' : '') +
+          actionHtml +
+        '</article>';
+      }
+
+      function renderAdCards(items) {
+        return items.map(renderAdCard).join("");
+      }
+
+      function setAdSlot(element, position) {
+        if (!element) return;
+
+        const items = adsForPosition(position);
+        element.innerHTML = renderAdCards(items);
+        element.hidden = items.length === 0;
+        element.classList.toggle("m-ads--single", items.length === 1);
+      }
+
+      function renderAdsSection(position) {
+        const items = adsForPosition(position);
+
+        if (!items.length) return "";
+
+        return '<section class="m-ads m-ads--dynamic ' + (items.length === 1 ? "m-ads--single" : "") + '" aria-label="تبلیغات">' +
+          renderAdCards(items) +
+        '</section>';
+      }
+
+      function renderAdSlots() {
+        setAdSlot(adsAfterLatestEl, "after_latest");
+        setAdSlot(adsAfterAllPostsEl, "after_all_posts");
+        setAdSlot(adsBeforeCategoriesEl, "before_categories");
+        setAdSlot(adsAfterCategoriesEl, "after_categories");
+      }
+
       function renderCategories() {
         const categoryMap = stats?.category_map || {};
 
@@ -639,7 +755,8 @@ function safeJson(value: unknown) {
             '<div class="m-card-strip">' +
               posts.slice(0, 10).map((post) => renderCard(post, forceTextOnly)).join("") +
             '</div>' +
-          '</section>';
+          '</section>' +
+          renderAdsSection("after_category_" + (index + 1));
         }).join("");
 
         bindRailButtonsAndDrag();
@@ -689,6 +806,7 @@ function safeJson(value: unknown) {
           renderFeatured(latestPosts[0]);
           renderStats();
           renderList(latestPosts);
+          renderAdSlots();
           renderCategories();
 
           statusEl.hidden = true;
@@ -1616,6 +1734,149 @@ function safeJson(value: unknown) {
       cursor: pointer !important;
     }
     /* end-mahoon-category-card-link-fix-v1-css */
+
+
+    /* mahoon-home-ads-advanced-v1-css */
+    .m-ads-slot {
+      margin: 28px 0;
+    }
+
+    .m-ads[hidden],
+    .m-ads:empty {
+      display: none !important;
+    }
+
+    .m-ads--single {
+      grid-template-columns: 1fr !important;
+    }
+
+    .m-ads--dynamic {
+      margin: 6px 0 30px;
+    }
+
+    .m-ad-card__image {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      border-radius: 18px;
+      background: #efe1d4;
+      margin-bottom: 6px;
+    }
+
+    .m-ad-card__image img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      object-position: center;
+    }
+
+    .m-ad-card--with-image {
+      justify-content: flex-start;
+    }
+
+    .m-ad-card--with-image strong {
+      font-size: 20px;
+    }
+
+    .m-ad-card--with-image p {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+    }
+
+    @media (max-width: 980px) {
+      .m-ads--single {
+        grid-template-columns: 1fr !important;
+      }
+    }
+    /* end-mahoon-home-ads-advanced-v1-css */
+
+
+    /* mahoon-home-mobile-images-fit-v1 */
+    @media (max-width: 980px) {
+      .m-home-clean-v4 .m-featured__media,
+      .m-home-clean-v4 .m-card__media,
+      .m-home-clean-v4 .m-list-row__thumb,
+      .m-home-clean-v4 .m-ad-card__image {
+        position: relative !important;
+        overflow: hidden !important;
+        background: #efe1d4 !important;
+      }
+
+      .m-home-clean-v4 .m-featured__media {
+        width: 100% !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        aspect-ratio: 16 / 10 !important;
+      }
+
+      .m-home-clean-v4 .m-card__media {
+        height: 176px !important;
+        min-height: 176px !important;
+        max-height: 176px !important;
+        flex-basis: 176px !important;
+      }
+
+      .m-home-clean-v4 .m-list-row__thumb {
+        width: 56px !important;
+        height: 56px !important;
+        min-width: 56px !important;
+        flex: 0 0 56px !important;
+      }
+
+      .m-home-clean-v4 .m-ad-card__image {
+        width: 100% !important;
+        aspect-ratio: 16 / 9 !important;
+      }
+
+      .m-home-clean-v4 .m-featured__media img,
+      .m-home-clean-v4 .m-card__media img,
+      .m-home-clean-v4 .m-list-row__thumb img,
+      .m-home-clean-v4 .m-ad-card__image img {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        min-width: 100% !important;
+        min-height: 100% !important;
+        display: block !important;
+        object-fit: cover !important;
+        object-position: center center !important;
+        background: transparent !important;
+      }
+
+      .m-home-clean-v4 .m-featured__media picture,
+      .m-home-clean-v4 .m-card__media picture,
+      .m-home-clean-v4 .m-list-row__thumb picture,
+      .m-home-clean-v4 .m-ad-card__image picture {
+        position: absolute !important;
+        inset: 0 !important;
+        display: block !important;
+        width: 100% !important;
+        height: 100% !important;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .m-home-clean-v4 .m-featured__media {
+        aspect-ratio: 4 / 3 !important;
+      }
+
+      .m-home-clean-v4 .m-card__media {
+        height: 184px !important;
+        min-height: 184px !important;
+        max-height: 184px !important;
+        flex-basis: 184px !important;
+      }
+
+      .m-home-clean-v4 .m-ad-card__image {
+        aspect-ratio: 16 / 9 !important;
+      }
+    }
+    /* end-mahoon-home-mobile-images-fit-v1 */
 
   </style>
 </BaseLayout>
