@@ -2271,11 +2271,504 @@ async function mahoonTelegramWebhookRefreshV1(request, env) {
 }
 
 
+
+/* mahoon-public-posts-full-v1 */
+function mahoonPublicPostsFullCorsV1() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Token",
+    "Access-Control-Allow-Methods": "GET, OPTIONS"
+  };
+}
+
+function mahoonPublicPostsFullJsonV1(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...mahoonPublicPostsFullCorsV1(),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
+async function mahoonPublicPostsFullV1(request, env) {
+  try {
+    if (!env.DB) {
+      return mahoonPublicPostsFullJsonV1({
+        ok: false,
+        error: "DB binding is missing"
+      }, 500);
+    }
+
+    const url = new URL(request.url);
+    const rawLimit = Number(url.searchParams.get("limit") || "500");
+    const safeLimit = Number.isFinite(rawLimit) ? rawLimit : 500;
+    const limit = Math.max(1, Math.min(safeLimit, 1000));
+
+    const result = await env.DB.prepare(
+      `SELECT *
+       FROM posts
+       WHERE (is_published = 1 OR is_published IS NULL)
+         AND (deleted_at IS NULL OR deleted_at = '')
+       ORDER BY datetime(created_at) DESC, id DESC
+       LIMIT ?`
+    ).bind(limit).all();
+
+    const posts = Array.isArray(result?.results) ? result.results : [];
+
+    return mahoonPublicPostsFullJsonV1({
+      ok: true,
+      posts,
+      count: posts.length,
+      limit
+    });
+  } catch (error) {
+    return mahoonPublicPostsFullJsonV1({
+      ok: false,
+      error: String(error?.message || error)
+    }, 500);
+  }
+}
+
+
+
+/* mahoon-scale-v1 */
+const MAHOON_SCALE_CATEGORY_DEFS_V1 = [
+  { title: "کتاب", tags: ["کتاب"] },
+  { title: "دیالوگ ها", tags: ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"] },
+  { title: "صوتی", tags: ["صوتی", "صدا", "موسیقی"] },
+  { title: "شعر و متن", tags: ["متن", "متن‌ها", "متن_ها", "شعر", "اشعار", "شعرها", "شعر_ها"] },
+  { title: "نقاشی", tags: ["نقاشی"] }
+];
+
+function mahoonScaleCorsV1() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Token",
+    "Access-Control-Allow-Methods": "GET, OPTIONS"
+  };
+}
+
+function mahoonScaleJsonV1(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...mahoonScaleCorsV1(),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "public, max-age=45, stale-while-revalidate=120"
+    }
+  });
+}
+
+function mahoonScaleAdminJsonV1(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...mahoonScaleCorsV1(),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
+function mahoonScaleNormalizeV1(value) {
+  return String(value || "")
+    .replace(/^#/, "")
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/\u200c/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function mahoonScaleCategoryByTitleV1(value) {
+  const normalized = mahoonScaleNormalizeV1(value);
+
+  return MAHOON_SCALE_CATEGORY_DEFS_V1.find((category) => {
+    if (mahoonScaleNormalizeV1(category.title) === normalized) return true;
+    return category.tags.some((tag) => mahoonScaleNormalizeV1(tag) === normalized);
+  }) || null;
+}
+
+function mahoonScaleAllCategoryTagsV1() {
+  return MAHOON_SCALE_CATEGORY_DEFS_V1.flatMap((category) => category.tags);
+}
+
+function mahoonScaleTagConditionV1(tags) {
+  const safeTags = Array.from(new Set((tags || []).filter(Boolean)));
+
+  if (!safeTags.length) {
+    return {
+      sql: "1 = 0",
+      params: []
+    };
+  }
+
+  return {
+    sql: "(" + safeTags.map(() => "text LIKE ?").join(" OR ") + ")",
+    params: safeTags.map((tag) => "%#" + tag + "%")
+  };
+}
+
+function mahoonScalePublicBaseWhereV1() {
+  const categoryCondition = mahoonScaleTagConditionV1(mahoonScaleAllCategoryTagsV1());
+
+  return {
+    sql: [
+      "slug IS NOT NULL",
+      "slug != ''",
+      "(deleted_at IS NULL OR deleted_at = '')",
+      "COALESCE(is_published, 1) = 1",
+      categoryCondition.sql
+    ].join(" AND "),
+    params: categoryCondition.params
+  };
+}
+
+function mahoonScaleBuildPublicWhereV1(url) {
+  const base = mahoonScalePublicBaseWhereV1();
+  const clauses = [base.sql];
+  const params = [...base.params];
+
+  const categoryValue = String(url.searchParams.get("category") || "").trim();
+  const tagValue = String(url.searchParams.get("tag") || "").replace(/^#/, "").trim();
+  const q = String(url.searchParams.get("q") || "").trim();
+
+  if (categoryValue) {
+    const category = mahoonScaleCategoryByTitleV1(categoryValue);
+
+    if (category) {
+      const condition = mahoonScaleTagConditionV1(category.tags);
+      clauses.push(condition.sql);
+      params.push(...condition.params);
+    } else {
+      clauses.push("1 = 0");
+    }
+  }
+
+  if (tagValue) {
+    clauses.push("text LIKE ?");
+    params.push("%#" + tagValue + "%");
+  }
+
+  if (q) {
+    const like = "%" + q + "%";
+    const maybeId = Number(q.replace(/[^\d]/g, ""));
+
+    clauses.push("(" + [
+      "text LIKE ?",
+      "slug LIKE ?",
+      "seo_title LIKE ?",
+      "seo_description LIKE ?",
+      "media_file_name LIKE ?",
+      Number.isFinite(maybeId) && maybeId > 0 ? "id = ?" : "1 = 0"
+    ].join(" OR ") + ")");
+
+    params.push(like, like, like, like, like);
+
+    if (Number.isFinite(maybeId) && maybeId > 0) {
+      params.push(maybeId);
+    }
+  }
+
+  return {
+    sql: clauses.join(" AND "),
+    params
+  };
+}
+
+function mahoonScalePublicColumnsV1() {
+  return [
+    "id",
+    "text",
+    "slug",
+    "created_at",
+    "updated_at",
+    "is_published",
+    "media_type",
+    "media_file_id",
+    "media_unique_id",
+    "media_mime_type",
+    "media_file_name",
+    "media_duration",
+    "media_width",
+    "media_height",
+    "media_size",
+    "photo_file_id",
+    "photo_unique_id",
+    "photo_width",
+    "photo_height",
+    "seo_title",
+    "seo_description",
+    "COALESCE(view_count, 0) AS view_count",
+    "last_viewed_at"
+  ].join(", ");
+}
+
+async function mahoonScalePublicStatsObjectV1(env) {
+  const base = mahoonScalePublicBaseWhereV1();
+
+  const visible = await env.DB.prepare(
+    [
+      "SELECT COUNT(*) AS visible_posts,",
+      "MAX(id) AS latest_id",
+      "FROM posts",
+      "WHERE " + base.sql
+    ].join(" ")
+  ).bind(...base.params).first();
+
+  const published = await env.DB.prepare(
+    [
+      "SELECT COUNT(*) AS published_posts",
+      "FROM posts",
+      "WHERE (deleted_at IS NULL OR deleted_at = '')",
+      "AND COALESCE(is_published, 1) = 1"
+    ].join(" ")
+  ).first();
+
+  const total = await env.DB.prepare(
+    [
+      "SELECT COUNT(*) AS total_posts",
+      "FROM posts",
+      "WHERE (deleted_at IS NULL OR deleted_at = '')"
+    ].join(" ")
+  ).first();
+
+  const deleted = await env.DB.prepare(
+    [
+      "SELECT COUNT(*) AS deleted_posts",
+      "FROM posts",
+      "WHERE deleted_at IS NOT NULL AND deleted_at != ''"
+    ].join(" ")
+  ).first();
+
+  const textOnly = await env.DB.prepare(
+    [
+      "SELECT COUNT(*) AS text_posts",
+      "FROM posts",
+      "WHERE " + base.sql,
+      "AND COALESCE(media_type, '') = ''",
+      "AND COALESCE(media_file_id, '') = ''",
+      "AND COALESCE(photo_file_id, '') = ''"
+    ].join(" ")
+  ).bind(...base.params).first();
+
+  const categoryCounts = [];
+  const categoryMap = {};
+
+  for (const category of MAHOON_SCALE_CATEGORY_DEFS_V1) {
+    const categoryCondition = mahoonScaleTagConditionV1(category.tags);
+    const row = await env.DB.prepare(
+      [
+        "SELECT COUNT(*) AS count",
+        "FROM posts",
+        "WHERE " + base.sql,
+        "AND " + categoryCondition.sql
+      ].join(" ")
+    ).bind(...base.params, ...categoryCondition.params).first();
+
+    const count = Number(row?.count || 0);
+    categoryCounts.push({ title: category.title, count });
+    categoryMap[category.title] = count;
+  }
+
+  return {
+    visible_posts: Number(visible?.visible_posts || 0),
+    published_posts: Number(published?.published_posts || 0),
+    total_posts: Number(total?.total_posts || 0),
+    deleted_posts: Number(deleted?.deleted_posts || 0),
+    text_posts: Number(textOnly?.text_posts || 0),
+    latest_id: Number(visible?.latest_id || 0),
+    active_categories: categoryCounts.filter((item) => item.count > 0).length,
+    category_counts: categoryCounts,
+    category_map: categoryMap
+  };
+}
+
+async function mahoonScalePublicHomeV1(request, env, origin) {
+  try {
+    if (!env.DB) {
+      return mahoonScaleJsonV1({ ok: false, error: "DB binding is missing" }, 500);
+    }
+
+    const url = new URL(request.url);
+    const rawLimit = Number(url.searchParams.get("limit") || "80");
+    const limit = Math.max(1, Math.min(Number.isFinite(rawLimit) ? rawLimit : 80, 120));
+    const base = mahoonScalePublicBaseWhereV1();
+
+    const stats = await mahoonScalePublicStatsObjectV1(env);
+
+    const result = await env.DB.prepare(
+      [
+        "SELECT " + mahoonScalePublicColumnsV1(),
+        "FROM posts",
+        "WHERE " + base.sql,
+        "ORDER BY datetime(created_at) DESC, id DESC",
+        "LIMIT ?"
+      ].join(" ")
+    ).bind(...base.params, limit).all();
+
+    const posts = Array.isArray(result?.results) ? result.results : [];
+
+    return mahoonScaleJsonV1({
+      ok: true,
+      mode: "home",
+      stats,
+      posts: posts.map((post) => postWithMediaUrl(post, origin))
+    });
+  } catch (error) {
+    return mahoonScaleJsonV1({ ok: false, error: String(error?.message || error) }, 500);
+  }
+}
+
+async function mahoonScalePublicPostsV1(request, env, origin) {
+  try {
+    if (!env.DB) {
+      return mahoonScaleJsonV1({ ok: false, error: "DB binding is missing" }, 500);
+    }
+
+    const url = new URL(request.url);
+    const rawLimit = Number(url.searchParams.get("limit") || "20");
+    const rawOffset = Number(url.searchParams.get("offset") || "0");
+    const limit = Math.max(1, Math.min(Number.isFinite(rawLimit) ? rawLimit : 20, 120));
+    const offset = Math.max(0, Number.isFinite(rawOffset) ? rawOffset : 0);
+    const where = mahoonScaleBuildPublicWhereV1(url);
+
+    const totalRow = await env.DB.prepare(
+      [
+        "SELECT COUNT(*) AS total",
+        "FROM posts",
+        "WHERE " + where.sql
+      ].join(" ")
+    ).bind(...where.params).first();
+
+    const total = Number(totalRow?.total || 0);
+
+    const result = await env.DB.prepare(
+      [
+        "SELECT " + mahoonScalePublicColumnsV1(),
+        "FROM posts",
+        "WHERE " + where.sql,
+        "ORDER BY datetime(created_at) DESC, id DESC",
+        "LIMIT ? OFFSET ?"
+      ].join(" ")
+    ).bind(...where.params, limit, offset).all();
+
+    const posts = Array.isArray(result?.results) ? result.results : [];
+
+    return mahoonScaleJsonV1({
+      ok: true,
+      mode: "archive",
+      posts: posts.map((post) => postWithMediaUrl(post, origin)),
+      total,
+      limit,
+      offset,
+      next_offset: offset + posts.length,
+      has_more: offset + posts.length < total
+    });
+  } catch (error) {
+    return mahoonScaleJsonV1({ ok: false, error: String(error?.message || error) }, 500);
+  }
+}
+
+async function mahoonScaleAdminStatsV1(request, env) {
+  try {
+    const token = String(request.headers.get("X-Admin-Token") || request.headers.get("Authorization") || "")
+      .replace(/^Bearer\s+/i, "")
+      .trim();
+
+    if (!env.ADMIN_TOKEN || token !== String(env.ADMIN_TOKEN).trim()) {
+      return mahoonScaleAdminJsonV1({ ok: false, error: "Unauthorized" }, 401);
+    }
+
+    if (!env.DB) {
+      return mahoonScaleAdminJsonV1({ ok: false, error: "DB binding is missing" }, 500);
+    }
+
+    const row = await env.DB.prepare(
+      [
+        "SELECT",
+        "COUNT(CASE WHEN (deleted_at IS NULL OR deleted_at = '') THEN 1 END) AS total_posts,",
+        "COUNT(CASE WHEN (deleted_at IS NULL OR deleted_at = '') AND COALESCE(is_published, 1) = 1 THEN 1 END) AS published_posts,",
+        "COUNT(CASE WHEN (deleted_at IS NULL OR deleted_at = '') AND COALESCE(is_published, 1) != 1 THEN 1 END) AS draft_posts,",
+        "COUNT(CASE WHEN deleted_at IS NOT NULL AND deleted_at != '' THEN 1 END) AS deleted_posts,",
+        "COUNT(CASE WHEN (deleted_at IS NULL OR deleted_at = '') AND (COALESCE(media_file_id, '') != '' OR COALESCE(photo_file_id, '') != '') THEN 1 END) AS media_posts,",
+        "COUNT(CASE WHEN (deleted_at IS NULL OR deleted_at = '') AND COALESCE(media_file_id, '') = '' AND COALESCE(photo_file_id, '') = '' THEN 1 END) AS text_posts,",
+        "MAX(CASE WHEN (deleted_at IS NULL OR deleted_at = '') THEN id END) AS latest_id",
+        "FROM posts"
+      ].join(" ")
+    ).first();
+
+    return mahoonScaleAdminJsonV1({
+      ok: true,
+      stats: {
+        total_posts: Number(row?.total_posts || 0),
+        published_posts: Number(row?.published_posts || 0),
+        draft_posts: Number(row?.draft_posts || 0),
+        deleted_posts: Number(row?.deleted_posts || 0),
+        media_posts: Number(row?.media_posts || 0),
+        text_posts: Number(row?.text_posts || 0),
+        latest_id: Number(row?.latest_id || 0)
+      }
+    });
+  } catch (error) {
+    return mahoonScaleAdminJsonV1({ ok: false, error: String(error?.message || error) }, 500);
+  }
+}
+/* end-mahoon-scale-v1 */
+
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
 
+
+
+
+    // mahoon-scale-routes-v1
+    if (url.pathname === "/public/home-v1" && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonScaleCorsV1() });
+    }
+
+    if (url.pathname === "/public/posts-v1" && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonScaleCorsV1() });
+    }
+
+    if (url.pathname === "/public/stats-v1" && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonScaleCorsV1() });
+    }
+
+    if (url.pathname === "/admin/stats-v1" && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonScaleCorsV1() });
+    }
+
+    if (url.pathname === "/public/home-v1" && request.method === "GET") {
+      return mahoonScalePublicHomeV1(request, env, url.origin);
+    }
+
+    if (url.pathname === "/public/posts-v1" && request.method === "GET") {
+      return mahoonScalePublicPostsV1(request, env, url.origin);
+    }
+
+    if (url.pathname === "/public/stats-v1" && request.method === "GET") {
+      return mahoonScaleJsonV1({ ok: true, stats: await mahoonScalePublicStatsObjectV1(env) });
+    }
+
+    if (url.pathname === "/admin/stats-v1" && request.method === "GET") {
+      return mahoonScaleAdminStatsV1(request, env);
+    }
+
+    // mahoon-public-posts-full-routes-v1
+    if (url.pathname === "/posts-full-public-v1" && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonPublicPostsFullCorsV1() });
+    }
+
+    if (url.pathname === "/posts-full-public-v1" && request.method === "GET") {
+      return mahoonPublicPostsFullV1(request, env);
+    }
 
     // mahoon-telegram-webhook-routes-v1
     if ((url.pathname === "/admin/telegram/webhook-info" || url.pathname === "/admin/telegram/webhook-refresh") && request.method === "OPTIONS") {

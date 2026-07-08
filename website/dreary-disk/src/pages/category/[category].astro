@@ -1,18 +1,59 @@
 ---
-import BaseLayout from "../layouts/BaseLayout.astro";
-import { SITE } from "../config";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { SITE } from "../../config";
 
 export const prerender = false;
 
-const pageTitle = "همه مطالب | " + SITE.name;
-const pageDescription = "آرشیو کامل مطالب منتشرشده در مجله هنری ماهون";
-const canonicalUrl = SITE.url + "/posts";
+
+const CATEGORY_DEFINITIONS = [
+  { title: "کتاب", tags: ["کتاب"] },
+  { title: "دیالوگ ها", tags: ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"] },
+  { title: "صوتی", tags: ["صوتی", "صدا", "موسیقی"] },
+  { title: "شعر و متن", tags: ["متن", "متن‌ها", "متن_ها", "شعر", "اشعار", "شعرها", "شعر_ها"] },
+  { title: "نقاشی", tags: ["نقاشی"] }
+];
+
+function safeDecode(value) {
+  try {
+    return decodeURIComponent(String(value || ""));
+  } catch {
+    return String(value || "");
+  }
+}
+
+function normalizeTag(tag) {
+  return String(tag || "")
+    .replace(/^#/, "")
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/\u200c/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function findCategory(value) {
+  const normalized = normalizeTag(value);
+
+  return CATEGORY_DEFINITIONS.find((category) => {
+    if (normalizeTag(category.title) === normalized) return true;
+    return category.tags.some((tag) => normalizeTag(tag) === normalized);
+  }) || null;
+}
+
+const requestedCategory = safeDecode(Astro.params.category).replace(/^#/, "").replace(/_/g, " ").trim();
+const categoryDefinition = findCategory(requestedCategory);
+const displayCategory = categoryDefinition?.title || requestedCategory || "دسته‌بندی";
+const pageTitle = displayCategory + " | دسته‌بندی مطالب " + SITE.name;
+const pageDescription = "همه مطالب دسته‌بندی " + displayCategory + " در مجله هنری ماهون";
+const canonicalUrl = SITE.url + "/category/" + encodeURIComponent(displayCategory);
 
 const pageConfig = {
   apiBase: SITE.workerUrl || "https://api.mahoonartmagazine.ir",
-  title: "همه مطالب",
+  title: displayCategory,
   description: pageDescription,
-  mode: "posts",
+  mode: "category",
+  category: displayCategory,
   pageSize: 20
 };
 
@@ -22,18 +63,18 @@ function safeJson(value) {
 ---
 
 <BaseLayout title={pageTitle} description={pageDescription} canonical={canonicalUrl}>
-  <main class="mahoon-archive" data-archive-mode="posts">
+  <main class="mahoon-archive" data-archive-mode="category">
     <section class="mahoon-archive-hero">
       <a class="mahoon-archive-back" href="/">بازگشت به صفحه اصلی</a>
-      <span>آرشیو ماهون</span>
-      <h1>همه مطالب</h1>
+      <span>دسته‌بندی ماهون</span>
+      <h1>{displayCategory}</h1>
       <p>{pageDescription}</p>
       <strong id="archiveTotal">در حال دریافت مطالب...</strong>
     </section>
 
     <section class="mahoon-archive-search">
       <label>
-        <span>جستجو در همه مطالب</span>
+        <span>جستجو در {displayCategory}</span>
         <input id="archiveSearch" type="search" placeholder="عنوان، متن، کد مطلب یا کلیدواژه را جستجو کن..." autocomplete="off" />
       </label>
     </section>
@@ -180,6 +221,7 @@ function safeJson(value) {
 
         const url = new URL(API_BASE + "/public/posts-v1");
         url.searchParams.set("limit", String(PAGE_SIZE));
+        if (config.category) url.searchParams.set("category", config.category);
         url.searchParams.set("offset", String(offset));
         if (q) url.searchParams.set("q", q);
 

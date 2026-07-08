@@ -2638,6 +2638,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       const analyticsRecent = document.getElementById("analyticsRecent");
 
       let posts = [];
+      let adminStats = null;
       let deletedPosts = [];
       let selectedPost = null;
       let selectedIds = new Set();
@@ -3242,8 +3243,12 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         apiStatus.textContent = "در حال اتصال...";
 
         try {
-          const data = await api("/admin/posts");
+          const [data, statsData] = await Promise.all([
+            api("/admin/posts"),
+            api("/admin/stats-v1").catch(() => null)
+          ]);
           posts = data.posts || [];
+          adminStats = statsData?.stats || null;
           selectedIds = new Set();
 
         renderStats();
@@ -3584,35 +3589,43 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
 
       function renderStats() {
-        const published = posts.filter(post => Number(post.is_published) === 1).length;
-        const drafts = posts.filter(post => Number(post.is_published) !== 1).length;
-        const withMedia = posts.filter(post => post.media_file_id || post.photo_file_id).length;
-        const withoutMedia = Math.max(posts.length - withMedia, 0);
-        const latestId = posts.reduce((max, post) => Math.max(max, Number(post.id || 0)), 0);
+        const loadedPublished = posts.filter(post => Number(post.is_published) === 1).length;
+        const loadedDrafts = posts.filter(post => Number(post.is_published) !== 1).length;
+        const loadedWithMedia = posts.filter(post => post.media_file_id || post.photo_file_id).length;
+        const loadedWithoutMedia = Math.max(posts.length - loadedWithMedia, 0);
+        const loadedLatestId = posts.reduce((max, post) => Math.max(max, Number(post.id || 0)), 0);
         const uniqueTags = new Set(posts.flatMap(post => parseContent(post.text).hashtags));
 
-        totalCount.textContent = posts.length;
-        topbarTotalCount.textContent = posts.length;
+        const total = Number(adminStats?.total_posts ?? posts.length);
+        const published = Number(adminStats?.published_posts ?? loadedPublished);
+        const drafts = Number(adminStats?.draft_posts ?? loadedDrafts);
+        const deleted = Number(adminStats?.deleted_posts ?? deletedPosts.length);
+        const withMedia = Number(adminStats?.media_posts ?? loadedWithMedia);
+        const withoutMedia = Number(adminStats?.text_posts ?? loadedWithoutMedia);
+        const latestId = Number(adminStats?.latest_id ?? loadedLatestId);
+
+        totalCount.textContent = total;
+        topbarTotalCount.textContent = total;
         publishedCount.textContent = published;
         draftCount.textContent = drafts;
-        deletedCount.textContent = deletedPosts.length;
+        deletedCount.textContent = deleted;
         mediaCount.textContent = withMedia;
         textCount.textContent = withoutMedia;
         latestIdCount.textContent = latestId || "-";
         tagsCount.textContent = uniqueTags.size;
-        exportCount.textContent = `${posts.length} مطلب آماده خروجی`;
+        exportCount.textContent = total + " مطلب آماده خروجی";
 
-        const rate = posts.length ? Math.round((published / posts.length) * 100) : 0;
-        publishRate.textContent = `${rate}%`;
-        publishProgress.style.width = `${rate}%`;
-        lastRefresh.textContent = `آخرین بروزرسانی: ${new Intl.DateTimeFormat("fa-IR", {
+        const rate = total ? Math.round((published / total) * 100) : 0;
+        publishRate.textContent = rate + "%";
+        publishProgress.style.width = rate + "%";
+        lastRefresh.textContent = "آخرین بروزرسانی: " + new Intl.DateTimeFormat("fa-IR", {
           hour: "2-digit",
           minute: "2-digit"
-        }).format(new Date())}`;
+        }).format(new Date());
 
         renderActivity();
-        mediaPanelCount.textContent = `${withMedia} مورد`;
-        seoPanelCount.textContent = `${posts.filter(post => !post.seo_title || !post.seo_description).length} مورد نیازمند بررسی`;
+        mediaPanelCount.textContent = withMedia + " مورد";
+        seoPanelCount.textContent = posts.filter(post => !post.seo_title || !post.seo_description).length + " مورد نیازمند بررسی";
         updateLocalState();
       }
 
