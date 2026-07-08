@@ -2299,6 +2299,42 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                         <label for="homeLatestTitleInput">عنوان بخش تازه‌ترین روایت</label>
                         <input class="admin-input input" id="homeLatestTitleInput" type="text" />
                       </div>
+                    <div class="field field-wide">
+                      <div class="api-card">
+                        <strong>تبلیغات صفحه اصلی</strong>
+                        <span>این بخش، دو باکس تبلیغاتی بالای دسته‌بندی‌ها را کنترل می‌کند. اگر لینک را خالی بگذاری، دکمه تبلیغ به حالت «جایگاه قابل مدیریت» نمایش داده می‌شود.</span>
+                      </div>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdRightTitleInput">عنوان تبلیغ راست</label>
+                      <input class="admin-input input" id="homeAdRightTitleInput" type="text" placeholder="مثلاً: معرفی نمایشگاه" />
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdLeftTitleInput">عنوان تبلیغ چپ</label>
+                      <input class="admin-input input" id="homeAdLeftTitleInput" type="text" placeholder="مثلاً: همکاری فرهنگی" />
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdRightTextInput">متن تبلیغ راست</label>
+                      <textarea class="admin-input input" id="homeAdRightTextInput" placeholder="متن کوتاه تبلیغ راست"></textarea>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdLeftTextInput">متن تبلیغ چپ</label>
+                      <textarea class="admin-input input" id="homeAdLeftTextInput" placeholder="متن کوتاه تبلیغ چپ"></textarea>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdRightUrlInput">لینک تبلیغ راست</label>
+                      <input class="admin-input input" id="homeAdRightUrlInput" type="url" dir="ltr" placeholder="https://..." />
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdLeftUrlInput">لینک تبلیغ چپ</label>
+                      <input class="admin-input input" id="homeAdLeftUrlInput" type="url" dir="ltr" placeholder="https://..." />
+                    </div>
                       <div class="field">
                         <label for="telegramUrlInput">لینک کانال تلگرام</label>
                         <input class="admin-input input" id="telegramUrlInput" type="url" dir="ltr" />
@@ -2561,6 +2597,12 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         home_hero_line_one: document.getElementById("homeHeroLineOneInput"),
         home_hero_line_two: document.getElementById("homeHeroLineTwoInput"),
         home_latest_title: document.getElementById("homeLatestTitleInput"),
+        home_ad_right_title: document.getElementById("homeAdRightTitleInput"),
+        home_ad_right_text: document.getElementById("homeAdRightTextInput"),
+        home_ad_right_url: document.getElementById("homeAdRightUrlInput"),
+        home_ad_left_title: document.getElementById("homeAdLeftTitleInput"),
+        home_ad_left_text: document.getElementById("homeAdLeftTextInput"),
+        home_ad_left_url: document.getElementById("homeAdLeftUrlInput"),
         about_lead: document.getElementById("aboutLeadInput"),
         about_body: document.getElementById("aboutBodyInput"),
         contact_lead: document.getElementById("contactLeadInput"),
@@ -2899,6 +2941,12 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         home_hero_line_one: "درخت هنر، زمانی میوه خواهد داد",
         home_hero_line_two: "که ریشه آن خشکیده نشده باشد!",
         home_latest_title: "تازه‌ترین روایت منتشرشده در ماهون",
+        home_ad_right_title: "جایگاه تبلیغات",
+        home_ad_right_text: "معرفی رویداد، کتاب، نمایشگاه یا همکاری فرهنگی",
+        home_ad_right_url: "",
+        home_ad_left_title: "جایگاه تبلیغات",
+        home_ad_left_text: "معرفی برندها و پروژه‌های همسو با فضای هنری ماهون",
+        home_ad_left_url: "",
         about_lead: "ماهون مجله‌ای برای روایت هنر، تصویر، صدا و نوشتار است.",
         about_body: [
           "ماهون جایی برای مکث، خواندن و دیدن است؛ جایی برای روایت‌هایی که از دل هنر، فرهنگ، تصویر، صدا و نوشتار می‌آیند و با زبانی آرام و دقیق کنار هم قرار می‌گیرند.",

@@ -530,6 +530,12 @@ const SITE_SETTING_KEYS = [
   "home_hero_line_one",
   "home_hero_line_two",
   "home_latest_title",
+  "home_ad_right_title",
+  "home_ad_right_text",
+  "home_ad_right_url",
+  "home_ad_left_title",
+  "home_ad_left_text",
+  "home_ad_left_url",
   "about_lead",
   "about_body",
   "contact_lead",
@@ -1836,7 +1842,6 @@ async function mahoonGetAnalytics(request, env) {
 }
 
 
-
 /* mahoon-analytics-v5 */
 function mahoonAnalyticsCorsHeadersV5() {
   return {
@@ -2137,7 +2142,6 @@ async function mahoonGetAnalyticsV5(request, env) {
 }
 
 
-
 /* mahoon-telegram-webhook-refresh-v1 */
 function mahoonTelegramWebhookCorsV1() {
   return {
@@ -2271,7 +2275,6 @@ async function mahoonTelegramWebhookRefreshV1(request, env) {
 }
 
 
-
 /* mahoon-public-posts-full-v1 */
 function mahoonPublicPostsFullCorsV1() {
   return {
@@ -2330,7 +2333,6 @@ async function mahoonPublicPostsFullV1(request, env) {
     }, 500);
   }
 }
-
 
 
 /* mahoon-scale-v1 */
@@ -2723,9 +2725,6 @@ async function mahoonScaleAdminStatsV1(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-
-
-
 
 
     // mahoon-scale-routes-v1
