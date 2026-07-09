@@ -1712,6 +1712,19 @@ async function mahoonGetAnalytics(request, env) {
   }
 
   const url = new URL(request.url);
+    // mahoon-ios-media-top-priority-v1
+    if (
+      (request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS") &&
+      (url.pathname === "/media" || url.pathname.startsWith("/media/"))
+    ) {
+      return handleMahooonIosCompatibleMedia(request, env, url);
+    }
+    // end-mahoon-ios-media-top-priority-v1
+    // mahoon-ios-media-range-v2-route
+    if (url.pathname === "/media" || url.pathname.startsWith("/media/")) {
+      return handleMahooonIosCompatibleMedia(request, env, url);
+    }
+    // end-mahoon-ios-media-range-v2-route
 
     // mahoon-analytics-report-route-v3
     if ((url.pathname === "/analytics/report" || url.pathname === "/analytics/admin") && request.method === "OPTIONS") {
@@ -2730,6 +2743,306 @@ async function mahoonScaleAdminStatsV1(request, env) {
 /* end-mahoon-scale-v1 */
 
 
+// mahoon-ios-media-range-v2-helper
+function mahoonGuessMimeFromTelegramPath(filePath) {
+  const lower = String(filePath || "").toLowerCase();
+
+  if (lower.endsWith(".mp3")) return "audio/mpeg";
+  if (lower.endsWith(".m4a")) return "audio/mp4";
+  if (lower.endsWith(".aac")) return "audio/aac";
+  if (lower.endsWith(".wav")) return "audio/wav";
+  if (lower.endsWith(".ogg") || lower.endsWith(".oga") || lower.endsWith(".opus")) return "audio/ogg";
+
+  if (lower.endsWith(".mp4") || lower.endsWith(".m4v")) return "video/mp4";
+  if (lower.endsWith(".mov")) return "video/quicktime";
+  if (lower.endsWith(".webm")) return "video/webm";
+
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".gif")) return "image/gif";
+
+  return "application/octet-stream";
+}
+
+function mahoonEncodeTelegramPath(filePath) {
+  return String(filePath || "")
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
+function mahoonMediaHeaders() {
+  const headers = new Headers();
+
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Range, If-Range, Content-Type, Accept");
+  headers.set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Length, Content-Range, Content-Type, ETag, Last-Modified");
+  headers.set("Accept-Ranges", "bytes");
+
+  return headers;
+}
+
+function mahoonCopyHeader(toHeaders, fromHeaders, name) {
+  const value = fromHeaders.get(name);
+
+  if (value) {
+    toHeaders.set(name, value);
+  }
+}
+
+function mahoonParseRange(rangeHeader, totalSize) {
+  const source = String(rangeHeader || "").trim();
+
+  if (!source || !source.toLowerCase().startsWith("bytes=")) return null;
+  if (!Number.isFinite(totalSize) || totalSize <= 0) return null;
+
+  const rangeText = source.replace(/^bytes=/i, "").split(",")[0].trim();
+  const parts = rangeText.split("-");
+
+  if (parts.length !== 2) return null;
+
+  const startText = parts[0].trim();
+  const endText = parts[1].trim();
+
+  let start = 0;
+  let end = totalSize - 1;
+
+  if (!startText && endText) {
+    const suffix = Number(endText);
+    if (!Number.isFinite(suffix) || suffix <= 0) return null;
+
+    start = Math.max(totalSize - suffix, 0);
+    end = totalSize - 1;
+  } else {
+    start = Number(startText);
+    end = endText ? Number(endText) : totalSize - 1;
+
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  }
+
+  start = Math.max(0, Math.floor(start));
+  end = Math.min(totalSize - 1, Math.floor(end));
+
+  if (start > end || start >= totalSize) return null;
+
+  return { start, end };
+}
+
+function mahoonRange416(totalSize, contentType) {
+  const headers = mahoonMediaHeaders();
+
+  headers.set("Content-Type", contentType || "application/octet-stream");
+  headers.set("Content-Range", "bytes */" + String(Math.max(0, totalSize || 0)));
+
+  return new Response(null, {
+    status: 416,
+    headers
+  });
+}
+
+async function handleMahooonIosCompatibleMedia(request, env, url) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: mahoonMediaHeaders()
+    });
+  }
+
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("Method Not Allowed", {
+      status: 405,
+      headers: mahoonMediaHeaders()
+    });
+  }
+
+  const fromPath = url.pathname.startsWith("/media/")
+    ? url.pathname.slice("/media/".length)
+    : "";
+
+  const fileId = decodeURIComponent(fromPath || url.searchParams.get("file_id") || "").trim();
+
+  if (!fileId) {
+    return new Response("Missing media file id", {
+      status: 400,
+      headers: mahoonMediaHeaders()
+    });
+  }
+
+  const botToken = String(env.BOT_TOKEN || "").trim();
+
+  if (!botToken) {
+    return new Response("BOT_TOKEN is not configured", {
+      status: 500,
+      headers: mahoonMediaHeaders()
+    });
+  }
+
+  const telegramInfoUrl = "https://api.telegram.org/bot" + botToken + "/getFile?file_id=" + encodeURIComponent(fileId);
+  const infoRes = await fetch(telegramInfoUrl, {
+    headers: {
+      Accept: "application/json"
+    }
+  });
+
+  const info = await infoRes.json().catch(() => null);
+  const filePath = String(info && info.result && info.result.file_path ? info.result.file_path : "").trim();
+  const fileSize = Number(info && info.result && info.result.file_size ? info.result.file_size : 0);
+
+  if (!infoRes.ok || !info || !info.ok || !filePath) {
+    const headers = mahoonMediaHeaders();
+    headers.set("Content-Type", "text/plain; charset=utf-8");
+
+    return new Response("Telegram file was not found", {
+      status: 404,
+      headers
+    });
+  }
+
+  // mahoon-ios-head-response-v1
+  if (request.method === "HEAD") {
+    const guessedHeadType = mahoonGuessMimeFromTelegramPath(filePath);
+    const headContentType = String(fileId || "").startsWith("BAAC")
+      ? "video/mp4"
+      : String(fileId || "").startsWith("CQAC")
+        ? "audio/mpeg"
+        : guessedHeadType;
+
+    const headers = mahoonMediaHeaders();
+
+    headers.set("Content-Type", headContentType);
+    headers.set("Content-Disposition", "inline");
+    headers.set("Cache-Control", "public, max-age=31536000, immutable");
+
+    if (fileSize > 0) {
+      const rangeHeaderForHead = request.headers.get("Range");
+      const headRange = mahoonParseRange(rangeHeaderForHead, fileSize);
+
+      if (rangeHeaderForHead && !headRange) {
+        return mahoonRange416(fileSize, headContentType);
+      }
+
+      if (headRange) {
+        headers.set("Content-Range", "bytes " + headRange.start + "-" + headRange.end + "/" + fileSize);
+        headers.set("Content-Length", String(headRange.end - headRange.start + 1));
+
+        return new Response(null, {
+          status: 206,
+          headers
+        });
+      }
+
+      headers.set("Content-Length", String(fileSize));
+    }
+
+    return new Response(null, {
+      status: 200,
+      headers
+    });
+  }
+  // end-mahoon-ios-head-response-v1
+
+  const fileUrl = "https://api.telegram.org/file/bot" + botToken + "/" + mahoonEncodeTelegramPath(filePath);
+  const rangeHeader = request.headers.get("Range");
+  const ifRangeHeader = request.headers.get("If-Range");
+
+  const upstreamHeaders = new Headers();
+
+  if (rangeHeader) upstreamHeaders.set("Range", rangeHeader);
+  if (ifRangeHeader) upstreamHeaders.set("If-Range", ifRangeHeader);
+
+  const upstream = await fetch(fileUrl, {
+    method: request.method === "HEAD" ? "HEAD" : "GET",
+    headers: upstreamHeaders
+  });
+
+  const guessedType = mahoonGuessMimeFromTelegramPath(filePath);
+  const iosFallbackType = String(fileId || "").startsWith("BAAC")
+    ? "video/mp4"
+    : String(fileId || "").startsWith("CQAC")
+      ? "audio/mpeg"
+      : guessedType;
+  const upstreamType = upstream.headers.get("Content-Type") || "";
+  const contentType = !upstreamType || /application\/octet-stream/i.test(upstreamType)
+    ? iosFallbackType
+    : upstreamType;
+
+  const headers = mahoonMediaHeaders();
+
+  headers.set("Content-Type", contentType);
+  headers.set("Content-Disposition", "inline");
+  headers.set("Cache-Control", "public, max-age=31536000, immutable");
+
+  mahoonCopyHeader(headers, upstream.headers, "Content-Length");
+  mahoonCopyHeader(headers, upstream.headers, "Content-Range");
+  mahoonCopyHeader(headers, upstream.headers, "ETag");
+  mahoonCopyHeader(headers, upstream.headers, "Last-Modified");
+
+  if (!headers.has("Content-Length") && fileSize > 0 && upstream.status !== 206) {
+    headers.set("Content-Length", String(fileSize));
+  }
+
+  if (upstream.status === 206) {
+    return new Response(request.method === "HEAD" ? null : upstream.body, {
+      status: 206,
+      headers
+    });
+  }
+
+  if (!upstream.ok) {
+    headers.set("Content-Type", "text/plain; charset=utf-8");
+
+    return new Response("Telegram media fetch failed", {
+      status: upstream.status || 502,
+      headers
+    });
+  }
+
+  if (rangeHeader && request.method === "HEAD") {
+    const totalSize = fileSize || Number(upstream.headers.get("Content-Length") || 0);
+    const range = mahoonParseRange(rangeHeader, totalSize);
+
+    if (!range) {
+      return mahoonRange416(totalSize, contentType);
+    }
+
+    headers.set("Content-Range", "bytes " + range.start + "-" + range.end + "/" + totalSize);
+    headers.set("Content-Length", String(range.end - range.start + 1));
+
+    return new Response(null, {
+      status: 206,
+      headers
+    });
+  }
+
+  if (rangeHeader && request.method === "GET") {
+    const buffer = await upstream.arrayBuffer();
+    const totalSize = buffer.byteLength || fileSize || 0;
+    const range = mahoonParseRange(rangeHeader, totalSize);
+
+    if (!range) {
+      return mahoonRange416(totalSize, contentType);
+    }
+
+    const chunk = buffer.slice(range.start, range.end + 1);
+
+    headers.set("Content-Range", "bytes " + range.start + "-" + range.end + "/" + totalSize);
+    headers.set("Content-Length", String(chunk.byteLength));
+
+    return new Response(chunk, {
+      status: 206,
+      headers
+    });
+  }
+
+  return new Response(request.method === "HEAD" ? null : upstream.body, {
+    status: 200,
+    headers
+  });
+}
+// end-mahoon-ios-media-range-v2-helper
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -3382,7 +3695,10 @@ export default {
         }, 404);
       }
 
-      if (request.method === "GET" && url.pathname.startsWith("/media/")) {
+      if ((request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS") && (url.pathname === "/media" || url.pathname.startsWith("/media/"))) {
+      // mahoon-force-ios-media-route-v1
+      return handleMahooonIosCompatibleMedia(request, env, url);
+      // end-mahoon-force-ios-media-route-v1
         const fileId = decodeURIComponent(url.pathname.replace("/media/", ""));
 
         if (!fileId) {
