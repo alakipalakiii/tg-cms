@@ -1230,5 +1230,248 @@ function safeJson(value) {
     }
     /* end-mahoon-archive-dialogue-title-excerpt-v7 */
 
+
+    /* mahoon-archive-mobile-polish-v8 */
+    @media (max-width: 720px) {
+      .mahoon-archive {
+        width: min(100% - 18px, 1180px) !important;
+        padding-top: 12px !important;
+        padding-bottom: 52px !important;
+      }
+
+      .mahoon-archive-hero {
+        min-height: auto !important;
+        border-radius: 26px !important;
+        padding: 24px 18px !important;
+        box-shadow: 0 18px 42px rgba(75, 13, 13, 0.14) !important;
+      }
+
+      .mahoon-archive-hero .mahoon-archive-back,
+      .mahoon-archive-back {
+        min-height: 38px !important;
+        padding: 7px 12px !important;
+        font-size: 13px !important;
+      }
+
+      .mahoon-archive-hero span {
+        margin-top: 18px !important;
+        font-size: 12px !important;
+      }
+
+      .mahoon-archive-hero h1 {
+        margin: 4px 0 8px !important;
+        font-size: clamp(34px, 11vw, 46px) !important;
+        line-height: 1.2 !important;
+      }
+
+      .mahoon-archive-hero p {
+        max-width: 100% !important;
+        font-size: 13.5px !important;
+        line-height: 1.9 !important;
+      }
+
+      .mahoon-archive-hero strong {
+        margin-top: 14px !important;
+        padding: 7px 13px !important;
+        font-size: 13px !important;
+      }
+
+      .mahoon-archive-search {
+        margin: 12px 0 10px !important;
+        padding: 13px !important;
+        border-radius: 22px !important;
+      }
+
+      .mahoon-archive-search label {
+        gap: 8px !important;
+      }
+
+      .mahoon-archive-search span {
+        font-size: 14px !important;
+      }
+
+      .mahoon-archive-search input {
+        min-height: 50px !important;
+        border-radius: 15px !important;
+        padding: 0 14px !important;
+        font-size: 15px !important;
+      }
+
+      .mahoon-archive-tabs {
+        margin: 10px 0 14px !important;
+        padding: 9px !important;
+        border-radius: 22px !important;
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        justify-content: flex-start !important;
+        scroll-snap-type: x proximity !important;
+        -webkit-overflow-scrolling: touch !important;
+      }
+
+      .mahoon-archive-tabs a {
+        min-height: 38px !important;
+        padding: 7px 13px !important;
+        font-size: 12.5px !important;
+        scroll-snap-align: start !important;
+      }
+
+      .mahoon-archive-count {
+        margin: 2px 0 14px !important;
+        padding-right: 4px !important;
+        font-size: 13px !important;
+        text-align: right !important;
+      }
+
+      .mahoon-archive-list {
+        grid-template-columns: 1fr !important;
+        gap: 14px !important;
+      }
+
+      .mahoon-archive-card {
+        border-radius: 23px !important;
+        box-shadow: 0 16px 40px rgba(75, 13, 13, 0.085) !important;
+      }
+
+      .mahoon-archive-card__media {
+        aspect-ratio: 16 / 8.8 !important;
+      }
+
+      .mahoon-archive-card__media--placeholder {
+        min-height: 176px !important;
+      }
+
+      .mahoon-archive-card__icon {
+        width: 76px !important;
+        height: 76px !important;
+        border-radius: 25px !important;
+        font-size: 32px !important;
+      }
+
+      .mahoon-archive-card__badge {
+        top: 11px !important;
+        right: 11px !important;
+        min-height: 29px !important;
+        padding: 5px 10px !important;
+        font-size: 11.5px !important;
+      }
+
+      .mahoon-archive-card__body {
+        min-height: 190px !important;
+        grid-template-rows: auto 48px 58px auto !important;
+        gap: 9px !important;
+        padding: 15px !important;
+      }
+
+      .mahoon-archive-date,
+      .mahoon-archive-kind {
+        padding: 4px 8px !important;
+        font-size: 11px !important;
+      }
+
+      .mahoon-archive-card h2 {
+        font-size: 16px !important;
+        line-height: 1.55 !important;
+        -webkit-line-clamp: 2 !important;
+      }
+
+      .mahoon-archive-card p {
+        font-size: 12.8px !important;
+        line-height: 1.8 !important;
+        -webkit-line-clamp: 2 !important;
+      }
+
+      .mahoon-archive-cta {
+        min-height: 36px !important;
+        padding: 7px 13px !important;
+        font-size: 12px !important;
+      }
+
+      .mahoon-archive-more {
+        width: 100% !important;
+        min-height: 50px !important;
+        margin-top: 20px !important;
+        border-radius: 18px !important;
+      }
+    }
+
+    @media (max-width: 420px) {
+      .mahoon-archive {
+        width: min(100% - 14px, 1180px) !important;
+      }
+
+      .mahoon-archive-hero {
+        border-radius: 22px !important;
+        padding: 22px 16px !important;
+      }
+
+      .mahoon-archive-hero h1 {
+        font-size: clamp(31px, 12vw, 40px) !important;
+      }
+
+      .mahoon-archive-card__media {
+        aspect-ratio: 16 / 9.1 !important;
+      }
+
+      .mahoon-archive-card__body {
+        min-height: 184px !important;
+      }
+    }
+    /* end-mahoon-archive-mobile-polish-v8 */
+
+
+    /* mahoon-archive-image-frame-v9 */
+    .mahoon-archive-card__media {
+      position: relative !important;
+      display: block !important;
+      overflow: hidden !important;
+      line-height: 0 !important;
+      background:
+        radial-gradient(circle at 20% 18%, rgba(255, 248, 239, 0.86), transparent 25%),
+        linear-gradient(145deg, #f5ece0, #e2c9bf) !important;
+    }
+
+    .mahoon-archive-card__media img {
+      position: absolute !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      max-width: none !important;
+      display: block !important;
+      object-fit: cover !important;
+      object-position: center center !important;
+      vertical-align: top !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    .mahoon-archive-card__media--placeholder {
+      display: grid !important;
+      place-items: center !important;
+      line-height: 1 !important;
+    }
+
+    .mahoon-archive-card__media--placeholder .mahoon-archive-card__icon {
+      position: relative !important;
+      z-index: 1 !important;
+    }
+
+    @media (max-width: 720px) {
+      .mahoon-archive-card__media {
+        aspect-ratio: 16 / 9.4 !important;
+      }
+
+      .mahoon-archive-card__media img {
+        object-position: center center !important;
+      }
+    }
+
+    @media (max-width: 420px) {
+      .mahoon-archive-card__media {
+        aspect-ratio: 16 / 9.6 !important;
+      }
+    }
+    /* end-mahoon-archive-image-frame-v9 */
+
 </style>
 </BaseLayout>
