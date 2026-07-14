@@ -38,6 +38,15 @@ function safeJson(value) {
       </label>
     </section>
 
+    <section class="mahoon-archive-tabs" aria-label="دسته‌بندی‌های ماهون">
+      <a data-archive-link="همه مطالب" href="/posts">همه مطالب</a>
+      <a data-archive-link="کتاب" href="/category/%DA%A9%D8%AA%D8%A7%D8%A8">کتاب</a>
+      <a data-archive-link="دیالوگ ها" href="/category/%D8%AF%DB%8C%D8%A7%D9%84%D9%88%DA%AF%20%D9%87%D8%A7">دیالوگ ها</a>
+      <a data-archive-link="صوتی" href="/category/%D8%B5%D9%88%D8%AA%DB%8C">صوتی</a>
+      <a data-archive-link="شعر و متن" href="/category/%D8%B4%D8%B9%D8%B1%20%D9%88%20%D9%85%D8%AA%D9%86">شعر و متن</a>
+      <a data-archive-link="نقاشی" href="/category/%D9%86%D9%82%D8%A7%D8%B4%DB%8C">نقاشی</a>
+    </section>
+
     <section class="mahoon-archive-results" aria-live="polite">
       <div class="mahoon-archive-count" id="archiveCount">در حال آماده‌سازی...</div>
       <div class="mahoon-archive-list" id="archiveGrid"></div>
@@ -59,6 +68,17 @@ function safeJson(value) {
       const empty = document.getElementById("archiveEmpty");
       const more = document.getElementById("archiveMore");
       const search = document.getElementById("archiveSearch");
+      // mahoon-archive-safe-v3-active-tabs
+      document.querySelectorAll("[data-archive-link]").forEach((link) => {
+        const value = link.getAttribute("data-archive-link") || "";
+        const isActive = (config.mode === "posts" && value === "همه مطالب") || (config.mode === "category" && value === config.category);
+
+        if (isActive) {
+          link.classList.add("is-active");
+          link.setAttribute("aria-current", "page");
+        }
+      });
+
 
       let q = "";
       let offset = 0;
@@ -91,12 +111,46 @@ function safeJson(value) {
         return String(value || "").split(/\r?\n/).filter((line) => {
           const trimmed = line.trim();
           if (!trimmed) return true;
-          return !/^(?:🎥|🎬|فیلم\s*:?)\s*#?\s*.+$/iu.test(trimmed);
+
+          if (/^(?:\u{1F3A5}|\u{1F3AC}|فیلم\s*:?)\s*#?\s*.+$/iu.test(trimmed)) return false;
+          if (/^(?:Queen to Play|Dogville|The Walking Dead|House\s*M\.?D\.?|The Tourist|Indecent Proposal|Funny Face)$/iu.test(trimmed)) return false;
+
+          return true;
         }).join("\n");
       }
 
+      function removeKnownMovieNames(value) {
+        return String(value || "")
+          .replace(/[\u{1F3A5}\u{1F3AC}]/gu, " ")
+          .replace(/دیالوگی?\s+از\s+فیلم\s+[^،؛.!؟\n]+/giu, " ")
+          .replace(/فیلم\s*:?[\s‌]+[^،؛.!؟\n]+/giu, " ")
+          .replace(/Queen to Play/gi, " ")
+          .replace(/Dogville/gi, " ")
+          .replace(/The Walking Dead/gi, " ")
+          .replace(/House\s*M\.?D\.?/gi, " ")
+          .replace(/The Tourist/gi, " ")
+          .replace(/Indecent Proposal/gi, " ")
+          .replace(/Funny Face/gi, " ")
+          .replace(/#\S+/gu, " ")
+          .replace(/@mahoonartmagazine/gi, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
       function cleanPublicText(value) {
-        return String(stripMovieCreditLines(value) || "").replace(/(^|\s)#([^\n#]+)/gu, " ").replace(/\s+/g, " ").trim();
+        return removeKnownMovieNames(stripMovieCreditLines(value))
+          .replace(/#\S+/gu, " ")
+          .replace(/[\u{1F3A5}\u{1F3AC}]/gu, " ")
+          .replace(/@mahoonartmagazine/gi, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function limitWords(value, maxWords) {
+        const words = String(value || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+        if (!words.length) return "";
+        if (words.length <= maxWords) return words.join(" ");
+        return words.slice(0, maxWords).join(" ") + "…";
       }
 
       function truncateText(value, max) {
@@ -119,21 +173,91 @@ function safeJson(value) {
       }
 
       function isDialoguePost(post) {
-        return /#(?:دیالوگ|دیالوگ‌ها|دیالوگ_ها)/u.test(String(post.text || ""));
+        const tagKind = primaryKindFromTags(post);
+        return String(config.category || "") === "دیالوگ ها" || tagKind === "dialogue";
+      }
+
+      function normalizeMovieTitleCandidate(value) {
+        return String(value || "")
+          .replace(/[\u{1F3A5}\u{1F3AC}]/gu, " ")
+          .replace(/^\s*دیالوگی?\s+از\s+فیلم\s*/iu, " ")
+          .replace(/^\s*فیلم\s*[:：-]?\s*/iu, " ")
+          .replace(/^\s*#/, "")
+          .replace(/#\S+/gu, " ")
+          .replace(/@mahoonartmagazine/gi, " ")
+          .replace(/[،؛.!؟]+$/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function isValidMovieTitleCandidate(value) {
+        const clean = String(value || "").trim();
+
+        if (!clean) return false;
+        if (clean.length < 2) return false;
+        if (clean.length > 48) return false;
+        if (/^(دیالوگ|دیالوگی|فیلم|متن|کتاب|صوتی)$/iu.test(clean)) return false;
+
+        return true;
+      }
+
+      function extractMovieTitle(post) {
+        const raw = String(post.text || "");
+        const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+
+        for (const line of lines) {
+          if (/[\u{1F3A5}\u{1F3AC}]/u.test(line) || /فیلم\s*[:：-]?/iu.test(line) || /دیالوگی?\s+از\s+فیلم/iu.test(line)) {
+            const candidate = normalizeMovieTitleCandidate(line);
+
+            if (isValidMovieTitleCandidate(candidate)) {
+              return candidate;
+            }
+          }
+        }
+
+        const knownMovies = [
+          "Queen to Play",
+          "Dogville",
+          "The Walking Dead",
+          "House M.D",
+          "The Tourist",
+          "Indecent Proposal",
+          "Funny Face"
+        ];
+
+        const lower = raw.toLowerCase();
+
+        for (const movie of knownMovies) {
+          if (lower.includes(movie.toLowerCase())) {
+            return movie;
+          }
+        }
+
+        return "";
       }
 
       function makeTitle(post) {
-        const movie = extractMovieTitle(post.text);
-        if (movie && isDialoguePost(post)) return "دیالوگی از فیلم ‎" + movie + "‎";
-        const seo = cleanPublicText(post.seo_title);
-        if (seo && seo.length <= 70) return seo;
         const source = cleanPublicText(post.text);
-        return truncateText(firstWords(source, 9), 70) || "مطلبی از ماهون";
+        const seo = cleanPublicText(post.seo_title);
+
+        if (isDialoguePost(post)) {
+          const movieTitle = extractMovieTitle(post);
+
+          if (movieTitle) {
+            return "دیالوگی از فیلم " + limitWords(movieTitle, 6);
+          }
+
+          return "دیالوگی از ماهون";
+        }
+
+        if (seo) return limitWords(seo, 5);
+
+        return limitWords(source, 5) || "مطلبی از ماهون";
       }
 
       function makeExcerpt(post) {
         const source = cleanPublicText(post.seo_description) || cleanPublicText(post.text);
-        return truncateText(source, 160);
+        return limitWords(source, 14);
       }
 
       function href(post) {
@@ -141,27 +265,145 @@ function safeJson(value) {
         return "/post/" + encodeURIComponent(slug);
       }
 
+      function normalizeArchiveToken(value) {
+        return String(value || "")
+          .replace(/^#/, "")
+          .replace(/[يى]/g, "ی")
+          .replace(/ك/g, "ک")
+          .replace(/[\u200c\u200f]/g, "")
+          .replace(/_/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .toLowerCase();
+      }
+
+      function postTags(post) {
+        const matches = String(post.text || "").matchAll(/(^|\s)#([^\s#@]+)/gu);
+        return Array.from(matches).map((match) => normalizeArchiveToken(match[2]));
+      }
+
+      function hasExactArchiveTag(post, names) {
+        const tags = postTags(post);
+        return names.some((name) => tags.includes(normalizeArchiveToken(name)));
+      }
+
+      function primaryKindFromTags(post) {
+        if (hasExactArchiveTag(post, ["کتاب", "کتاب گویا", "کتاب_گویا", "کتابگویا"])) return "book";
+
+        if (hasExactArchiveTag(post, [
+          "دیالوگ",
+          "دیالوگ ها",
+          "دیالوگ_ها",
+          "دیالوگ‌ها",
+          "دیالوگها"
+        ])) return "dialogue";
+
+        if (hasExactArchiveTag(post, ["صوتی", "صدا", "موسیقی"])) return "audio";
+
+        if (hasExactArchiveTag(post, ["نقاشی"])) return "art";
+
+        if (hasExactArchiveTag(post, [
+          "شعر و متن",
+          "شعر_و_متن",
+          "شعر",
+          "اشعار",
+          "شعرها",
+          "شعر ها",
+          "شعر_ها",
+          "متن",
+          "متن ها",
+          "متن_ها",
+          "متن‌ها"
+        ])) return "text";
+
+        return "";
+      }
+
+      function mediaKind(post) {
+        const type = String(post.media_type || "").toLowerCase();
+        const category = String(config.category || "");
+
+        if (category === "کتاب") return "book";
+        if (category === "دیالوگ ها") return "dialogue";
+        if (category === "صوتی") return "audio";
+        if (category === "شعر و متن") return "text";
+        if (category === "نقاشی") return "art";
+
+        const tagKind = primaryKindFromTags(post);
+
+        if (tagKind) return tagKind;
+
+        if (type === "audio" || type === "voice") return "audio";
+        if (type === "video" || type === "animation") return "video";
+        if (type === "photo" || type === "image") return "photo";
+
+        return "text";
+      }
+
+      function mediaLabel(kind) {
+        if (kind === "audio") return "صوتی";
+        if (kind === "video") return "ویدیو";
+        if (kind === "book") return "کتاب";
+        if (kind === "dialogue") return "دیالوگ";
+        if (kind === "art") return "نقاشی";
+        if (kind === "photo") return "تصویری";
+        return "متن";
+      }
+
+      function mediaIcon(kind) {
+        if (kind === "audio") return "♪";
+        if (kind === "video") return "▶";
+        if (kind === "book") return "▤";
+        if (kind === "dialogue") return "❞";
+        if (kind === "art") return "◐";
+        if (kind === "photo") return "◇";
+        return "✎";
+      }
+
       function mediaSrc(post) {
         const type = String(post.media_type || "").toLowerCase();
-        if (type && !["photo", "image"].includes(type)) return "";
-        const fileId = post.photo_file_id || post.media_file_id;
-        return fileId ? API_BASE + "/media/" + encodeURIComponent(fileId) : "";
+        const direct = post.photo_url || post.image_url || post.thumbnail_url || "";
+
+        if (direct) return direct;
+
+        const photoId = post.photo_file_id || post.thumbnail_file_id || post.thumb_file_id;
+
+        if (photoId) {
+          return API_BASE + "/media/" + encodeURIComponent(photoId);
+        }
+
+        if ((type === "photo" || type === "image") && post.media_file_id) {
+          return API_BASE + "/media/" + encodeURIComponent(post.media_file_id);
+        }
+
+        return "";
       }
 
       function renderCard(post) {
         const title = makeTitle(post);
+        const excerpt = makeExcerpt(post);
+        const kind = mediaKind(post);
+        const label = mediaLabel(kind);
         const image = mediaSrc(post);
-        const imageHtml = image
-          ? '<a class="mahoon-archive-card__media" href="' + escapeAttr(href(post)) + '"><img src="' + escapeAttr(image) + '" alt="' + escapeAttr(title) + '" loading="lazy" decoding="async" /></a>'
-          : '';
+        const postHref = href(post);
 
-        return '<article class="mahoon-archive-card ' + (!image ? 'mahoon-archive-card--text' : '') + '">' +
-          imageHtml +
+        const mediaInner = image
+          ? '<img src="' + escapeAttr(image) + '" alt="' + escapeAttr(title) + '" loading="lazy" decoding="async" />'
+          : '<span class="mahoon-archive-card__icon" aria-hidden="true">' + escapeHtml(mediaIcon(kind)) + '</span>';
+
+        return '<article class="mahoon-archive-card mahoon-archive-card--' + escapeAttr(kind) + '">' +
+          '<a class="mahoon-archive-card__media ' + (!image ? 'mahoon-archive-card__media--placeholder' : '') + '" data-kind="' + escapeAttr(kind) + '" href="' + escapeAttr(postHref) + '">' +
+            mediaInner +
+            '<span class="mahoon-archive-card__badge">' + escapeHtml(label) + '</span>' +
+          '</a>' +
           '<div class="mahoon-archive-card__body">' +
-            '<span class="mahoon-archive-date">' + escapeHtml(formatDate(post.created_at)) + '</span>' +
-            '<h2><a href="' + escapeAttr(href(post)) + '">' + escapeHtml(title) + '</a></h2>' +
-            '<p>' + escapeHtml(makeExcerpt(post)) + '</p>' +
-            '<a class="mahoon-archive-cta" href="' + escapeAttr(href(post)) + '">ادامه مطلب</a>' +
+            '<div class="mahoon-archive-card__meta">' +
+              '<span class="mahoon-archive-date">' + escapeHtml(formatDate(post.created_at)) + '</span>' +
+              '<span class="mahoon-archive-kind">' + escapeHtml(label) + '</span>' +
+            '</div>' +
+            '<h2><a href="' + escapeAttr(postHref) + '">' + escapeHtml(title) + '</a></h2>' +
+            '<p>' + escapeHtml(excerpt) + '</p>' +
+            '<a class="mahoon-archive-cta" href="' + escapeAttr(postHref) + '">ادامه مطلب</a>' +
           '</div>' +
         '</article>';
       }
@@ -223,7 +465,7 @@ function safeJson(value) {
     })();
   </script>
 
-  <style>
+  <style is:global>
     .mahoon-archive {
       width: min(1180px, calc(100% - 32px));
       margin: 0 auto;
@@ -232,15 +474,34 @@ function safeJson(value) {
     }
 
     .mahoon-archive-hero {
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
       border-radius: 34px;
       padding: 42px;
       background:
+        radial-gradient(circle at 15% 18%, rgba(255, 248, 239, 0.16), transparent 28%),
+        radial-gradient(circle at 88% 78%, rgba(255, 219, 176, 0.12), transparent 30%),
         linear-gradient(rgba(255, 253, 248, 0.045) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 253, 248, 0.04) 1px, transparent 1px),
         linear-gradient(145deg, #5a0f0f, #2a1713);
-      background-size: 42px 42px, 42px 42px, auto;
+      background-size: auto, auto, 42px 42px, 42px 42px, auto;
       color: #fff8ef;
       box-shadow: 0 24px 64px rgba(75, 13, 13, 0.18);
+    }
+
+    .mahoon-archive-hero::after {
+      content: "";
+      position: absolute;
+      left: -70px;
+      bottom: -120px;
+      width: 270px;
+      height: 270px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 248, 239, 0.13);
+      background: rgba(255, 248, 239, 0.035);
+      pointer-events: none;
+      z-index: -1;
     }
 
     .mahoon-archive-back,
@@ -267,10 +528,12 @@ function safeJson(value) {
     .mahoon-archive-hero h1 {
       margin: 4px 0 10px;
       font-size: clamp(42px, 7vw, 76px);
-      line-height: 1.25;
+      line-height: 1.22;
+      letter-spacing: -0.035em;
     }
 
     .mahoon-archive-hero p {
+      max-width: 680px;
       margin: 0;
       color: rgba(255, 248, 239, 0.78);
       line-height: 2;
@@ -285,13 +548,18 @@ function safeJson(value) {
       padding: 8px 16px;
     }
 
-    .mahoon-archive-search {
+    .mahoon-archive-search,
+    .mahoon-archive-tabs {
       margin: 18px 0;
       border-radius: 26px;
-      padding: 20px;
-      background: rgba(255, 253, 248, 0.82);
+      background: rgba(255, 253, 248, 0.86);
       border: 1px solid rgba(75, 13, 13, 0.12);
       box-shadow: 0 18px 44px rgba(75, 13, 13, 0.07);
+      backdrop-filter: blur(14px);
+    }
+
+    .mahoon-archive-search {
+      padding: 20px;
     }
 
     .mahoon-archive-search label {
@@ -307,7 +575,7 @@ function safeJson(value) {
     .mahoon-archive-search input {
       width: 100%;
       min-height: 58px;
-      border: 1px solid rgba(75, 13, 13, 0.2);
+      border: 1px solid rgba(75, 13, 13, 0.18);
       border-radius: 18px;
       background: #fffdf8;
       color: #331313;
@@ -317,30 +585,81 @@ function safeJson(value) {
       outline: none;
     }
 
+    .mahoon-archive-tabs {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding: 12px;
+      scrollbar-width: none;
+    }
+
+    .mahoon-archive-tabs::-webkit-scrollbar {
+      display: none;
+    }
+
+    .mahoon-archive-tabs a {
+      flex: 0 0 auto;
+      min-height: 42px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 8px 15px;
+      color: rgba(75, 13, 13, 0.72);
+      background: rgba(245, 236, 224, 0.7);
+      text-decoration: none;
+      font-weight: 900;
+      white-space: nowrap;
+      border: 1px solid rgba(75, 13, 13, 0.08);
+    }
+
+    .mahoon-archive-tabs a.is-active {
+      color: #fff8ef;
+      background: #5a0f0f;
+      box-shadow: 0 14px 28px rgba(75, 13, 13, 0.16);
+    }
+
     .mahoon-archive-count {
-      margin: 14px 0;
+      margin: 18px 0;
       color: rgba(75, 13, 13, 0.62);
       font-weight: 900;
     }
 
     .mahoon-archive-list {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 18px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 22px;
+      align-items: stretch;
     }
 
     .mahoon-archive-card {
+      min-width: 0;
       overflow: hidden;
-      border-radius: 28px;
-      border: 1px solid rgba(75, 13, 13, 0.12);
-      background: rgba(255, 253, 248, 0.94);
+      border-radius: 30px;
+      border: 1px solid rgba(75, 13, 13, 0.11);
+      background: rgba(255, 253, 248, 0.96);
       box-shadow: 0 20px 52px rgba(75, 13, 13, 0.08);
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    .mahoon-archive-card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(75, 13, 13, 0.18);
+      box-shadow: 0 26px 62px rgba(75, 13, 13, 0.12);
     }
 
     .mahoon-archive-card__media {
-      display: block;
-      aspect-ratio: 16 / 10;
-      background: #e8d3cc;
+      position: relative;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      aspect-ratio: 16 / 10.6;
+      background:
+        radial-gradient(circle at 22% 18%, rgba(255, 248, 239, 0.82), transparent 24%),
+        linear-gradient(145deg, #f5ece0, #e3ccc3);
+      text-decoration: none;
     }
 
     .mahoon-archive-card__media img {
@@ -348,31 +667,86 @@ function safeJson(value) {
       height: 100%;
       display: block;
       object-fit: cover;
+      object-position: center;
+    }
+
+    .mahoon-archive-card__media--placeholder {
+      background:
+        radial-gradient(circle at 22% 18%, rgba(255, 248, 239, 0.9), transparent 24%),
+        radial-gradient(circle at 82% 78%, rgba(90, 15, 15, 0.12), transparent 30%),
+        linear-gradient(145deg, #f7efe5, #e7d1c8);
+    }
+
+    .mahoon-archive-card__icon {
+      min-width: 120px;
+      min-height: 82px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 26px;
+      padding: 14px 18px;
+      color: #5a0f0f;
+      background: rgba(255, 253, 248, 0.72);
+      border: 1px solid rgba(75, 13, 13, 0.1);
+      font-size: 23px;
+      font-weight: 950;
+      text-align: center;
+    }
+
+    .mahoon-archive-card__badge {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      border-radius: 999px;
+      padding: 6px 11px;
+      color: #fff8ef;
+      background: rgba(42, 23, 19, 0.78);
+      backdrop-filter: blur(10px);
+      font-size: 12px;
+      font-weight: 900;
     }
 
     .mahoon-archive-card__body {
-      min-height: 250px;
+      min-height: 236px;
       display: flex;
       flex-direction: column;
-      padding: 22px;
+      padding: 20px;
     }
 
-    .mahoon-archive-date {
+    .mahoon-archive-card__meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .mahoon-archive-date,
+    .mahoon-archive-kind {
       width: fit-content;
       border-radius: 999px;
       background: #f5ece0;
       color: #8a6a62;
       padding: 5px 10px;
       font-size: 12px;
-      font-weight: 800;
-      margin-bottom: 12px;
+      font-weight: 850;
+    }
+
+    .mahoon-archive-kind {
+      background: rgba(90, 15, 15, 0.08);
+      color: #5a0f0f;
     }
 
     .mahoon-archive-card h2 {
-      margin: 0 0 12px;
+      margin: 0 0 10px;
       color: #4b0d0d;
-      font-size: 22px;
-      line-height: 1.65;
+      font-size: 19px;
+      line-height: 1.7;
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
     }
 
     .mahoon-archive-card h2 a {
@@ -397,19 +771,20 @@ function safeJson(value) {
       margin-right: auto;
       border: 1px solid rgba(75, 13, 13, 0.16);
       font-size: 13px;
+      background: #fff8ef;
     }
 
     .mahoon-archive-more {
-      min-height: 52px;
+      min-height: 54px;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 24px auto 0;
+      margin: 28px auto 0;
       border: 0;
       border-radius: 999px;
       background: #5a0f0f;
       color: #fff8ef;
-      padding: 0 24px;
+      padding: 0 26px;
       font: inherit;
       font-weight: 900;
       cursor: pointer;
@@ -430,14 +805,388 @@ function safeJson(value) {
       display: none !important;
     }
 
-    @media (max-width: 820px) {
+    @media (max-width: 1040px) {
       .mahoon-archive-list {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 720px) {
+      .mahoon-archive {
+        width: min(100% - 20px, 1180px);
+        padding: 16px 0 58px;
       }
 
       .mahoon-archive-hero {
-        padding: 30px 24px;
+        border-radius: 28px;
+        padding: 28px 20px;
+      }
+
+      .mahoon-archive-hero span {
+        margin-top: 20px;
+      }
+
+      .mahoon-archive-hero h1 {
+        font-size: clamp(34px, 12vw, 48px);
+      }
+
+      .mahoon-archive-search {
+        padding: 14px;
+        border-radius: 22px;
+      }
+
+      .mahoon-archive-search input {
+        min-height: 54px;
+        border-radius: 16px;
+      }
+
+      .mahoon-archive-tabs {
+        margin: 14px 0;
+        border-radius: 22px;
+        padding: 10px;
+      }
+
+      .mahoon-archive-tabs a {
+        min-height: 40px;
+        padding: 7px 13px;
+        font-size: 13px;
+      }
+
+      .mahoon-archive-list {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      .mahoon-archive-card {
+        border-radius: 24px;
+      }
+
+      .mahoon-archive-card__media {
+        aspect-ratio: 16 / 9.2;
+      }
+
+      .mahoon-archive-card__body {
+        min-height: auto;
+        padding: 18px;
+      }
+
+      .mahoon-archive-card h2 {
+        font-size: 17px;
+        -webkit-line-clamp: 3;
+      }
+
+      .mahoon-archive-card p {
+        font-size: 13.5px;
+      }
+
+      .mahoon-archive-cta {
+        margin-top: 18px;
       }
     }
-  </style>
+
+
+    /* mahoon-archive-card-compact-luxury-v6 */
+    .mahoon-archive {
+      padding-top: 24px !important;
+      padding-bottom: 64px !important;
+    }
+
+    .mahoon-archive-search {
+      margin: 16px 0 14px !important;
+      padding: 16px 18px !important;
+      border-radius: 28px !important;
+      background: rgba(255, 253, 248, 0.9) !important;
+      box-shadow: 0 16px 38px rgba(75, 13, 13, 0.055) !important;
+    }
+
+    .mahoon-archive-search input {
+      min-height: 54px !important;
+      border-radius: 17px !important;
+      background: rgba(255, 253, 248, 0.92) !important;
+    }
+
+    .mahoon-archive-tabs {
+      margin: 14px 0 18px !important;
+      padding: 10px 12px !important;
+      border-radius: 28px !important;
+      background: rgba(255, 253, 248, 0.92) !important;
+      box-shadow: 0 16px 38px rgba(75, 13, 13, 0.05) !important;
+    }
+
+    .mahoon-archive-tabs a {
+      min-height: 40px !important;
+      padding: 7px 14px !important;
+      font-size: 13px !important;
+      border-radius: 999px !important;
+    }
+
+    .mahoon-archive-count {
+      margin: 0 0 18px !important;
+      padding-right: 4px !important;
+      color: rgba(75, 13, 13, 0.58) !important;
+      font-size: 14px !important;
+    }
+
+    .mahoon-archive-list {
+      display: grid !important;
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      gap: 20px !important;
+      align-items: stretch !important;
+    }
+
+    .mahoon-archive-card {
+      position: relative !important;
+      min-width: 0 !important;
+      height: 100% !important;
+      overflow: hidden !important;
+      border-radius: 26px !important;
+      border: 1px solid rgba(75, 13, 13, 0.105) !important;
+      background:
+        radial-gradient(circle at 92% 92%, rgba(90, 15, 15, 0.045), transparent 30%),
+        linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(250, 241, 232, 0.965)) !important;
+      box-shadow: 0 18px 48px rgba(75, 13, 13, 0.085) !important;
+      display: flex !important;
+      flex-direction: column !important;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
+    }
+
+    .mahoon-archive-card:hover {
+      transform: translateY(-3px) !important;
+      border-color: rgba(75, 13, 13, 0.2) !important;
+      box-shadow: 0 24px 62px rgba(75, 13, 13, 0.12) !important;
+    }
+
+    .mahoon-archive-card::after {
+      content: "" !important;
+      position: absolute !important;
+      left: -74px !important;
+      bottom: -82px !important;
+      width: 148px !important;
+      height: 148px !important;
+      border-radius: 999px !important;
+      border: 1px solid rgba(75, 13, 13, 0.075) !important;
+      pointer-events: none !important;
+    }
+
+    .mahoon-archive-card__media {
+      position: relative !important;
+      display: grid !important;
+      place-items: center !important;
+      overflow: hidden !important;
+      aspect-ratio: 16 / 9.6 !important;
+      background:
+        radial-gradient(circle at 20% 18%, rgba(255, 248, 239, 0.86), transparent 25%),
+        linear-gradient(145deg, #f5ece0, #e2c9bf) !important;
+      text-decoration: none !important;
+      border-bottom: 1px solid rgba(75, 13, 13, 0.075) !important;
+    }
+
+    .mahoon-archive-card__media img {
+      width: 100% !important;
+      height: 100% !important;
+      display: block !important;
+      object-fit: cover !important;
+      object-position: center center !important;
+      transition: transform 0.28s ease !important;
+    }
+
+    .mahoon-archive-card:hover .mahoon-archive-card__media img {
+      transform: scale(1.025) !important;
+    }
+
+    .mahoon-archive-card__media--placeholder {
+      min-height: auto !important;
+      background:
+        radial-gradient(circle at 22% 18%, rgba(255, 248, 239, 0.94), transparent 26%),
+        radial-gradient(circle at 82% 78%, rgba(90, 15, 15, 0.105), transparent 30%),
+        linear-gradient(145deg, #f7efe5, #e7d1c8) !important;
+    }
+
+    .mahoon-archive-card__icon {
+      width: 82px !important;
+      height: 82px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      border-radius: 28px !important;
+      color: #5a0f0f !important;
+      background: rgba(255, 253, 248, 0.78) !important;
+      border: 1px solid rgba(75, 13, 13, 0.1) !important;
+      box-shadow: 0 16px 34px rgba(75, 13, 13, 0.075) !important;
+      font-size: 36px !important;
+      font-weight: 950 !important;
+      line-height: 1 !important;
+      text-align: center !important;
+    }
+
+    .mahoon-archive-card__badge {
+      position: absolute !important;
+      top: 12px !important;
+      right: 12px !important;
+      z-index: 2 !important;
+      min-height: 30px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      border-radius: 999px !important;
+      padding: 5px 10px !important;
+      color: #fff8ef !important;
+      background: rgba(42, 23, 19, 0.74) !important;
+      backdrop-filter: blur(10px) !important;
+      font-size: 11.5px !important;
+      font-weight: 900 !important;
+    }
+
+    .mahoon-archive-card__body {
+      position: relative !important;
+      z-index: 1 !important;
+      min-height: 216px !important;
+      display: grid !important;
+      grid-template-rows: auto 54px 50px auto !important;
+      gap: 10px !important;
+      padding: 17px 18px 18px !important;
+    }
+
+    .mahoon-archive-card__meta {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 8px !important;
+      flex-wrap: wrap !important;
+      margin: 0 !important;
+    }
+
+    .mahoon-archive-date,
+    .mahoon-archive-kind {
+      width: fit-content !important;
+      border-radius: 999px !important;
+      background: #f5ece0 !important;
+      color: #8a6a62 !important;
+      padding: 4px 9px !important;
+      font-size: 11.5px !important;
+      font-weight: 850 !important;
+      line-height: 1.5 !important;
+    }
+
+    .mahoon-archive-kind {
+      background: rgba(90, 15, 15, 0.075) !important;
+      color: #5a0f0f !important;
+    }
+
+    .mahoon-archive-card h2 {
+      margin: 0 !important;
+      color: #4b0d0d !important;
+      font-size: 17.5px !important;
+      font-weight: 950 !important;
+      line-height: 1.55 !important;
+      align-self: start !important;
+      display: -webkit-box !important;
+      overflow: hidden !important;
+      -webkit-box-orient: vertical !important;
+      -webkit-line-clamp: 2 !important;
+    }
+
+    .mahoon-archive-card h2 a {
+      color: inherit !important;
+      text-decoration: none !important;
+    }
+
+    .mahoon-archive-card p {
+      margin: 0 !important;
+      color: #6a5550 !important;
+      font-size: 13.2px !important;
+      line-height: 1.85 !important;
+      align-self: start !important;
+      display: -webkit-box !important;
+      overflow: hidden !important;
+      -webkit-box-orient: vertical !important;
+      -webkit-line-clamp: 2 !important;
+    }
+
+    .mahoon-archive-cta {
+      width: fit-content !important;
+      min-height: 38px !important;
+      margin: 0 !important;
+      align-self: end !important;
+      justify-self: start !important;
+      border: 1px solid rgba(75, 13, 13, 0.15) !important;
+      border-radius: 999px !important;
+      padding: 7px 14px !important;
+      font-size: 12.5px !important;
+      font-weight: 900 !important;
+      background: #fff8ef !important;
+      color: #4b0d0d !important;
+      box-shadow: 0 9px 22px rgba(75, 13, 13, 0.055) !important;
+    }
+
+    @media (max-width: 1040px) {
+      .mahoon-archive-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+
+      .mahoon-archive-card__body {
+        min-height: 210px !important;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .mahoon-archive-search {
+        padding: 14px !important;
+        border-radius: 22px !important;
+      }
+
+      .mahoon-archive-tabs {
+        border-radius: 22px !important;
+        padding: 10px !important;
+      }
+
+      .mahoon-archive-list {
+        grid-template-columns: 1fr !important;
+        gap: 16px !important;
+      }
+
+      .mahoon-archive-card {
+        border-radius: 24px !important;
+      }
+
+      .mahoon-archive-card__media {
+        aspect-ratio: 16 / 9.2 !important;
+      }
+
+      .mahoon-archive-card__body {
+        min-height: 198px !important;
+        grid-template-rows: auto 50px 46px auto !important;
+        padding: 16px !important;
+      }
+
+      .mahoon-archive-card h2 {
+        font-size: 16.5px !important;
+      }
+
+      .mahoon-archive-card p {
+        font-size: 13px !important;
+      }
+    }
+    /* end-mahoon-archive-card-compact-luxury-v6 */
+
+
+    /* mahoon-archive-dialogue-title-excerpt-v7 */
+    .mahoon-archive-card__body {
+      min-height: 228px !important;
+      grid-template-rows: auto 54px 72px auto !important;
+    }
+
+    .mahoon-archive-card p {
+      -webkit-line-clamp: 3 !important;
+    }
+
+    @media (max-width: 720px) {
+      .mahoon-archive-card__body {
+        min-height: 212px !important;
+        grid-template-rows: auto 52px 66px auto !important;
+      }
+    }
+    /* end-mahoon-archive-dialogue-title-excerpt-v7 */
+
+</style>
 </BaseLayout>
