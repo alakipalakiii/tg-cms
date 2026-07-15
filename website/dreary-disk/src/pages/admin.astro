@@ -2792,6 +2792,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       let editorDirty = false;
       let editorBaseline = "";
       let messageTimer = null;
+      let authRecoveryShown = false;
       let currentPage = 1;
       const POSTS_PER_PAGE = 8;
       const MEDIA_RENDER_LIMIT = 18;
@@ -2810,6 +2811,42 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
       function clearToken() {
         localStorage.removeItem(TOKEN_KEY);
+      }
+
+      /* mahoon-admin-auth-recovery-v1 */
+      function isAuthFailure(error) {
+        const status = Number(error?.status || 0);
+        const message = String(error?.message || "");
+
+        return (
+          status === 401 ||
+          status === 403 ||
+          /unauthorized|forbidden|invalid token|expired token|\b401\b|\b403\b/i.test(message)
+        );
+      }
+
+      function recoverAdminSession(error) {
+        if (!isAuthFailure(error)) {
+          return false;
+        }
+
+        clearToken();
+        tokenInput.value = "";
+        updateLocalState();
+        showLogin();
+
+        if (!authRecoveryShown) {
+          authRecoveryShown = true;
+          clearTimeout(messageTimer);
+
+          loginMessage.textContent =
+            "نشست مدیریت منقضی شده یا دسترسی تغییر کرده است. دوباره وارد پنل شو.";
+
+          loginMessage.className =
+            "message show error";
+        }
+
+        return true;
       }
 
       function showLogin() {
@@ -2967,7 +3004,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       function userFriendlyError(error, fallback = "عملیات انجام نشد. دوباره تلاش کن.") {
         const message = error?.message || "";
 
-        if (/unauthorized|forbidden|admin|token|401|403/i.test(message)) {
+        if (isAuthFailure(error)) {
           return "دسترسی مدیریت تأیید نشد. دوباره وارد پنل شو.";
         }
 
@@ -3012,7 +3049,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         const controller = new AbortController();
         const timeoutMs = options.timeoutMs || API_TIMEOUT_MS;
         const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-        const { timeoutMs: _timeoutMs, ...fetchOptions } = options;
+        const { timeoutMs: _timeoutMs, skipAuthRecovery = false, ...fetchOptions } = options;
 
         const res = await fetch(`${WORKER_URL}${path}`, {
           ...fetchOptions,
@@ -3028,6 +3065,11 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         if (!res.ok) {
           const error = new Error(data?.error || "خطا در ارتباط با سرور");
           error.status = res.status;
+
+          if (!skipAuthRecovery) {
+            recoverAdminSession(error);
+          }
+
           throw error;
         }
 
@@ -3154,7 +3196,13 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           const data = await res.json().catch(() => null);
 
           if (!res.ok || !data?.ok) {
-            throw new Error(data?.error || "آپلود عکس تبلیغ انجام نشد.");
+            const error = new Error(
+              data?.error ||
+              "آپلود عکس تبلیغ انجام نشد."
+            );
+
+            error.status = res.status;
+            throw error;
           }
 
           const media = data.media || {};
@@ -3180,7 +3228,18 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
           showMessage(siteCopyMessage, "عکس تبلیغ آپلود شد. برای اعمال در سایت، دکمه ذخیره تنظیمات را بزن.", "ok");
         } catch (error) {
-          showMessage(siteCopyMessage, userFriendlyError(error, "آپلود عکس تبلیغ انجام نشد."), "error");
+          if (recoverAdminSession(error)) {
+            return;
+          }
+
+          showMessage(
+            siteCopyMessage,
+            userFriendlyError(
+              error,
+              "آپلود عکس تبلیغ انجام نشد."
+            ),
+            "error"
+          );
         } finally {
           window.clearTimeout(timer);
 
@@ -3503,13 +3562,44 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
       async function testLogin() {
         try {
-          await api("/admin/health");
+          await api("/admin/health", {
+            skipAuthRecovery: true
+          });
+
+          authRecoveryShown = false;
+          loginMessage.className = "message";
+          loginMessage.textContent = "";
+          tokenInput.value = "";
+
           showDashboard();
           await loadPosts();
-        } catch {
-          clearToken();
+        } catch (error) {
+          if (isAuthFailure(error)) {
+            clearToken();
+            authRecoveryShown = false;
+            tokenInput.value = "";
+            showLogin();
+
+            showMessage(
+              loginMessage,
+              "رمز مدیریت اشتباه است یا دسترسی مدیریت منقضی شده است.",
+              "error"
+            );
+
+            return;
+          }
+
+          tokenInput.value = getToken();
           showLogin();
-          showMessage(loginMessage, "رمز مدیریت اشتباه است یا سرویس مدیریت آماده نیست.", "error");
+
+          showMessage(
+            loginMessage,
+            userFriendlyError(
+              error,
+              "سرویس مدیریت موقتاً در دسترس نیست. رمز ذخیره‌شده حذف نشد؛ دوباره تلاش کن."
+            ),
+            "error"
+          );
         }
       }
 
@@ -4377,7 +4467,13 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           const data = await res.json().catch(() => null);
 
           if (!res.ok || !data?.ok) {
-            throw new Error(data?.error || "آپلود فایل ناموفق بود.");
+            const error = new Error(
+              data?.error ||
+              "آپلود فایل ناموفق بود."
+            );
+
+            error.status = res.status;
+            throw error;
           }
 
           currentMedia = data.media;
@@ -4385,7 +4481,18 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           markEditorDirty();
           showMessage(editorMessage, "فایل با موفقیت ذخیره شد. برای اتصال آن به پست، ذخیره را بزن.", "ok");
         } catch (error) {
-          showMessage(editorMessage, userFriendlyError(error, "آپلود فایل انجام نشد."), "error");
+          if (recoverAdminSession(error)) {
+            return;
+          }
+
+          showMessage(
+            editorMessage,
+            userFriendlyError(
+              error,
+              "آپلود فایل انجام نشد."
+            ),
+            "error"
+          );
         } finally {
           setButtonLoading(uploadMediaBtn, false);
         }
