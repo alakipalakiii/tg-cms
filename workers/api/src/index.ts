@@ -3232,11 +3232,62 @@ export default {
           });
         }
 
+        // mahoon-admin-posts-api-pagination-v1
         if (request.method === "GET" && url.pathname === "/admin/posts/deleted") {
-          const requestedLimit = Number(normalizeDigits(url.searchParams.get("limit") || "100"));
-          const limit = Number.isInteger(requestedLimit) && requestedLimit > 0
-            ? Math.min(requestedLimit, 200)
-            : 100;
+          const paginationRequested = [
+            "limit",
+            "offset"
+          ].some((key) =>
+            url.searchParams.has(key)
+          );
+
+          const defaultLimit =
+            paginationRequested ? 20 : 100;
+
+          const maxLimit =
+            paginationRequested ? 100 : 200;
+
+          const requestedLimit = Number(
+            normalizeDigits(
+              url.searchParams.get("limit") ||
+              String(defaultLimit)
+            )
+          );
+
+          const requestedOffset = Number(
+            normalizeDigits(
+              url.searchParams.get("offset") ||
+              "0"
+            )
+          );
+
+          const limit =
+            Number.isInteger(requestedLimit) &&
+            requestedLimit > 0
+              ? Math.min(
+                  requestedLimit,
+                  maxLimit
+                )
+              : defaultLimit;
+
+          const offset =
+            Number.isInteger(requestedOffset) &&
+            requestedOffset >= 0
+              ? requestedOffset
+              : 0;
+
+          const totalRow = await env.DB.prepare(
+            `
+            SELECT COUNT(*) AS total
+            FROM posts
+            WHERE deleted_at IS NOT NULL
+            AND deleted_at != ''
+            `
+          ).first();
+
+          const total = Number(
+            totalRow?.total || 0
+          );
 
           const { results } = await env.DB.prepare(
             `
@@ -3271,18 +3322,224 @@ export default {
               last_viewed_at
             FROM posts
             WHERE deleted_at IS NOT NULL
-            ORDER BY deleted_at DESC, id DESC
-            LIMIT ?
+            AND deleted_at != ''
+            ORDER BY datetime(deleted_at) DESC, id DESC
+            LIMIT ? OFFSET ?
             `
-          ).bind(limit).all();
+          ).bind(
+            limit,
+            offset
+          ).all();
+
+          const posts = Array.isArray(results)
+            ? results
+            : [];
 
           return json({
             ok: true,
-            posts: (results || []).map(post => postWithMediaUrl(post, origin))
+            mode: paginationRequested
+              ? "paged"
+              : "legacy",
+            posts: posts.map((post) =>
+              postWithMediaUrl(post, origin)
+            ),
+            total,
+            limit,
+            offset,
+            next_offset:
+              offset + posts.length,
+            has_more:
+              offset + posts.length < total
           });
         }
 
         if (request.method === "GET" && url.pathname === "/admin/posts") {
+          const paginationRequested = [
+            "limit",
+            "offset",
+            "q",
+            "status",
+            "media",
+            "sort"
+          ].some((key) =>
+            url.searchParams.has(key)
+          );
+
+          const defaultLimit =
+            paginationRequested ? 20 : 500;
+
+          const maxLimit =
+            paginationRequested ? 100 : 500;
+
+          const requestedLimit = Number(
+            normalizeDigits(
+              url.searchParams.get("limit") ||
+              String(defaultLimit)
+            )
+          );
+
+          const requestedOffset = Number(
+            normalizeDigits(
+              url.searchParams.get("offset") ||
+              "0"
+            )
+          );
+
+          const limit =
+            Number.isInteger(requestedLimit) &&
+            requestedLimit > 0
+              ? Math.min(
+                  requestedLimit,
+                  maxLimit
+                )
+              : defaultLimit;
+
+          const offset =
+            Number.isInteger(requestedOffset) &&
+            requestedOffset >= 0
+              ? requestedOffset
+              : 0;
+
+          const query = cleanText(
+            url.searchParams.get("q") || ""
+          ).slice(0, 200);
+
+          const status = cleanText(
+            url.searchParams.get("status") ||
+            "all"
+          ).toLowerCase();
+
+          const media = cleanText(
+            url.searchParams.get("media") ||
+            "all"
+          ).toLowerCase();
+
+          const sort = cleanText(
+            url.searchParams.get("sort") ||
+            "newest"
+          ).toLowerCase();
+
+          const whereParts = [
+            "(deleted_at IS NULL OR deleted_at = '')"
+          ];
+
+          const whereParams = [];
+
+          if (query) {
+            const searchValue =
+              "%" + query + "%";
+
+            whereParts.push(
+              [
+                "(",
+                "CAST(id AS TEXT) LIKE ?",
+                "OR COALESCE(slug, '') LIKE ?",
+                "OR COALESCE(text, '') LIKE ?",
+                "OR COALESCE(seo_title, '') LIKE ?",
+                "OR COALESCE(seo_description, '') LIKE ?",
+                "OR COALESCE(admin_note, '') LIKE ?",
+                ")"
+              ].join(" ")
+            );
+
+            whereParams.push(
+              searchValue,
+              searchValue,
+              searchValue,
+              searchValue,
+              searchValue,
+              searchValue
+            );
+          }
+
+          if (status === "published") {
+            whereParts.push(
+              "COALESCE(is_published, 1) = 1"
+            );
+          } else if (status === "draft") {
+            whereParts.push(
+              "COALESCE(is_published, 1) != 1"
+            );
+          }
+
+          if (media === "media") {
+            whereParts.push(
+              [
+                "(",
+                "COALESCE(media_file_id, '') != ''",
+                "OR COALESCE(photo_file_id, '') != ''",
+                ")"
+              ].join(" ")
+            );
+          } else if (media === "photo") {
+            whereParts.push(
+              [
+                "(",
+                "COALESCE(media_type, '') = 'photo'",
+                "OR COALESCE(photo_file_id, '') != ''",
+                ")"
+              ].join(" ")
+            );
+          } else if (media === "video") {
+            whereParts.push(
+              "COALESCE(media_type, '') IN ('video', 'animation')"
+            );
+          } else if (media === "audio") {
+            whereParts.push(
+              "COALESCE(media_type, '') IN ('audio', 'voice')"
+            );
+          } else if (media === "text") {
+            whereParts.push(
+              [
+                "COALESCE(media_file_id, '') = ''",
+                "AND COALESCE(photo_file_id, '') = ''"
+              ].join(" ")
+            );
+          }
+
+          let orderSql =
+            "datetime(created_at) DESC, id DESC";
+
+          if (sort === "oldest") {
+            orderSql =
+              "datetime(created_at) ASC, id ASC";
+          } else if (sort === "id") {
+            orderSql = "id DESC";
+          } else if (sort === "title") {
+            orderSql = [
+              "COALESCE(",
+              "NULLIF(seo_title, ''),",
+              "NULLIF(slug, ''),",
+              "text,",
+              "''",
+              ") COLLATE NOCASE ASC,",
+              "id DESC"
+            ].join(" ");
+          }
+
+          const whereSql =
+            whereParts.join(" AND ");
+
+          const totalStatement =
+            env.DB.prepare(
+              `
+              SELECT COUNT(*) AS total
+              FROM posts
+              WHERE ${whereSql}
+              `
+            );
+
+          const totalRow =
+            whereParams.length > 0
+              ? await totalStatement
+                  .bind(...whereParams)
+                  .first()
+              : await totalStatement.first();
+
+          const total = Number(
+            totalRow?.total || 0
+          );
+
           const { results } = await env.DB.prepare(
             `
             SELECT
@@ -3315,15 +3572,41 @@ export default {
               COALESCE(view_count, 0) AS view_count,
               last_viewed_at
             FROM posts
-            WHERE deleted_at IS NULL
-            ORDER BY datetime(created_at) DESC, id DESC
-            LIMIT 500
+            WHERE ${whereSql}
+            ORDER BY ${orderSql}
+            LIMIT ? OFFSET ?
             `
+          ).bind(
+            ...whereParams,
+            limit,
+            offset
           ).all();
+
+          const posts = Array.isArray(results)
+            ? results
+            : [];
 
           return json({
             ok: true,
-            posts: (results || []).map(post => postWithMediaUrl(post, origin))
+            mode: paginationRequested
+              ? "paged"
+              : "legacy",
+            posts: posts.map((post) =>
+              postWithMediaUrl(post, origin)
+            ),
+            total,
+            limit,
+            offset,
+            next_offset:
+              offset + posts.length,
+            has_more:
+              offset + posts.length < total,
+            filters: {
+              q: query,
+              status,
+              media,
+              sort
+            }
           });
         }
 
