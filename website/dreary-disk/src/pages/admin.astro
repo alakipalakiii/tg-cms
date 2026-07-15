@@ -2842,10 +2842,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       }
 
       function setActiveNav(sectionKey) {
-        analyticsRefreshBtn?.addEventListener("click", () => loadAnalyticsReport(true));
-      analyticsRangeSelect?.addEventListener("change", () => loadAnalyticsReport(true));
-
-      sectionLinks.forEach(link => {
+        sectionLinks.forEach(link => {
           const active = link.getAttribute("data-section-link") === sectionKey;
           link.classList.toggle("active", active);
           link.setAttribute("aria-current", active ? "page" : "false");
@@ -4933,6 +4930,10 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       completeSeoBtn.addEventListener("click", completeMissingSeo);
       saveSiteCopyBtn.addEventListener("click", saveSiteCopy);
       reloadSiteCopyBtn.addEventListener("click", loadSiteCopy);
+
+      /* mahoon-admin-analytics-listener-fix-v1 */
+      analyticsRefreshBtn?.addEventListener("click", () => loadAnalyticsReport(true));
+      analyticsRangeSelect?.addEventListener("change", () => loadAnalyticsReport(true));
       openPostBtn.addEventListener("click", openPost);
       copyLinkBtn.addEventListener("click", copyLink);
       exportBtn.addEventListener("click", exportJson);
