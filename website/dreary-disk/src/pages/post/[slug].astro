@@ -305,15 +305,30 @@ const mahoonArticleSchema = seoPost
 
       function cleanPublicText(value) {
         return String(value || "")
-          .replace(/(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+(?=\n|$)/giu, "\n") // mahoon-clean-movie-line-from-cards
-          .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
+          .replace(
+            /(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+(?=\n|$)/giu,
+            "\n"
+          )
+          .replace(
+            /\u{1F539}?\s*@mahoonartmagazine/giu,
+            ""
+          )
           .replace(/\u{1F539}/gu, "")
-          .replace(/(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+/giu, "\n")
-          .replace(/https?:\/\/(?:t\.me|telegram\.me|telegram\.dog)\/[^\s]+/giu, "")
+          .replace(
+            /(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+/giu,
+            "\n"
+          )
+          .replace(
+            /https?:\/\/(?:t\.me|telegram\.me|telegram\.dog)\/[^\s]+/giu,
+            ""
+          )
           .replace(/https?:\/\/[^\s]+/giu, "")
           .replace(/@[a-zA-Z0-9_]+/g, "")
+          .replace(
+            /(^|[\s\n])#([\p{L}\p{N}_\u200c-]+)/gu,
+            " "
+          )
           .replace(/_/g, " ")
-          .replace(/(^|\s)#([^\s#]+)/gu, " ")
           .replace(/[•●▪▫◦]/g, "")
           .replace(/\n{3,}/g, "\n\n")
           .replace(/[ \t]{2,}/g, " ")
@@ -361,8 +376,8 @@ const mahoonArticleSchema = seoPost
       }
 
       function getRawHashTags(text) {
-        return Array.from(String(text || "").matchAll(/(^|\s)#([^\s#]+)/gu))
-          .map((match) => match[2])
+        return Array.from(String(text || "").matchAll(/(?:^|[\s\n])#([\p{L}\p{N}_\u200c-]+)/gu))
+          .map((match) => match[1])
           .filter(Boolean);
       }
 
@@ -662,10 +677,10 @@ const mahoonArticleSchema = seoPost
         return `
           <div class="client-single-tags">
             ${tags
-              .map(
-                (tag) =>
-                  `<a href="${escapeAttr(getTagHref(tag))}">#${escapeHtml(tag)}</a>`
-              )
+              .map((tag) => {
+                const fullTag = String(tag || "").replace(/^#/, "").trim();
+                return `<a href="${escapeAttr(getTagHref(fullTag))}" title="#${escapeAttr(fullTag)}"><bdi dir="auto">#${escapeHtml(fullTag)}</bdi></a>`;
+              })
               .join("")}
           </div>
         `;
@@ -759,6 +774,32 @@ const mahoonArticleSchema = seoPost
         });
       }
 
+      function relatedPostKind(post) {
+        const category = getPostCategory(post);
+        const mediaType = String(post?.media_type || "").toLowerCase();
+
+        if (category === "کتاب") return "book";
+        if (category === "دیالوگ ها") return "dialogue";
+        if (category === "صوتی") return "audio";
+        if (category === "نقاشی") return "art";
+        if (category === "شعر و متن") return "text";
+        if (mediaType === "audio" || mediaType === "voice") return "audio";
+        if (mediaType === "video" || mediaType === "animation") return "video";
+        if (mediaType === "photo" || mediaType === "image") return "photo";
+        return "text";
+      }
+
+      function relatedPostIcon(post) {
+        const kind = relatedPostKind(post);
+        if (kind === "book") return "▤";
+        if (kind === "dialogue") return "❞";
+        if (kind === "audio") return "♪";
+        if (kind === "art") return "◐";
+        if (kind === "video") return "▶";
+        if (kind === "photo") return "◇";
+        return "✎";
+      }
+
       function renderRelatedPosts(posts, currentPost) {
         const related = sortPosts(posts)
           .filter((item) => item.id !== currentPost.id && item.slug !== currentPost.slug)
@@ -775,12 +816,15 @@ const mahoonArticleSchema = seoPost
                   const title = makeDisplayTitle(item, "suggestion");
                   const href = getPostHref(item);
                   const imageSrc = getMediaSrc(item);
+                  const icon = relatedPostIcon(item);
+                  const kind = relatedPostKind(item);
+
                   const thumb = imageSrc
-                    ? `<span class="client-related-thumb" data-media-wrap><img src="${escapeAttr(cacheBustMediaUrl(imageSrc, item.id))}" alt="${escapeAttr(title)}" width="58" height="58" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden');this.closest('.client-related-item')?.classList.add('client-related-item--text')" /></span>`
-                    : "";
+                    ? `<span class="client-related-thumb" data-media-wrap><img src="${escapeAttr(cacheBustMediaUrl(imageSrc, item.id))}" alt="${escapeAttr(title)}" width="60" height="60" loading="lazy" decoding="async" onerror="this.hidden=true;this.nextElementSibling.hidden=false" /><span class="client-related-fallback" aria-hidden="true" hidden>${escapeHtml(icon)}</span></span>`
+                    : `<span class="client-related-thumb client-related-thumb--icon client-related-thumb--${escapeAttr(kind)}" aria-hidden="true">${escapeHtml(icon)}</span>`;
 
                   return `
-                    <a class="client-related-item ${imageSrc ? "" : "client-related-item--text"}" href="${escapeAttr(href)}">
+                    <a class="client-related-item" href="${escapeAttr(href)}">
                       ${thumb}
                       <span class="client-related-copy">
                         <strong class="suggestion-title">${escapeHtml(title)}</strong>
@@ -2195,6 +2239,85 @@ const mahoonArticleSchema = seoPost
       }
     }
     /* end-mahoon-single-post-readability-v2 */
+
+
+    /* mahoon-single-post-debug-v2 */
+    .client-single-tags a {
+      max-width: 100%;
+      white-space: nowrap !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      unicode-bidi: isolate;
+    }
+
+    .client-single-tags a bdi {
+      display: inline-block;
+      max-width: 100%;
+      white-space: nowrap;
+      unicode-bidi: isolate;
+    }
+
+    .client-related-item {
+      grid-template-columns: 60px minmax(0, 1fr) !important;
+    }
+
+    .client-related-thumb {
+      position: relative;
+      width: 60px;
+      height: 60px;
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(75, 13, 13, 0.08);
+      border-radius: 14px;
+      color: #5a0f0f;
+      background:
+        radial-gradient(circle at 22% 18%, rgba(255, 248, 239, 0.92), transparent 28%),
+        linear-gradient(145deg, #f5ece0, #e2c9bf);
+      font-size: 26px;
+      font-weight: 950;
+      line-height: 1;
+    }
+
+    .client-related-thumb img {
+      position: absolute;
+      inset: 0;
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+      object-fit: cover;
+      border-radius: inherit;
+    }
+
+    .client-related-fallback {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      font-size: 26px;
+      font-weight: 950;
+    }
+
+    .client-related-fallback[hidden] {
+      display: none !important;
+    }
+
+    .client-related-thumb--icon {
+      box-shadow: inset 0 0 0 7px rgba(255, 253, 248, 0.34);
+    }
+
+    @media (max-width: 520px) {
+      .client-related-item {
+        grid-template-columns: 56px minmax(0, 1fr) !important;
+      }
+
+      .client-related-thumb {
+        width: 56px;
+        height: 56px;
+        font-size: 24px;
+      }
+    }
+    /* end-mahoon-single-post-debug-v2 */
 
 </style>
 </BaseLayout>

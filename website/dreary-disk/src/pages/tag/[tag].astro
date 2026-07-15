@@ -183,11 +183,37 @@ function makeDisplayTitle(post: Post): string {
   return limitWords(cleanPublicText(post.text), 5) || "مطلبی از ماهون";
 }
 
-function makeExcerpt(post: Post): string {
-  const source =
-    cleanPublicText(post.seo_description) ||
-    cleanPublicText(post.text);
+function removeInsensitiveTagText(source, token) {
+  let result = String(source || "");
+  const target = String(token || "");
+  if (!target) return result;
 
+  let lowerResult = result.toLowerCase();
+  const lowerTarget = target.toLowerCase();
+  let index = lowerResult.indexOf(lowerTarget);
+
+  while (index >= 0) {
+    result = result.slice(0, index) + " " + result.slice(index + target.length);
+    lowerResult = result.toLowerCase();
+    index = lowerResult.indexOf(lowerTarget);
+  }
+
+  return result;
+}
+
+function cleanTagExcerpt(value, movieTitle) {
+  return removeInsensitiveTagText(value, movieTitle)
+    .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, " ")
+    .replace(/#\S+/gu, " ")
+    .replace(/@mahoonartmagazine/giu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function makeExcerpt(post) {
+  const movieTitle = extractMovieTitle(post.text);
+  const raw = post.seo_description || post.text || "";
+  const source = cleanTagExcerpt(cleanPublicText(raw), movieTitle);
   return limitWords(source, 14) || "روایتی تازه از مجله هنری ماهون";
 }
 

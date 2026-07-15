@@ -296,8 +296,72 @@ function safeJson(value) {
         return limitWords(source, 5) || "مطلبی از ماهون";
       }
 
+      function excerptMovieTitle(post) {
+        const raw = String(post?.text || "");
+        const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+
+        for (const line of lines) {
+          const match = line.match(/^(?:🎥|🎬|فیلم\s*:?)\s*#?\s*(.+)$/iu);
+          if (match && match[1]) {
+            return String(match[1])
+              .replace(/[🔹•●▪▫◦]+/gu, " ")
+              .replace(/@mahoonartmagazine/giu, " ")
+              .replace(/^#/, "")
+              .replace(/_/g, " ")
+              .replace(/\s+/g, " ")
+              .trim();
+          }
+        }
+
+        const known = [
+          "Queen to Play",
+          "Dogville",
+          "The Walking Dead",
+          "House M.D",
+          "The Tourist",
+          "Indecent Proposal",
+          "Funny Face",
+          "Westworld"
+        ];
+
+        const lower = raw.toLowerCase();
+        return known.find((title) => lower.includes(title.toLowerCase())) || "";
+      }
+
+      function removeInsensitiveText(source, token) {
+        let result = String(source || "");
+        const target = String(token || "");
+        if (!target) return result;
+
+        let lowerResult = result.toLowerCase();
+        const lowerTarget = target.toLowerCase();
+        let index = lowerResult.indexOf(lowerTarget);
+
+        while (index >= 0) {
+          result = result.slice(0, index) + " " + result.slice(index + target.length);
+          lowerResult = result.toLowerCase();
+          index = lowerResult.indexOf(lowerTarget);
+        }
+
+        return result;
+      }
+
+      function cleanExcerptText(value, movieTitle) {
+        let source = String(value || "");
+        source = removeInsensitiveText(source, movieTitle);
+
+        return source
+          .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, " ")
+          .replace(/#\S+/gu, " ")
+          .replace(/@mahoonartmagazine/giu, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
       function makeExcerpt(post) {
-        const source = cleanPublicText(post.seo_description) || cleanPublicText(post.text);
+        const movieTitle = excerptMovieTitle(post);
+        const raw = post?.seo_description || post?.text || "";
+        const source = cleanExcerptText(cleanPublicText(raw), movieTitle);
         return limitWords(source, 14);
       }
 
