@@ -1879,4 +1879,46 @@ function safeJson(value: unknown) {
     /* end-mahoon-home-mobile-images-fit-v1 */
 
   </style>
+
+
+<style is:global>
+
+
+    /* mahoon-home-featured-image-cover-top-v3 */
+    .m-home-clean-v4 .m-featured__media {
+      position: relative !important;
+      display: block !important;
+      overflow: hidden !important;
+      background: #e7d5c7 !important;
+    }
+
+    .m-home-clean-v4 .m-featured__media img {
+      position: absolute !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      max-width: none !important;
+      display: block !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      object-fit: cover !important;
+      object-position: 50% 0% !important;
+    }
+
+    @media (max-width: 980px) {
+      .m-home-clean-v4 .m-featured__media img {
+        object-fit: cover !important;
+        object-position: 50% 0% !important;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .m-home-clean-v4 .m-featured__media img {
+        object-position: 50% 0% !important;
+      }
+    }
+    /* end-mahoon-home-featured-image-cover-top-v3 */
+
+</style>
+
 </BaseLayout>
