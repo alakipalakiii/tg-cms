@@ -7,35 +7,104 @@ export const prerender = false;
 
 const slug = Astro.params.slug || "";
 
-type SeoPost = {
-  text?: string | null;
-  created_at?: string | null;
+type PublicPost = {
+  id: number;
+  text: string;
+  slug: string;
+  created_at: string;
   updated_at?: string | null;
-  seo_title?: string | null;
-  seo_description?: string | null;
   media_type?: string | null;
+  media_file_id?: string | null;
+  photo_file_id?: string | null;
+  media_mime_type?: string | null;
+  media_file_name?: string | null;
+  media_duration?: number | null;
+  media_width?: number | null;
+  media_height?: number | null;
+  media_size?: number | null;
   media_url?: string | null;
   photo_url?: string | null;
+  thumbnail_url?: string | null;
+  image_url?: string | null;
+  file_url?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
+};
+
+type PostFetchResult = {
+  post: PublicPost | null;
+  status: number;
 };
 
 const workerUrl = SITE.workerUrl.replace(/\/+$/, "");
 const siteUrl = SITE.url.replace(/\/+$/, "");
 
-function cleanMetaText(value: string | null | undefined): string {
+const CATEGORY_TAGS = new Set(
+  [
+    "کتاب",
+    "دیالوگ",
+    "دیالوگ‌ها",
+    "دیالوگ_ها",
+    "صوتی",
+    "صدا",
+    "موسیقی",
+    "متن",
+    "متن‌ها",
+    "متن_ها",
+    "شعر",
+    "اشعار",
+    "شعرها",
+    "شعر_ها",
+    "نقاشی"
+  ].map(normalizeTag)
+);
+
+function toPersianNumber(value: string | number | null | undefined): string {
   return String(value || "")
+    .replace(/0/g, "۰")
+    .replace(/1/g, "۱")
+    .replace(/2/g, "۲")
+    .replace(/3/g, "۳")
+    .replace(/4/g, "۴")
+    .replace(/5/g, "۵")
+    .replace(/6/g, "۶")
+    .replace(/7/g, "۷")
+    .replace(/8/g, "۸")
+    .replace(/9/g, "۹");
+}
+
+function cleanPublicText(value: string | null | undefined): string {
+  return String(value || "")
+    .replace(
+      /(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+(?=\n|$)/giu,
+      "\n"
+    )
     .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
+    .replace(/\u{1F539}/gu, "")
     .replace(/(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+/giu, "\n")
+    .replace(/https?:\/\/(?:t\.me|telegram\.me|telegram\.dog)\/[^\s]+/giu, "")
     .replace(/https?:\/\/[^\s]+/giu, "")
     .replace(/@[a-zA-Z0-9_]+/g, "")
-    .replace(/(^|\s)#([^\s#]+)/gu, " ")
-    .replace(/[â€¢â—â–ªâ–«â—¦]/g, "")
+    .replace(/(^|[\s\n])#([\p{L}\p{N}_\u200c-]+)/gu, " ")
+    .replace(/_/g, " ")
+    .replace(/[•●▪▫◦]/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
 }
 
+function normalizeTag(tag: string | null | undefined): string {
+  return String(tag || "")
+    .replace(/^#/, "")
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/\u200c/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
 
-function extractMovieTitleFromText(value: string | null | undefined): string {
+function extractMovieTitle(value: string | null | undefined): string {
   const lines = String(value || "").split(/\r?\n/);
 
   for (const rawLine of lines) {
@@ -59,14 +128,105 @@ function extractMovieTitleFromText(value: string | null | undefined): string {
   return "";
 }
 
-function hasDialogueTagInText(value: string | null | undefined): boolean {
-  return /(^|\s)#(?:دیالوگ|دیالوگ‌ها|دیالوگ_ها)(?=\s|$)/u.test(String(value || ""));
+function getRawHashTags(text: string | null | undefined): string[] {
+  return Array.from(
+    String(text || "").matchAll(/(?:^|[\s\n])#([\p{L}\p{N}_\u200c-]+)/gu)
+  )
+    .map((match) => match[1])
+    .filter(Boolean);
 }
 
-function makeAutoMetaTitle(text: string | null | undefined): string {
-  const movieTitle = extractMovieTitleFromText(text);
+function hasRawTag(text: string | null | undefined, variants: string[]): boolean {
+  const expected = new Set(variants.map(normalizeTag));
+  return getRawHashTags(text).some((tag) => expected.has(normalizeTag(tag)));
+}
 
-  if (movieTitle && hasDialogueTagInText(text)) {
+function isDialoguePost(post: PublicPost | null): boolean {
+  return hasRawTag(post?.text, ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"]);
+}
+
+function getPostCategory(post: PublicPost | null): string {
+  if (hasRawTag(post?.text, ["کتاب"])) return "کتاب";
+  if (hasRawTag(post?.text, ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"])) return "دیالوگ ها";
+  if (hasRawTag(post?.text, ["صوتی", "صدا", "موسیقی"])) return "صوتی";
+  if (hasRawTag(post?.text, ["متن", "متن‌ها", "متن_ها", "شعر", "اشعار", "شعرها", "شعر_ها"])) return "شعر و متن";
+  if (hasRawTag(post?.text, ["نقاشی"])) return "نقاشی";
+  return "";
+}
+
+function truncateText(value: string | null | undefined, maxLength: number): string {
+  const source = String(value || "").replace(/\s+/g, " ").trim();
+  if (!source) return "";
+  return source.length <= maxLength ? source : `${source.slice(0, maxLength).trim()}…`;
+}
+
+function titleRules(mode: string): { maxChars: number; maxWords: number } {
+  if (mode === "post") return { maxChars: 44, maxWords: 6 };
+  if (mode === "suggestion") return { maxChars: 34, maxWords: 6 };
+  return { maxChars: 38, maxWords: 6 };
+}
+
+function firstWords(value: string | null | undefined, maxWords: number): string {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, maxWords)
+    .join(" ");
+}
+
+function buildShortTitle(value: string | null | undefined, mode = "card"): string {
+  const { maxChars, maxWords } = titleRules(mode);
+  const source = cleanPublicText(value).replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  if (!source) return "";
+
+  const phrase = firstWords(source.split(/\n|[.!؟?؛]/).find(Boolean) || source, maxWords);
+  const limited = truncateText(phrase, maxChars);
+  const wasShortened =
+    phrase.length > maxChars || source.split(/\s+/).filter(Boolean).length > maxWords;
+
+  return wasShortened && !limited.endsWith("…") ? `${limited}…` : limited;
+}
+
+function makeAutoDisplayTitle(post: PublicPost | null, mode = "card"): string {
+  const movieTitle = extractMovieTitle(post?.text);
+
+  if (!movieTitle || !isDialoguePost(post)) return "";
+
+  const title = "دیالوگی از فیلم \u2066" + movieTitle + "\u2069";
+  if (mode === "post") return title;
+
+  return buildShortTitle(title, mode) || title;
+}
+
+function isSeoTitleUsable(post: PublicPost | null, seoTitle: string | null | undefined): boolean {
+  const cleanTitle = cleanPublicText(seoTitle).replace(/\s+/g, " ").trim();
+  if (!cleanTitle || cleanTitle.length > 65) return false;
+
+  const cleanBody = cleanPublicText(post?.text).replace(/\s+/g, " ").trim();
+  if (cleanBody && cleanBody.length > 90 && cleanBody.startsWith(cleanTitle)) return false;
+
+  return cleanTitle.split(/\s+/).filter(Boolean).length <= 10;
+}
+
+function makeDisplayTitle(post: PublicPost | null, mode = "card"): string {
+  const autoTitle = makeAutoDisplayTitle(post, mode);
+  if (autoTitle) return autoTitle;
+
+  const seoTitle = cleanPublicText(post?.seo_title).replace(/\s+/g, " ").trim();
+  if (isSeoTitleUsable(post, seoTitle)) {
+    return buildShortTitle(seoTitle, mode) || "مطلبی از ماهون";
+  }
+
+  return buildShortTitle(post?.text, mode) || "مطلبی از ماهون";
+}
+
+
+function makeAutoMetaTitle(post: PublicPost | null): string {
+  const movieTitle = extractMovieTitle(post?.text);
+
+  if (movieTitle && isDialoguePost(post)) {
     return "دیالوگی از فیلم \u2066" + movieTitle + "\u2069";
   }
 
@@ -74,7 +234,7 @@ function makeAutoMetaTitle(text: string | null | undefined): string {
 }
 
 function makeMetaTitle(text: string | null | undefined): string {
-  const source = cleanMetaText(text);
+  const source = cleanPublicText(text);
   const firstLine = source
     .split("\n")
     .map((line) => line.trim())
@@ -86,8 +246,10 @@ function makeMetaTitle(text: string | null | undefined): string {
   return `${firstLine.slice(0, 62).trim()}...`;
 }
 
-function makeMetaDescription(text: string | null | undefined): string {
-  const source = cleanMetaText(text).replace(/\s+/g, " ").trim();
+function makeMetaDescription(post: PublicPost | null): string {
+  const source = cleanPublicText(post?.seo_description || post?.text)
+    .replace(/\s+/g, " ")
+    .trim();
 
   if (!source) return SITE.description;
   if (source.length <= 155) return source;
@@ -95,899 +257,568 @@ function makeMetaDescription(text: string | null | undefined): string {
   return `${source.slice(0, 155).trim()}...`;
 }
 
+function validMediaValue(value: string | null | undefined): string {
+  const source = String(value || "").trim();
+  if (!source || source.toLowerCase() === "about:blank" || /^javascript:/i.test(source)) return "";
+  return source;
+}
+
+function looksLikeImageUrl(value: string | null | undefined): boolean {
+  return /\.(avif|webp|png|jpe?g|gif|bmp|svg)(\?|#|$)/i.test(String(value || ""));
+}
+
 function absoluteUrl(value: string | null | undefined): string {
-  const source = value || SITE.defaultImage;
-
-  if (source.startsWith("http")) return source;
-
+  const source = validMediaValue(value) || SITE.defaultImage;
+  if (/^https?:\/\//i.test(source)) return source;
   return new URL(source, siteUrl).href;
 }
 
-function isoDate(value: string | null | undefined): string | null {
-  if (!value) return null;
+function normalizePost(raw: any): PublicPost | null {
+  if (!raw?.id) return null;
 
-  const date = new Date(value.replace(" ", "T"));
-  if (Number.isNaN(date.getTime())) return null;
+  const mediaType = raw.media_type || (raw.photo_file_id ? "photo" : null);
+  const isAudioLike = mediaType === "audio" || mediaType === "voice";
+  const mediaFileId = raw.media_file_id || (!isAudioLike ? raw.photo_file_id : null) || null;
+  const photoFileId = raw.photo_file_id || null;
+  const mediaUrl = raw.media_url || (mediaFileId ? `${workerUrl}/media/${encodeURIComponent(mediaFileId)}` : null);
+  const thumbnailUrl = raw.thumbnail_url || (photoFileId ? `${workerUrl}/media/${encodeURIComponent(photoFileId)}` : null);
 
-  return date.toISOString();
+  return {
+    id: Number(raw.id || 0),
+    text: String(raw.text || ""),
+    slug: String(raw.slug || ""),
+    created_at: String(raw.created_at || ""),
+    updated_at: raw.updated_at || null,
+    media_type: mediaType,
+    media_file_id: mediaFileId,
+    photo_file_id: photoFileId,
+    media_mime_type: raw.media_mime_type || null,
+    media_file_name: raw.media_file_name || null,
+    media_duration: raw.media_duration || null,
+    media_width: raw.media_width || raw.photo_width || null,
+    media_height: raw.media_height || raw.photo_height || null,
+    media_size: raw.media_size || null,
+    media_url: mediaUrl,
+    photo_url: raw.photo_url || (mediaType === "photo" ? thumbnailUrl : null),
+    thumbnail_url: thumbnailUrl,
+    image_url: raw.image_url || null,
+    file_url: raw.file_url || null,
+    seo_title: raw.seo_title || null,
+    seo_description: raw.seo_description || null
+  };
 }
 
-async function fetchSeoPost(postSlug: string): Promise<SeoPost | null> {
-  if (!postSlug) return null;
+async function fetchJson(url: string, timeoutMs = 3000): Promise<{ ok: boolean; status: number; payload: any }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(
-      `${workerUrl}/seo/post/${encodeURIComponent(postSlug)}`,
-      {
-        method: "GET",
-        headers: {
-          Accept: "application/json"
-        }
-      }
-    );
+    const response = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+      cache: "no-store"
+    });
 
-    if (!response.ok) return null;
+    let payload: any = null;
 
-    const payload = await response.json();
-    return payload?.post || null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
+    return { ok: response.ok, status: response.status, payload };
   } catch {
-    return null;
+    return { ok: false, status: 503, payload: null };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-const seoPost = await fetchSeoPost(slug);
-const metaTitle = seoPost?.seo_title || makeAutoMetaTitle(seoPost?.text) || makeMetaTitle(seoPost?.text) || SITE.name;
-const metaDescription =
-  seoPost?.seo_description || makeMetaDescription(seoPost?.text) || SITE.description;
-const metaImage =
-  seoPost?.photo_url ||
-  (seoPost?.media_type === "photo" && seoPost?.media_url ? seoPost.media_url : null) ||
-  SITE.defaultImage;
-const canonicalUrl = `${siteUrl}/post/${encodeURIComponent(slug)}`;
-const absoluteImageUrl = absoluteUrl(metaImage);
-const absoluteLogoUrl = absoluteUrl(SITE.logo);
-const datePublished = isoDate(seoPost?.created_at);
-const dateModified = isoDate(seoPost?.updated_at || seoPost?.created_at);
-const articleJsonLd = seoPost
-  ? {
-      "@context": "https://schema.org",
-      "@type": "Article",
-      mainEntityOfPage: {
-        "@type": "WebPage",
-        "@id": canonicalUrl
-      },
-      headline: metaTitle,
-      description: metaDescription,
-      image: [absoluteImageUrl],
-      ...(datePublished ? { datePublished } : {}),
-      ...(dateModified ? { dateModified } : {}),
-      author: {
-        "@type": "Organization",
-        name: SITE.name,
-        url: SITE.url
-      },
-      publisher: {
-        "@type": "Organization",
-        name: SITE.name,
-        url: SITE.url,
-        logo: {
-          "@type": "ImageObject",
-          url: absoluteLogoUrl
-        }
-      },
-      inLanguage: "fa-IR"
+async function fetchPublicPost(postSlug: string): Promise<PostFetchResult> {
+  if (!postSlug) return { post: null, status: 404 };
+
+  const directResult = await fetchJson(
+    `${workerUrl}/post/${encodeURIComponent(postSlug)}`,
+    3500
+  );
+
+  if (!directResult.ok) {
+    return {
+      post: null,
+      status: directResult.status >= 500 ? 503 : directResult.status
+    };
+  }
+
+  const directPost = normalizePost(directResult.payload);
+  if (directPost) return { post: directPost, status: 200 };
+
+  if (/^\d+$/.test(postSlug)) {
+    const idResult = await fetchJson(
+      `${workerUrl}/id/${encodeURIComponent(postSlug)}`,
+      3500
+    );
+
+    if (!idResult.ok) {
+      return {
+        post: null,
+        status: idResult.status >= 500 ? 503 : idResult.status
+      };
     }
-  : null;
-const articleJsonLdHtml = articleJsonLd
-  ? JSON.stringify(articleJsonLd).replace(/</g, "\\u003c")
-  : null;
 
-// mahoon-article-schema-v1
-const mahoonArticlePost = seoPost as any;
-const mahoonArticleImage =
-  mahoonArticlePost?.thumbnail_url ||
-  mahoonArticlePost?.photo_url ||
-  mahoonArticlePost?.image_url ||
-  (mahoonArticlePost?.media_type === "photo" ? mahoonArticlePost?.media_url : "") ||
-  SITE.defaultImage;
+    const idPost = normalizePost(idResult.payload);
+    if (idPost) return { post: idPost, status: 200 };
+  }
 
-const mahoonArticleSchema = seoPost
+  return { post: null, status: 404 };
+}
+
+async function fetchRelatedPosts(): Promise<PublicPost[]> {
+  const result = await fetchJson(`${workerUrl}/public/posts-v1?limit=8&offset=0`, 3000);
+  if (!result.ok || !Array.isArray(result.payload?.posts)) return [];
+
+  return result.payload.posts
+    .map(normalizePost)
+    .filter((post: PublicPost | null): post is PublicPost => Boolean(post));
+}
+
+const [postResult, relatedCandidates] = await Promise.all([
+  fetchPublicPost(slug),
+  fetchRelatedPosts()
+]);
+
+const post = postResult.post;
+const isNotFound = !post && postResult.status === 404;
+const isUnavailable = !post && !isNotFound;
+
+if (isNotFound) {
+  Astro.response.status = 404;
+} else if (isUnavailable) {
+  Astro.response.status = 503;
+  Astro.response.headers.set("Retry-After", "120");
+}
+
+const postTitle = post
+  ? makeDisplayTitle(post, "post")
+  : isNotFound
+    ? "مطلب پیدا نشد"
+    : "اختلال موقت در دریافت مطلب";
+const metaTitle = post
+  ? String(post.seo_title || "").trim() || makeAutoMetaTitle(post) || makeMetaTitle(post.text)
+  : postTitle;
+const metaDescription = post
+  ? makeMetaDescription(post)
+  : isNotFound
+    ? "مطلب مورد نظر در مجله هنری ماهون پیدا نشد."
+    : "دریافت این مطلب موقتاً امکان‌پذیر نیست.";
+const canonicalUrl = `${siteUrl}/post/${encodeURIComponent(slug)}`;
+const metaImage = post?.photo_url || post?.thumbnail_url || (post?.media_type === "photo" ? post?.media_url : "") || SITE.defaultImage;
+const postCategory = post ? getPostCategory(post) : "";
+const postMediaLabel = post ? mediaLabel(post.media_type) : "";
+const publicMediaLabel =
+  postMediaLabel &&
+  postMediaLabel !== postCategory &&
+  !(postCategory === "صوتی" && postMediaLabel === "صوت")
+    ? postMediaLabel
+    : "";
+const mediaUrl = post ? validMediaValue(post.media_url || post.photo_url) : "";
+const imageSrc = post ? getMediaSrc(post) : "";
+const audioSrc = post ? getAudioSrc(post) : "";
+const textBlocks = post ? makeTextBlocks(post.text) : [];
+const publicTags = post ? getPublicTags(post.text) : [];
+const relatedPosts = post
+  ? relatedCandidates
+      .filter((item) => item.id !== post.id && item.slug !== post.slug)
+      .slice(0, 5)
+  : [];
+
+const articleSchema = post
   ? makeArticleSchema({
       title: metaTitle,
       description: metaDescription,
       url: canonicalUrl,
-      image: mahoonArticleImage,
-      datePublished: mahoonArticlePost?.created_at,
-      dateModified: mahoonArticlePost?.updated_at || mahoonArticlePost?.created_at,
-      body: mahoonArticlePost?.text
+      image: metaImage,
+      datePublished: post.created_at,
+      dateModified: post.updated_at || post.created_at,
+      body: post.text
     })
   : null;
 
+function getMediaSrc(item: PublicPost): string {
+  const directImage = [
+    item.photo_url,
+    item.image_url,
+    item.thumbnail_url,
+    item.file_url
+  ]
+    .map(validMediaValue)
+    .find(Boolean);
 
+  if (directImage) return directImage;
+
+  const directMedia = validMediaValue(item.media_url);
+  if (
+    directMedia &&
+    (item.media_type === "photo" || item.media_type === "image" || looksLikeImageUrl(directMedia))
+  ) {
+    return directMedia;
+  }
+
+  if (item.photo_file_id) {
+    return `${workerUrl}/media/${encodeURIComponent(item.photo_file_id)}`;
+  }
+
+  if (item.media_file_id && (item.media_type === "photo" || item.media_type === "image")) {
+    return `${workerUrl}/media/${encodeURIComponent(item.media_file_id)}`;
+  }
+
+  return "";
+}
+
+function getAudioSrc(item: PublicPost): string {
+  const type = String(item.media_type || "").toLowerCase();
+  if (type !== "audio" && type !== "voice") return "";
+
+  const direct = validMediaValue(item.media_url);
+  if (direct && !looksLikeImageUrl(direct)) return direct;
+
+  if (item.media_file_id) {
+    return `${workerUrl}/media/${encodeURIComponent(item.media_file_id)}`;
+  }
+
+  return "";
+}
+
+function mediaLabel(type: string | null | undefined): string {
+  switch (type) {
+    case "photo":
+    case "image":
+      return "";
+    case "video":
+      return "ویدیو";
+    case "audio":
+    case "voice":
+      return "صوت";
+    case "document":
+      return "فایل";
+    case "animation":
+      return "انیمیشن";
+    default:
+      return "";
+  }
+}
+
+function makeTextBlocks(text: string | null | undefined): string[] {
+  return String(text || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      if (extractMovieTitle(line)) return "";
+      return cleanPublicText(line);
+    })
+    .filter(Boolean);
+}
+
+function getTags(text: string | null | undefined): string[] {
+  const tags = getRawHashTags(text);
+  const movieTitle = extractMovieTitle(text);
+  if (movieTitle) tags.push(movieTitle);
+  return Array.from(new Set(tags.filter(Boolean)));
+}
+
+function getPublicTags(text: string | null | undefined): string[] {
+  return getTags(text).filter((tag) => !CATEGORY_TAGS.has(normalizeTag(tag)));
+}
+
+function getTagHref(tag: string): string {
+  return `/tag/${encodeURIComponent(String(tag || "").replace(/^#/, "").trim())}`;
+}
+
+function getCategoryHref(label: string): string {
+  const clean = String(label || "").trim();
+  return clean ? `/category/${encodeURIComponent(clean)}` : "/posts";
+}
+
+function formatDate(value: string | null | undefined): string {
+  if (!value) return "";
+
+  try {
+    const date = new Date(String(value).replace(" ", "T"));
+    return new Intl.DateTimeFormat("fa-IR", {
+      year: "numeric",
+      month: "long",
+      day: "numeric"
+    }).format(date);
+  } catch {
+    return String(value);
+  }
+}
+
+function formatFileSize(bytes: number | null | undefined): string {
+  const size = Number(bytes || 0);
+  if (!size) return "";
+  if (size < 1024) return `${toPersianNumber(size)} بایت`;
+  if (size < 1024 * 1024) return `${toPersianNumber(Math.round(size / 1024))} کیلوبایت`;
+  return `${toPersianNumber((size / 1024 / 1024).toFixed(1))} مگابایت`;
+}
+
+function formatDuration(seconds: number | null | undefined): string {
+  const total = Number(seconds || 0);
+  if (!total) return "";
+  const minutes = Math.floor(total / 60);
+  const rest = Math.floor(total % 60);
+  return toPersianNumber(`${minutes}:${String(rest).padStart(2, "0")}`);
+}
+
+function cacheBustMediaUrl(value: string | null | undefined, postId: number): string {
+  const source = validMediaValue(value);
+  if (!source) return "";
+  if (!source.includes("/media/")) return source;
+  const separator = source.includes("?") ? "&" : "?";
+  return `${source}${separator}v=${encodeURIComponent(String(postId || "media"))}`;
+}
+
+function relatedPostKind(item: PublicPost): string {
+  const category = getPostCategory(item);
+  const mediaType = String(item.media_type || "").toLowerCase();
+
+  if (category === "کتاب") return "book";
+  if (category === "دیالوگ ها") return "dialogue";
+  if (category === "صوتی") return "audio";
+  if (category === "نقاشی") return "art";
+  if (category === "شعر و متن") return "text";
+  if (mediaType === "audio" || mediaType === "voice") return "audio";
+  if (mediaType === "video" || mediaType === "animation") return "video";
+  if (mediaType === "photo" || mediaType === "image") return "photo";
+  return "text";
+}
+
+function relatedPostIcon(item: PublicPost): string {
+  const kind = relatedPostKind(item);
+  if (kind === "book") return "▤";
+  if (kind === "dialogue") return "❞";
+  if (kind === "audio") return "♪";
+  if (kind === "art") return "◐";
+  if (kind === "video") return "▶";
+  if (kind === "photo") return "◇";
+  return "✎";
+}
+
+function getPostHref(item: PublicPost): string {
+  const itemSlug = String(item.slug || "").trim();
+  if (itemSlug && itemSlug !== "#" && !/^javascript:/i.test(itemSlug)) {
+    return `/post/${encodeURIComponent(itemSlug)}`;
+  }
+
+  return item.id ? `/post/${encodeURIComponent(String(item.id))}` : "#";
+}
+
+// mahoon-post-ssr-real-404-v1
 ---
 
 <BaseLayout
-  schema={mahoonArticleSchema} title={metaTitle}
+  schema={articleSchema}
+  title={metaTitle}
   description={metaDescription}
   image={metaImage}
   canonical={canonicalUrl}
-  type="article"
+  type={post ? "article" : "website"}
 >
-  {
-    articleJsonLdHtml && (
-      <script slot="head" type="application/ld+json" set:html={articleJsonLdHtml} />
-    )
-  }
+  {!post && <meta slot="head" name="robots" content="noindex,follow" />}
 
-  <main
-    class="client-single"
-    data-worker-url={SITE.workerUrl}
-    data-slug={slug}
-  >
+  <main class="client-single" data-slug={slug}>
     <div class="client-single-shell">
       <article id="postArticle" class="client-single-card">
-        <div id="postStatus" class="client-single-status client-single-status-loading">
-          <div class="client-single-loader"></div>
-          <span>در حال آماده‌سازی مطلب...</span>
-        </div>
+        {
+          post ? (
+            <div class="client-single-layout">
+              <div class="client-single-main">
+                <header class="client-single-hero">
+                  <nav class="client-single-topbar" aria-label="مسیر مطلب">
+                    <a href="/">صفحه اصلی</a>
+                    <a href="/posts">همه مطالب</a>
+                    {postCategory && <a href={getCategoryHref(postCategory)}>آرشیو {postCategory}</a>}
+                  </nav>
+
+                  <span class="client-single-kicker">روایت هنری ماهون</span>
+                  <h1 class="post-page-title post-title">{postTitle}</h1>
+
+                  <div class="client-single-meta">
+                    <span>{formatDate(post.created_at)}</span>
+                    {postCategory && <span>{postCategory}</span>}
+                    {publicMediaLabel && <span>{publicMediaLabel}</span>}
+                  </div>
+                </header>
+
+                {
+                  (post.media_type === "audio" || post.media_type === "voice") ? (
+                    <>
+                      {imageSrc && (
+                        <figure class="client-single-media client-single-audio-cover" data-media-wrap>
+                          <img
+                            src={imageSrc}
+                            alt={postTitle}
+                            width="960"
+                            height="620"
+                            loading="lazy"
+                            decoding="async"
+                            onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')"
+                          />
+                        </figure>
+                      )}
+
+                      {audioSrc && (
+                        <div class="client-audio-box">
+                          <div class="client-audio-icon">♪</div>
+                          <div class="client-audio-info">
+                            <strong>{postTitle || "پخش صوتی ماهون"}</strong>
+                            <span>
+                              {formatDuration(post.media_duration)}
+                              {post.media_size ? ` · ${formatFileSize(post.media_size)}` : ""}
+                            </span>
+                          </div>
+                          <audio controls preload="metadata" src={audioSrc}></audio>
+                        </div>
+                      )}
+                    </>
+                  ) : (post.media_type === "video" || post.media_type === "animation") && mediaUrl ? (
+                    <div class="client-single-media client-single-video" data-media-wrap>
+                      <div class="client-player-head">
+                        <span>{mediaLabel(post.media_type)}</span>
+                        <strong>{postTitle}</strong>
+                      </div>
+                      <video
+                        controls
+                        preload="metadata"
+                        playsinline
+                        src={mediaUrl}
+                        poster={imageSrc || undefined}
+                      ></video>
+                    </div>
+                  ) : imageSrc ? (
+                    <figure class="client-single-media" data-media-wrap>
+                      <img
+                        src={imageSrc}
+                        alt={postTitle}
+                        width="960"
+                        height="620"
+                        loading="lazy"
+                        decoding="async"
+                        onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')"
+                      />
+                    </figure>
+                  ) : mediaUrl && post.media_type === "document" ? (
+                    <a class="client-file-box" href={mediaUrl} target="_blank" rel="noopener">
+                      <span>□</span>
+                      <div>
+                        <strong>{post.media_file_name || "دانلود فایل"}</strong>
+                        <small>{formatFileSize(post.media_size)}</small>
+                      </div>
+                    </a>
+                  ) : mediaUrl ? (
+                    <a class="client-file-box" href={mediaUrl} target="_blank" rel="noopener">
+                      <span>◆</span>
+                      <div>
+                        <strong>{mediaLabel(post.media_type)}</strong>
+                        <small>مشاهده فایل</small>
+                      </div>
+                    </a>
+                  ) : null
+                }
+
+                <div class="client-single-body">
+                  <div class="client-single-text">
+                    {
+                      textBlocks.length
+                        ? textBlocks.map((block) => <p>{block}</p>)
+                        : <p>روایتی تازه از مجله هنری ماهون</p>
+                    }
+                  </div>
+
+                  {
+                    publicTags.length > 0 && (
+                      <div class="client-single-tags">
+                        {publicTags.map((tag) => {
+                          const fullTag = String(tag || "").replace(/^#/, "").trim();
+                          return (
+                            <a href={getTagHref(fullTag)} title={`#${fullTag}`}>
+                              <bdi dir="auto">#{fullTag}</bdi>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    )
+                  }
+
+                  {
+                    mediaUrl && (
+                      <div class="client-single-actions">
+                        <a href={mediaUrl} target="_blank" rel="noopener">باز کردن رسانه</a>
+                      </div>
+                    )
+                  }
+                </div>
+              </div>
+
+              {
+                relatedPosts.length > 0 && (
+                  <aside class="client-related-posts" aria-label="مطالب پیشنهادی">
+                    <h2>مطالب پیشنهادی</h2>
+                    <div class="client-related-list">
+                      {relatedPosts.map((item) => {
+                        const title = makeDisplayTitle(item, "suggestion");
+                        const href = getPostHref(item);
+                        const relatedImage = getMediaSrc(item);
+                        const icon = relatedPostIcon(item);
+                        const kind = relatedPostKind(item);
+
+                        return (
+                          <a class="client-related-item" href={href}>
+                            {
+                              relatedImage ? (
+                                <span class="client-related-thumb" data-media-wrap>
+                                  <img
+                                    src={cacheBustMediaUrl(relatedImage, item.id)}
+                                    alt={title}
+                                    width="60"
+                                    height="60"
+                                    loading="lazy"
+                                    decoding="async"
+                                    onerror="this.hidden=true;this.nextElementSibling.hidden=false"
+                                  />
+                                  <span class="client-related-fallback" aria-hidden="true" hidden>{icon}</span>
+                                </span>
+                              ) : (
+                                <span class={`client-related-thumb client-related-thumb--icon client-related-thumb--${kind}`} aria-hidden="true">{icon}</span>
+                              )
+                            }
+                            <span class="client-related-copy">
+                              <strong class="suggestion-title">{title}</strong>
+                              <small>{formatDate(item.created_at)}</small>
+                            </span>
+                          </a>
+                        );
+                      })}
+                    </div>
+                  </aside>
+                )
+              }
+            </div>
+          ) : (
+            <div class="client-single-status">
+              {isNotFound
+                ? "پست مورد نظر پیدا نشد."
+                : "دریافت این مطلب موقتاً امکان‌پذیر نیست. لطفاً کمی بعد دوباره تلاش کنید."}
+            </div>
+          )
+        }
       </article>
     </div>
   </main>
 
-  <script is:inline>
-    (function () {
-      const root = document.querySelector(".client-single");
-      const article = document.getElementById("postArticle");
-      const statusEl = document.getElementById("postStatus");
-      const CATEGORY_TAGS = new Set(
-        [
-          "کتاب",
-          "دیالوگ",
-          "دیالوگ‌ها",
-          "دیالوگ_ها",
-          "صوتی",
-          "صدا",
-          "موسیقی",
-          "متن",
-          "متن‌ها",
-          "متن_ها",
-          "شعر",
-          "اشعار",
-          "شعرها",
-          "شعر_ها",
-          "نقاشی"
-        ].map(normalizeTag)
-      );
-
-      const API_BASE = (
-        root?.dataset?.workerUrl ||
-        "https://api.mahoonartmagazine.ir"
-      ).replace(/\/+$/, "");
-
-      function toPersianNumber(value) {
-        return String(value || "")
-          .replace(/0/g, "۰")
-          .replace(/1/g, "۱")
-          .replace(/2/g, "۲")
-          .replace(/3/g, "۳")
-          .replace(/4/g, "۴")
-          .replace(/5/g, "۵")
-          .replace(/6/g, "۶")
-          .replace(/7/g, "۷")
-          .replace(/8/g, "۸")
-          .replace(/9/g, "۹");
-      }
-
-      function safeDecode(value) {
-        try {
-          return decodeURIComponent(value || "");
-        } catch {
-          return value || "";
-        }
-      }
-
-      const currentSlug =
-        root?.dataset?.slug ||
-        safeDecode(window.location.pathname.split("/post/")[1] || "");
-
-      function escapeHtml(value) {
-        return String(value || "")
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#039;");
-      }
-
-      function escapeAttr(value) {
-        return escapeHtml(value).replace(/`/g, "&#096;");
-      }
-
-      function cleanPublicText(value) {
-        return String(value || "")
-          .replace(
-            /(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+(?=\n|$)/giu,
-            "\n"
-          )
-          .replace(
-            /\u{1F539}?\s*@mahoonartmagazine/giu,
-            ""
-          )
-          .replace(/\u{1F539}/gu, "")
-          .replace(
-            /(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+/giu,
-            "\n"
-          )
-          .replace(
-            /https?:\/\/(?:t\.me|telegram\.me|telegram\.dog)\/[^\s]+/giu,
-            ""
-          )
-          .replace(/https?:\/\/[^\s]+/giu, "")
-          .replace(/@[a-zA-Z0-9_]+/g, "")
-          .replace(
-            /(^|[\s\n])#([\p{L}\p{N}_\u200c-]+)/gu,
-            " "
-          )
-          .replace(/_/g, " ")
-          .replace(/[•●▪▫◦]/g, "")
-          .replace(/\n{3,}/g, "\n\n")
-          .replace(/[ \t]{2,}/g, " ")
-          .trim();
-      }
-
-      function cleanText(value) {
-        return cleanPublicText(value);
-      }
-
-      function normalizeTag(tag) {
-        return String(tag || "")
-          .replace(/^#/, "")
-          .replace(/[يى]/g, "ی")
-          .replace(/ك/g, "ک")
-          .replace(/\u200c/g, "")
-          .replace(/\s+/g, " ")
-          .trim()
-          .toLowerCase();
-      }
-
-      /* mahoon-dialogue-movie-v2 */
-      function extractMovieTitle(value) {
-        const lines = String(value || "").split(/\r?\n/);
-
-        for (const rawLine of lines) {
-          const line = rawLine.trim();
-          const match = line.match(/^(?:🎥|🎬|فیلم\s*:?)\s*#?\s*(.+)$/iu);
-
-          if (!match) continue;
-
-          const title = match[1]
-            .replace(/[🔹•●▪▫◦]+/gu, "")
-            .replace(/@mahoonartmagazine/giu, "")
-            .replace(/_/g, " ")
-            .replace(/\s+/g, " ")
-            .trim()
-            .replace(/^#/, "")
-            .trim();
-
-          if (title) return title;
-        }
-
-        return "";
-      }
-
-      function getRawHashTags(text) {
-        return Array.from(String(text || "").matchAll(/(?:^|[\s\n])#([\p{L}\p{N}_\u200c-]+)/gu))
-          .map((match) => match[1])
-          .filter(Boolean);
-      }
-
-      function hasRawTag(text, variants) {
-        const expected = new Set(variants.map(normalizeTag));
-        return getRawHashTags(text).some((tag) => expected.has(normalizeTag(tag)));
-      }
-
-      function isDialoguePost(post) {
-        return hasRawTag(post?.text, ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"]);
-      }
-
-      function makeAutoDisplayTitle(post, mode = "card") {
-        const movieTitle = extractMovieTitle(post?.text);
-
-        if (!movieTitle || !isDialoguePost(post)) return "";
-
-        const title = "دیالوگی از فیلم \u2066" + movieTitle + "\u2069";
-        if (mode === "post") return title;
-
-        return buildShortTitle(title, mode) || title;
-      }
-
-      function getPostCategory(post) {
-        if (hasRawTag(post?.text, ["کتاب"])) return "کتاب";
-        if (hasRawTag(post?.text, ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"])) return "دیالوگ ها";
-        if (hasRawTag(post?.text, ["صوتی", "صدا", "موسیقی"])) return "صوتی";
-        if (hasRawTag(post?.text, ["متن", "متن‌ها", "متن_ها", "شعر", "اشعار", "شعرها", "شعر_ها"])) return "شعر و متن";
-        if (hasRawTag(post?.text, ["نقاشی"])) return "نقاشی";
-        return "";
-      }
-
-
-      function truncateText(value, maxLength) {
-        const source = String(value || "").replace(/\s+/g, " ").trim();
-        if (!source) return "";
-        return source.length <= maxLength ? source : `${source.slice(0, maxLength).trim()}…`;
-      }
-
-      function titleRules(mode) {
-        if (mode === "post") return { maxChars: 44, maxWords: 6 };
-        if (mode === "suggestion") return { maxChars: 34, maxWords: 6 };
-        return { maxChars: 38, maxWords: 6 };
-      }
-
-      function firstWords(value, maxWords) {
-        return String(value || "")
-          .replace(/\s+/g, " ")
-          .trim()
-          .split(" ")
-          .filter(Boolean)
-          .slice(0, maxWords)
-          .join(" ");
-      }
-
-      function buildShortTitle(value, mode = "card") {
-        const { maxChars, maxWords } = titleRules(mode);
-        const source = cleanPublicText(value).replace(/_/g, " ").replace(/\s+/g, " ").trim();
-        if (!source) return "";
-        const phrase = firstWords(source.split(/\n|[.!؟?؛]/).find(Boolean) || source, maxWords);
-        const limited = truncateText(phrase, maxChars);
-        const wasShortened = phrase.length > maxChars || source.split(/\s+/).filter(Boolean).length > maxWords;
-        return wasShortened && !limited.endsWith("…") ? `${limited}…` : limited;
-      }
-
-      function isSeoTitleUsable(post, seoTitle) {
-        const cleanTitle = cleanPublicText(seoTitle).replace(/\s+/g, " ").trim();
-        if (!cleanTitle || cleanTitle.length > 65) return false;
-        const cleanBody = cleanPublicText(post?.text).replace(/\s+/g, " ").trim();
-        if (cleanBody && cleanBody.length > 90 && cleanBody.startsWith(cleanTitle)) return false;
-        return cleanTitle.split(/\s+/).filter(Boolean).length <= 10;
-      }
-
-      function makeTitle(text) {
-        return buildShortTitle(text, "card") || "مطلبی از ماهون";
-      }
-
-      function makeDisplayTitle(post, mode = "card") {
-        const autoTitle = makeAutoDisplayTitle(post, mode);
-        if (autoTitle) return autoTitle;
-
-        const seoTitle = cleanPublicText(post?.seo_title).replace(/\s+/g, " ").trim();
-        if (isSeoTitleUsable(post, seoTitle)) {
-          return buildShortTitle(seoTitle, mode) || "مطلبی از ماهون";
-        }
-
-        return buildShortTitle(post?.text, mode) || "مطلبی از ماهون";
-      }
-
-      function validMediaValue(value) {
-        const source = String(value || "").trim();
-        if (!source || source.toLowerCase() === "about:blank" || /^javascript:/i.test(source)) return null;
-        return source;
-      }
-
-      function cacheBustMediaUrl(value, postId) {
-        const source = validMediaValue(value);
-        if (!source) return "";
-        if (!source.includes("/media/")) return source;
-        const separator = source.includes("?") ? "&" : "?";
-        return `${source}${separator}v=${encodeURIComponent(String(postId || "media"))}`;
-      }
-      function looksLikeImageUrl(value) {
-        return /\.(avif|webp|png|jpe?g|gif|bmp|svg)(\?|#|$)/i.test(String(value || ""));
-      }
-
-      function getPostHref(post) {
-        const slug = String(post?.slug || "").trim();
-        if (slug && slug !== "#" && !/^javascript:/i.test(slug)) {
-          return `/post/${encodeURIComponent(slug)}`;
-        }
-
-        const id = String(post?.id || "").trim();
-        if (id) return `/post/${encodeURIComponent(id)}`;
-
-        return "#";
-      }
-
-      function getMediaSrc(post) {
-        const directImage = [
-          post?.photo_url,
-          post?.image_url,
-          post?.thumbnail_url,
-          post?.media?.url,
-          post?.file_url
-        ].map(validMediaValue).find(Boolean);
-        if (directImage) return directImage;
-
-        const mediaUrl = validMediaValue(post?.media_url);
-        if (mediaUrl && (post?.media_type === "photo" || post?.media_type === "image" || looksLikeImageUrl(mediaUrl))) {
-          return mediaUrl;
-        }
-
-        const fileId = String(post?.photo_file_id || post?.telegram_file_id || post?.file_id || "").trim();
-        if (fileId) return `${API_BASE}/media/${encodeURIComponent(fileId)}`;
-
-        const mediaFileId = String(post?.media_file_id || "").trim();
-        if (mediaFileId && (post?.media_type === "photo" || post?.media_type === "image")) {
-          return `${API_BASE}/media/${encodeURIComponent(mediaFileId)}`;
-        }
-
-        return null;
-      }
-
-
-      function getAudioSrc(post) {
-        const type = String(post?.media_type || "").toLowerCase();
-        if (type !== "audio" && type !== "voice") return "";
-
-        const direct = validMediaValue(post?.media_url);
-        if (direct && !looksLikeImageUrl(direct)) return direct;
-
-        const mediaFileId = String(post?.media_file_id || "").trim();
-        if (mediaFileId) return `${API_BASE}/media/${encodeURIComponent(mediaFileId)}`;
-
-        return "";
-      }
-
-      function getTags(text) {
-        const tags = getRawHashTags(text);
-        const movieTitle = extractMovieTitle(text);
-
-        if (movieTitle) tags.push(movieTitle);
-
-        return Array.from(new Set(tags.filter(Boolean)));
-      }
-
-      function getPublicTags(text) {
-        return getTags(text).filter((tag) => !CATEGORY_TAGS.has(normalizeTag(tag)));
-      }
-
-      function getTagHref(tag) {
-        const cleanTag = String(tag || "").replace(/^#/, "").trim();
-        return `/tag/${encodeURIComponent(cleanTag)}`;
-      }
-
-      function formatDate(value) {
-        if (!value) return "";
-        try {
-          const date = new Date(String(value).replace(" ", "T"));
-          return new Intl.DateTimeFormat("fa-IR", {
-            year: "numeric",
-            month: "long",
-            day: "numeric"
-          }).format(date);
-        } catch {
-          return String(value);
-        }
-      }
-
-      function formatFileSize(bytes) {
-        const size = Number(bytes || 0);
-        if (!size) return "";
-        if (size < 1024) return `${toPersianNumber(size)} بایت`;
-        if (size < 1024 * 1024) return `${toPersianNumber(Math.round(size / 1024))} کیلوبایت`;
-        return `${toPersianNumber((size / 1024 / 1024).toFixed(1))} مگابایت`;
-      }
-
-      function formatDuration(seconds) {
-        const total = Number(seconds || 0);
-        if (!total) return "";
-        const minutes = Math.floor(total / 60);
-        const rest = Math.floor(total % 60);
-        return toPersianNumber(`${minutes}:${String(rest).padStart(2, "0")}`);
-      }
-
-      function normalizePost(raw) {
-        const mediaFileId = raw?.media_file_id || raw?.photo_file_id || raw?.file_id || raw?.telegram_file_id || null;
-        const mediaType = raw?.media_type || (raw?.photo_file_id ? "photo" : null);
-        const mediaUrl =
-          raw?.media_url ||
-          (mediaFileId ? `${API_BASE}/media/${encodeURIComponent(mediaFileId)}` : null);
-        const photoUrl = getMediaSrc({ ...raw, media_url: mediaUrl, media_type: mediaType });
-
-        return {
-          id: Number(raw?.id || 0),
-          text: String(raw?.text || ""),
-          slug: String(raw?.slug || ""),
-          created_at: String(raw?.created_at || ""),
-          media_type: mediaType,
-          media_file_id: mediaFileId,
-          photo_file_id: raw?.photo_file_id || null,
-          file_id: raw?.file_id || null,
-          telegram_file_id: raw?.telegram_file_id || null,
-          image_url: raw?.image_url || null,
-          thumbnail_url: raw?.thumbnail_url || null,
-          file_url: raw?.file_url || null,
-          media: raw?.media || null,
-          media_mime_type: raw?.media_mime_type || null,
-          media_file_name: raw?.media_file_name || null,
-          media_duration: raw?.media_duration || null,
-          media_size: raw?.media_size || null,
-          media_url: mediaUrl,
-          photo_url: photoUrl,
-          seo_title: raw?.seo_title || null,
-          seo_description: raw?.seo_description || null
-        };
-      }
-
-      function extractPosts(payload) {
-        if (Array.isArray(payload)) return payload.map(normalizePost).filter((post) => post.id);
-        if (Array.isArray(payload?.posts)) return payload.posts.map(normalizePost).filter((post) => post.id);
-        if (Array.isArray(payload?.data)) return payload.data.map(normalizePost).filter((post) => post.id);
-        if (payload?.id) return [normalizePost(payload)];
-        return [];
-      }
-
-      function mediaLabel(type) {
-        switch (type) {
-          case "photo":
-          case "image":
-            return "";
-          case "video":
-            return "ویدیو";
-          case "audio":
-          case "voice":
-            return "صوت";
-          case "document":
-            return "فایل";
-          case "animation":
-            return "انیمیشن";
-          default:
-            return "";
-        }
-      }
-
-      function renderText(text) {
-        const blocks = String(text || "")
-          .split(/\n+/)
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .map((line) => {
-            const movieTitle = extractMovieTitle(line);
-
-            if (movieTitle) {
-              return "";
-            }
-
-            const cleaned = cleanText(line);
-            if (!cleaned) return "";
-
-            return `<p>${escapeHtml(cleaned)}</p>`;
-          })
-          .filter(Boolean);
-
-        if (!blocks.length) {
-          return `<p>روایتی تازه از مجله هنری ماهون</p>`;
-        }
-
-        return blocks.join("");
-      }
-
-      function renderTags(post) {
-        const tags = getPublicTags(post.text);
-        if (!tags.length) return "";
-
-        return `
-          <div class="client-single-tags">
-            ${tags
-              .map((tag) => {
-                const fullTag = String(tag || "").replace(/^#/, "").trim();
-                return `<a href="${escapeAttr(getTagHref(fullTag))}" title="#${escapeAttr(fullTag)}"><bdi dir="auto">#${escapeHtml(fullTag)}</bdi></a>`;
-              })
-              .join("")}
-          </div>
-        `;
-      }
-
-      function renderMedia(post) {
-        const imageSrc = getMediaSrc(post);
-        const audioSrc = getAudioSrc(post);
-        const title = makeDisplayTitle(post, "post");
-        const url = validMediaValue(post.media_url || post.photo_url);
-
-        if (post.media_type === "audio" || post.media_type === "voice") {
-          const cover = imageSrc
-            ? `
-              <figure class="client-single-media client-single-audio-cover" data-media-wrap>
-                <img src="${escapeAttr(imageSrc)}" alt="${escapeAttr(title)}" width="960" height="620" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
-              </figure>
-            `
-            : "";
-
-          const player = audioSrc
-            ? `
-              <div class="client-audio-box">
-                <div class="client-audio-icon">♪</div>
-                <div class="client-audio-info">
-                  <strong>${escapeHtml(title || "پخش صوتی ماهون")}</strong>
-                  <span>
-                    ${escapeHtml(formatDuration(post.media_duration))}
-                    ${post.media_size ? " · " + escapeHtml(formatFileSize(post.media_size)) : ""}
-                  </span>
-                </div>
-                <audio controls preload="metadata" src="${escapeAttr(audioSrc)}"></audio>
-              </div>
-            `
-            : "";
-
-          return cover + player;
-        }
-
-        if ((post.media_type === "video" || post.media_type === "animation") && url) {
-          const poster = imageSrc ? ` poster="${escapeAttr(imageSrc)}"` : "";
-
-          return `
-            <div class="client-single-media client-single-video" data-media-wrap>
-              <div class="client-player-head">
-                <span>${escapeHtml(mediaLabel(post.media_type))}</span>
-                <strong>${escapeHtml(title)}</strong>
-              </div>
-              <video controls preload="metadata" playsinline src="${escapeAttr(url)}"${poster}></video>
-            </div>
-          `;
-        }
-
-        if (imageSrc) {
-          return `
-            <figure class="client-single-media" data-media-wrap>
-              <img src="${escapeAttr(imageSrc)}" alt="${escapeAttr(title)}" width="960" height="620" loading="lazy" decoding="async" onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')" />
-            </figure>
-          `;
-        }
-
-        if (!url) return "";
-        if (post.media_type === "document") {
-          return `
-            <a class="client-file-box" href="${escapeAttr(url)}" target="_blank" rel="noopener">
-              <span>□</span>
-              <div>
-                <strong>${escapeHtml(post.media_file_name || "دانلود فایل")}</strong>
-                <small>${escapeHtml(formatFileSize(post.media_size))}</small>
-              </div>
-            </a>
-          `;
-        }
-
-        return `
-          <a class="client-file-box" href="${escapeAttr(url)}" target="_blank" rel="noopener">
-            <span>◆</span>
-            <div>
-              <strong>${escapeHtml(mediaLabel(post.media_type))}</strong>
-              <small>مشاهده فایل</small>
-            </div>
-          </a>
-        `;
-      }
-
-      function sortPosts(posts) {
-        return posts.slice().sort((a, b) => {
-          const aTime = new Date(String(a.created_at).replace(" ", "T")).getTime();
-          const bTime = new Date(String(b.created_at).replace(" ", "T")).getTime();
-          return bTime !== aTime ? bTime - aTime : Number(b.id || 0) - Number(a.id || 0);
-        });
-      }
-
-      function relatedPostKind(post) {
-        const category = getPostCategory(post);
-        const mediaType = String(post?.media_type || "").toLowerCase();
-
-        if (category === "کتاب") return "book";
-        if (category === "دیالوگ ها") return "dialogue";
-        if (category === "صوتی") return "audio";
-        if (category === "نقاشی") return "art";
-        if (category === "شعر و متن") return "text";
-        if (mediaType === "audio" || mediaType === "voice") return "audio";
-        if (mediaType === "video" || mediaType === "animation") return "video";
-        if (mediaType === "photo" || mediaType === "image") return "photo";
-        return "text";
-      }
-
-      function relatedPostIcon(post) {
-        const kind = relatedPostKind(post);
-        if (kind === "book") return "▤";
-        if (kind === "dialogue") return "❞";
-        if (kind === "audio") return "♪";
-        if (kind === "art") return "◐";
-        if (kind === "video") return "▶";
-        if (kind === "photo") return "◇";
-        return "✎";
-      }
-
-      function renderRelatedPosts(posts, currentPost) {
-        const related = sortPosts(posts)
-          .filter((item) => item.id !== currentPost.id && item.slug !== currentPost.slug)
-          .slice(0, 5);
-
-        if (!related.length) return "";
-
-        return `
-          <aside class="client-related-posts" aria-label="مطالب پیشنهادی">
-            <h2>مطالب پیشنهادی</h2>
-            <div class="client-related-list">
-              ${related
-                .map((item) => {
-                  const title = makeDisplayTitle(item, "suggestion");
-                  const href = getPostHref(item);
-                  const imageSrc = getMediaSrc(item);
-                  const icon = relatedPostIcon(item);
-                  const kind = relatedPostKind(item);
-
-                  const thumb = imageSrc
-                    ? `<span class="client-related-thumb" data-media-wrap><img src="${escapeAttr(cacheBustMediaUrl(imageSrc, item.id))}" alt="${escapeAttr(title)}" width="60" height="60" loading="lazy" decoding="async" onerror="this.hidden=true;this.nextElementSibling.hidden=false" /><span class="client-related-fallback" aria-hidden="true" hidden>${escapeHtml(icon)}</span></span>`
-                    : `<span class="client-related-thumb client-related-thumb--icon client-related-thumb--${escapeAttr(kind)}" aria-hidden="true">${escapeHtml(icon)}</span>`;
-
-                  return `
-                    <a class="client-related-item" href="${escapeAttr(href)}">
-                      ${thumb}
-                      <span class="client-related-copy">
-                        <strong class="suggestion-title">${escapeHtml(title)}</strong>
-                        <small>${escapeHtml(formatDate(item.created_at))}</small>
-                      </span>
-                    </a>
-                  `;
-                })
-                .join("")}
-            </div>
-          </aside>
-        `;
-      }
-
-      function getCategoryHref(label) {
-        const clean = String(label || "").trim();
-
-        if (!clean) return "/posts";
-
-        return "/category/" + encodeURIComponent(clean);
-      }
-
-      function renderPost(post, relatedPosts) {
-        const title = makeDisplayTitle(post, "post");
-
-        document.title = `${title} | مجله هنری ماهون`;
-
-        const mediaUrl = validMediaValue(post.media_url);
-        const publicCategoryLabel = getPostCategory(post);
-        const rawMediaLabel = mediaLabel(post.media_type);
-        const publicMediaLabel =
-          rawMediaLabel &&
-          rawMediaLabel !== publicCategoryLabel &&
-          !(publicCategoryLabel === "صوتی" && rawMediaLabel === "صوت")
-            ? rawMediaLabel
-            : "";
-
-        const categoryAction = publicCategoryLabel
-          ? `<a href="${escapeAttr(getCategoryHref(publicCategoryLabel))}">آرشیو ${escapeHtml(publicCategoryLabel)}</a>`
-          : "";
-
-        const mediaAction = mediaUrl
-          ? `
-            <div class="client-single-actions">
-              <a href="${escapeAttr(mediaUrl)}" target="_blank" rel="noopener">باز کردن رسانه</a>
-            </div>
-          `
-          : "";
-
-        article.innerHTML = `
-          <div class="client-single-layout">
-            <div class="client-single-main">
-              <header class="client-single-hero">
-                <nav class="client-single-topbar" aria-label="مسیر مطلب">
-                  <a href="/">صفحه اصلی</a>
-                  <a href="/posts">همه مطالب</a>
-                  ${categoryAction}
-                </nav>
-
-                <span class="client-single-kicker">روایت هنری ماهون</span>
-
-                <h1 class="post-page-title post-title">${escapeHtml(title)}</h1>
-
-                <div class="client-single-meta">
-                  <span>${escapeHtml(formatDate(post.created_at))}</span>
-                  ${publicCategoryLabel ? `<span>${escapeHtml(publicCategoryLabel)}</span>` : ""}
-                  ${publicMediaLabel ? `<span>${escapeHtml(publicMediaLabel)}</span>` : ""}
-                </div>
-              </header>
-
-              ${renderMedia(post)}
-
-              <div class="client-single-body">
-                <div class="client-single-text">
-                  ${renderText(post.text)}
-                </div>
-
-                ${renderTags(post)}
-                ${mediaAction}
-              </div>
-            </div>
-
-            ${renderRelatedPosts(relatedPosts, post)}
-          </div>
-        `;
-      }
-
-      async function fetchJson(url, timeoutMs = 2000) {
-        const controller = new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-
-        try {
-          const response = await fetch(url, {
-            method: "GET",
-            signal: controller.signal,
-            headers: {
-              Accept: "application/json"
-            }
-          });
-
-          if (!response.ok) {
-            throw new Error(`API error ${response.status}`);
-          }
-
-          return response.json();
-        } finally {
-          window.clearTimeout(timer);
-        }
-      }
-
-      async function loadPost() {
-        try {
-          statusEl.innerHTML = `
-            <div class="client-single-loader"></div>
-            <span>در حال آماده‌سازی مطلب...</span>
-          `;
-
-          let post = null;
-          let listPosts = [];
-
-          const [directResult, listResult] = await Promise.allSettled([
-            fetchJson(`${API_BASE}/post/${encodeURIComponent(currentSlug)}`, 2000),
-            fetchJson(`${API_BASE}/`, 2000)
-          ]);
-
-          if (directResult.status === "fulfilled") {
-            post = extractPosts(directResult.value)[0] || null;
-          }
-
-          if (listResult.status === "fulfilled") {
-            listPosts = extractPosts(listResult.value);
-            if (!post) {
-              post = listPosts.find((item) => item.slug === currentSlug || String(item.id) === currentSlug) || null;
-            }
-          } else {
-            listPosts = post ? [post] : [];
-          }
-
-          if (!post) {
-            article.innerHTML = `
-              <div class="client-single-status">
-                پست مورد نظر پیدا نشد.
-              </div>
-            `;
-            return;
-          }
-
-          renderPost(post, listPosts);
-        } catch (error) {
-          console.error("Mahoon single post error:", error);
-          article.innerHTML = `
-            <div class="client-single-status">
-              خطا در دریافت پست. لطفاً صفحه را Refresh کنید.
-            </div>
-          `;
-        }
-      }
-
-      loadPost();
-    })();
-  </script>
-
-  <style is:global>
+<style is:global>
     .client-single {
       direction: rtl;
       min-height: 70vh;
