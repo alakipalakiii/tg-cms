@@ -1,4 +1,4 @@
-﻿---
+---
 export const prerender = false;
 
 import "../styles/global.css";
@@ -2081,7 +2081,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                   <strong id="selectedCount">۰ پست انتخاب شده</strong>
 
                   <div class="actions">
-                    <button class="admin-btn btn btn-line" id="selectAllBtn" type="button">انتخاب همه</button>
+                    <button class="admin-btn btn btn-line" id="selectAllBtn" type="button">انتخاب همه این صفحه</button>
                     <button class="admin-btn btn btn-green" id="bulkPublishBtn" type="button">انتشار</button>
                     <button class="admin-btn btn btn-gold" id="bulkUnpublishBtn" type="button">عدم انتشار</button>
                     <button class="admin-btn btn btn-danger" id="bulkDeleteBtn" type="button">حذف</button>
@@ -2219,11 +2219,12 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             </aside>
           </section>
 
-              <section class="panel admin-section" id="deletedPanel" data-section="deleted" data-admin-section="deleted" hidden>
+                            <section class="panel admin-section" id="deletedPanel" data-section="deleted" data-admin-section="deleted" hidden>
                 <div class="panel-head">
                   <h2>حذف‌شده‌ها</h2>
                   <span class="badge red">بازگردانی امن</span>
                 </div>
+
                 <div class="panel-body">
                   <div class="posts-list" id="deletedPostsList">
                     <div class="id-note deleted-note">
@@ -2233,34 +2234,43 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
                     <div class="empty">برای دیدن پست‌های حذف‌شده، بخش حذف‌شده‌ها را باز کن.</div>
                   </div>
+
+                  <div class="pagination" id="deletedPostsPagination" aria-label="صفحه‌بندی مطالب حذف‌شده"></div>
                 </div>
               </section>
 
               <div class="admin-sections">
-                <section class="panel admin-section" id="mediaPanel" data-section="media" data-admin-section="media" hidden>
+                                <section class="panel admin-section" id="mediaPanel" data-section="media" data-admin-section="media" hidden>
                   <div class="panel-head">
                     <h2>رسانه‌ها</h2>
                     <span class="badge blue" id="mediaPanelCount">0 مورد</span>
                   </div>
+
                   <div class="panel-body">
                     <div class="section-list" id="mediaLibrary">
                       <div class="empty">مطلب دارای رسانه پیدا نشد.</div>
                     </div>
+
+                    <div class="pagination" id="mediaPagination" aria-label="صفحه‌بندی رسانه‌ها"></div>
                   </div>
                 </section>
 
-                <section class="panel admin-section" id="seoPanel" data-section="seo" data-admin-section="seo" hidden>
+                                <section class="panel admin-section" id="seoPanel" data-section="seo" data-admin-section="seo" hidden>
                   <div class="panel-head">
                     <h2>سئو</h2>
+
                     <div class="actions">
                       <span class="badge" id="seoPanelCount">0 مورد نیازمند بررسی</span>
-                      <button class="admin-btn btn btn-primary" id="completeSeoBtn" type="button">تکمیل سئوی خالی‌ها</button>
+                      <button class="admin-btn btn btn-primary" id="completeSeoBtn" type="button">تکمیل سئوی خالی‌های این صفحه</button>
                     </div>
                   </div>
+
                   <div class="panel-body">
                     <div class="section-list" id="seoChecklist">
                       <div class="empty">داده‌ای برای بررسی SEO وجود ندارد.</div>
                     </div>
+
+                    <div class="pagination" id="seoPagination" aria-label="صفحه‌بندی بررسی سئو"></div>
                   </div>
                 </section>
 
@@ -2646,6 +2656,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       const sortFilter = document.getElementById("sortFilter");
       const filtersBar = searchInput.closest(".filters");
       const postsPagination = document.getElementById("postsPagination");
+      const deletedPostsPagination = document.getElementById("deletedPostsPagination");
 
       const refreshBtn = document.getElementById("refreshBtn");
       const newPostBtn = document.getElementById("newPostBtn");
@@ -2677,8 +2688,10 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       const publishProgress = document.getElementById("publishProgress");
       const apiDetailText = document.getElementById("apiDetailText");
       const mediaLibrary = document.getElementById("mediaLibrary");
+      const mediaPagination = document.getElementById("mediaPagination");
       const mediaPanelCount = document.getElementById("mediaPanelCount");
       const seoChecklist = document.getElementById("seoChecklist");
+      const seoPagination = document.getElementById("seoPagination");
       const seoPanelCount = document.getElementById("seoPanelCount");
       const completeSeoBtn = document.getElementById("completeSeoBtn");
       const siteCopyState = document.getElementById("siteCopyState");
@@ -2781,9 +2794,20 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       const analyticsCountries = document.getElementById("analyticsCountries");
       const analyticsRecent = document.getElementById("analyticsRecent");
 
+      /* mahoon-admin-ui-server-pagination-v1 */
       let posts = [];
+      let postsTotal = 0;
       let adminStats = null;
+
       let deletedPosts = [];
+      let deletedPostsTotal = 0;
+
+      let mediaPosts = [];
+      let mediaPostsTotal = 0;
+
+      let seoPosts = [];
+      let seoPostsTotal = 0;
+
       let selectedPost = null;
       let selectedIds = new Set();
       let currentMedia = null;
@@ -2793,11 +2817,23 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       let editorBaseline = "";
       let messageTimer = null;
       let authRecoveryShown = false;
+
       let currentPage = 1;
+      let deletedCurrentPage = 1;
+      let mediaCurrentPage = 1;
+      let seoCurrentPage = 1;
+
+      let postsRequestSerial = 0;
+      let deletedRequestSerial = 0;
+      let mediaRequestSerial = 0;
+      let seoRequestSerial = 0;
+      let searchDebounceTimer = null;
+
       const POSTS_PER_PAGE = 8;
-      const MEDIA_RENDER_LIMIT = 18;
-      const SEO_RENDER_LIMIT = 24;
-      const DELETED_RENDER_LIMIT = 24;
+      const DELETED_POSTS_PER_PAGE = 8;
+      const MEDIA_POSTS_PER_PAGE = 12;
+      const SEO_POSTS_PER_PAGE = 24;
+      const EXPORT_PAGE_SIZE = 100;
       const API_TIMEOUT_MS = 10000;
       const SITE_COPY_TIMEOUT_MS = 2200;
 
@@ -2921,11 +2957,11 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           }
 
           if (key === "media") {
-            renderMediaLibrary();
+            await loadMediaLibrary();
           }
 
           if (key === "seo") {
-            renderSeoChecklist();
+            await loadSeoChecklist();
           }
         }
 
@@ -3603,48 +3639,309 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         }
       }
 
-      async function loadPosts() {
-        postsList.innerHTML = `<div class="empty">در حال دریافت پست‌ها...</div>`;
+      function activeAdminSectionKey() {
+        const activeSection = adminSections.find(
+          section =>
+            !section.hidden &&
+            section.classList.contains("is-active")
+        );
+
+        return activeSection?.getAttribute("data-admin-section") || "";
+      }
+
+      function buildAdminPostsPath({
+        limit = POSTS_PER_PAGE,
+        offset = 0,
+        q = "",
+        status = "all",
+        media = "all",
+        sort = "newest"
+      } = {}) {
+        const params = new URLSearchParams();
+
+        params.set("limit", String(limit));
+        params.set("offset", String(Math.max(0, offset)));
+        params.set("status", status || "all");
+        params.set("media", media || "all");
+        params.set("sort", sort || "newest");
+
+        const query = String(q || "").trim();
+
+        if (query) {
+          params.set("q", query);
+        }
+
+        return `/admin/posts?${params.toString()}`;
+      }
+
+      function pageCount(totalItems, perPage) {
+        return Math.max(
+          Math.ceil(Math.max(Number(totalItems) || 0, 0) / perPage),
+          1
+        );
+      }
+
+      function compactPaginationPages(current, total) {
+        const pages = new Set([1, total]);
+
+        for (let offset = -2; offset <= 2; offset += 1) {
+          const page = current + offset;
+
+          if (page >= 1 && page <= total) {
+            pages.add(page);
+          }
+        }
+
+        const sorted = Array.from(pages).sort((a, b) => a - b);
+        const tokens = [];
+
+        sorted.forEach((page, index) => {
+          const previous = sorted[index - 1];
+
+          if (index > 0 && page - previous > 1) {
+            tokens.push(null);
+          }
+
+          tokens.push(page);
+        });
+
+        return tokens;
+      }
+
+      function paginationMarkup({
+        current,
+        totalPages,
+        totalItems,
+        pageAttribute,
+        previousAttribute,
+        nextAttribute
+      }) {
+        if (totalPages <= 1) {
+          return `<span>${totalItems} مطلب</span>`;
+        }
+
+        const buttons = compactPaginationPages(
+          current,
+          totalPages
+        ).map(token => {
+          if (token === null) {
+            return `<span class="pagination-ellipsis" aria-hidden="true">…</span>`;
+          }
+
+          return `
+            <button
+              class="admin-btn admin-glass-btn page-btn ${token === current ? "active" : ""}"
+              type="button"
+              ${pageAttribute}="${token}"
+              ${token === current ? 'aria-current="page"' : ""}
+            >${token}</button>
+          `;
+        }).join("");
+
+        return `
+          <button
+            class="admin-btn admin-glass-btn page-btn"
+            type="button"
+            ${previousAttribute}
+            ${current === 1 ? "disabled" : ""}
+          >قبلی</button>
+
+          ${buttons}
+
+          <button
+            class="admin-btn admin-glass-btn page-btn"
+            type="button"
+            ${nextAttribute}
+            ${current === totalPages ? "disabled" : ""}
+          >بعدی</button>
+
+          <span>${totalItems} مطلب</span>
+        `;
+      }
+
+      function findLoadedPostById(id) {
+        const targetId = Number(id);
+
+        return [
+          ...posts,
+          ...mediaPosts,
+          ...seoPosts
+        ].find(item => Number(item.id) === targetId) || null;
+      }
+
+      async function fetchAdminPostById(id) {
+        const data = await api(`/admin/posts/${id}`);
+
+        const post =
+          data?.post ||
+          data?.item ||
+          (Array.isArray(data?.posts) ? data.posts[0] : null) ||
+          data;
+
+        if (!post || Number(post.id) !== Number(id)) {
+          return null;
+        }
+
+        return post;
+      }
+
+      async function loadPosts(options = {}) {
+        const {
+          refreshStats = true
+        } = options;
+
+        const requestId = ++postsRequestSerial;
+
+        postsList.innerHTML =
+          `<div class="empty">در حال دریافت پست‌ها...</div>`;
+
         apiStatus.textContent = "در حال اتصال...";
 
+        const offset =
+          (Math.max(currentPage, 1) - 1) *
+          POSTS_PER_PAGE;
+
+        const path = buildAdminPostsPath({
+          limit: POSTS_PER_PAGE,
+          offset,
+          q: searchInput.value,
+          status: statusFilter.value,
+          media: mediaFilter.value,
+          sort: sortFilter.value
+        });
+
         try {
+          const postsPromise = api(path);
+
+          const statsPromise =
+            refreshStats || !adminStats
+              ? api("/admin/stats-v1").catch(() => null)
+              : Promise.resolve(null);
+
           const [data, statsData] = await Promise.all([
-            api("/admin/posts"),
-            api("/admin/stats-v1").catch(() => null)
+            postsPromise,
+            statsPromise
           ]);
-          posts = data.posts || [];
-          adminStats = statsData?.stats || null;
+
+          if (requestId !== postsRequestSerial) {
+            return;
+          }
+
+          if (statsData?.stats) {
+            adminStats = statsData.stats;
+          }
+
+          const nextPosts = Array.isArray(data?.posts)
+            ? data.posts
+            : [];
+
+          const nextTotal = Number(
+            data?.total ?? nextPosts.length
+          );
+
+          const totalPages = pageCount(
+            nextTotal,
+            POSTS_PER_PAGE
+          );
+
+          if (currentPage > totalPages) {
+            currentPage = totalPages;
+
+            await loadPosts({
+              refreshStats: false
+            });
+
+            return;
+          }
+
+          posts = nextPosts;
+          postsTotal = nextTotal;
           selectedIds = new Set();
 
-        renderStats();
-        renderPosts();
-        renderActiveAuxiliarySection();
-        updateSelectedCount();
+          renderStats();
+          renderPosts();
+          updateSelectedCount();
+
           apiStatus.textContent = "API متصل است";
-          apiDetailText.textContent = "اتصال برقرار است و داده‌ها از مسیرهای مدیریت موجود دریافت شدند.";
+          apiDetailText.textContent =
+            `اتصال برقرار است؛ صفحه ${currentPage} از ${totalPages} و ${postsTotal} مطلب قابل مدیریت است.`;
+
           updateLocalState();
         } catch (error) {
-          postsList.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+          if (requestId !== postsRequestSerial) {
+            return;
+          }
+
+          postsList.innerHTML =
+            `<div class="empty">${escapeHtml(error.message)}</div>`;
+
+          postsPagination.innerHTML = "";
           apiStatus.textContent = "خطا در اتصال API";
-          apiDetailText.textContent = userFriendlyError(error, "اتصال برقرار نشد.");
+          apiDetailText.textContent =
+            userFriendlyError(error, "اتصال برقرار نشد.");
         }
       }
 
       async function loadDeletedPosts() {
+        const requestId = ++deletedRequestSerial;
+
         deletedPostsList.hidden = false;
-        deletedPostsList.innerHTML = `<div class="empty">در حال دریافت پست‌های حذف‌شده...</div>`;
+        deletedPostsList.innerHTML =
+          `<div class="empty">در حال دریافت پست‌های حذف‌شده...</div>`;
+
+        const offset =
+          (Math.max(deletedCurrentPage, 1) - 1) *
+          DELETED_POSTS_PER_PAGE;
 
         try {
-          const data = await api("/admin/posts/deleted");
-          deletedPosts = data.posts || [];
+          const data = await api(
+            `/admin/posts/deleted?limit=${DELETED_POSTS_PER_PAGE}&offset=${offset}`
+          );
+
+          if (requestId !== deletedRequestSerial) {
+            return;
+          }
+
+          const nextPosts = Array.isArray(data?.posts)
+            ? data.posts
+            : [];
+
+          const nextTotal = Number(
+            data?.total ?? nextPosts.length
+          );
+
+          const totalPages = pageCount(
+            nextTotal,
+            DELETED_POSTS_PER_PAGE
+          );
+
+          if (deletedCurrentPage > totalPages) {
+            deletedCurrentPage = totalPages;
+            await loadDeletedPosts();
+            return;
+          }
+
+          deletedPosts = nextPosts;
+          deletedPostsTotal = nextTotal;
+
           renderDeletedPosts();
           renderStats();
         } catch (error) {
+          if (requestId !== deletedRequestSerial) {
+            return;
+          }
+
           const message = error.status === 404
             ? "این قابلیت هنوز روی API آنلاین فعال نشده است."
-            : userFriendlyError(error, "دریافت پست‌های حذف‌شده انجام نشد.");
+            : userFriendlyError(
+                error,
+                "دریافت پست‌های حذف‌شده انجام نشد."
+              );
 
-          deletedPostsList.innerHTML = `<div class="empty">${escapeHtml(message)}</div>`;
+          deletedPostsList.innerHTML =
+            `<div class="empty">${escapeHtml(message)}</div>`;
+
+          deletedPostsPagination.innerHTML = "";
         }
       }
 
@@ -3672,14 +3969,26 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       }
 
       function renderDeletedPosts() {
+        const totalPages = pageCount(
+          deletedPostsTotal,
+          DELETED_POSTS_PER_PAGE
+        );
+
         if (deletedPosts.length === 0) {
           deletedPostsList.innerHTML = `
             <div class="id-note deleted-note">
               <strong>پست‌های حذف‌شده:</strong>
               بازگردانی فقط با ID ثابت دیتابیس انجام می‌شود؛ این ID همان کد ربات است.
             </div>
+
             <div class="empty">پست حذف‌شده‌ای پیدا نشد.</div>
           `;
+
+          renderDeletedPagination(
+            totalPages,
+            deletedPostsTotal
+          );
+
           return;
         }
 
@@ -3688,13 +3997,21 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             <strong>پست‌های حذف‌شده:</strong>
             بازگردانی فقط با ID ثابت دیتابیس انجام می‌شود؛ این ID همان کد ربات است و بعد از حذف تغییر نمی‌کند.
           </div>
+
           <div class="admin-data-list">
-          ${deletedPosts.slice(0, DELETED_RENDER_LIMIT).map(post => {
+          ${deletedPosts.map(post => {
             const title = makeTitle(post.text);
             const excerpt = makeExcerpt(post.text);
-            const statusText = Number(post.is_published) === 1 ? "منتشر شده" : "منتشر نشده";
+            const statusText =
+              Number(post.is_published) === 1
+                ? "منتشر شده"
+                : "منتشر نشده";
+
             const kind = contentKind(post);
-            const publicHref = post.slug ? `/post/${encodeURIComponent(post.slug)}` : "";
+
+            const publicHref = post.slug
+              ? `/post/${encodeURIComponent(post.slug)}`
+              : "";
 
             return `
               <article class="admin-data-row admin-deleted-row" data-deleted-id="${post.id}">
@@ -3727,8 +4044,12 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             `;
           }).join("")}
           </div>
-          ${deletedPosts.length > DELETED_RENDER_LIMIT ? `<div class="empty">برای سبک ماندن پنل، ${DELETED_RENDER_LIMIT} مورد نخست نمایش داده شد.</div>` : ""}
         `;
+
+        renderDeletedPagination(
+          totalPages,
+          deletedPostsTotal
+        );
       }
 
       async function restoreDeletedPost(id, button) {
@@ -3954,20 +4275,80 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
 
       function renderStats() {
-        const loadedPublished = posts.filter(post => Number(post.is_published) === 1).length;
-        const loadedDrafts = posts.filter(post => Number(post.is_published) !== 1).length;
-        const loadedWithMedia = posts.filter(post => post.media_file_id || post.photo_file_id).length;
-        const loadedWithoutMedia = Math.max(posts.length - loadedWithMedia, 0);
-        const loadedLatestId = posts.reduce((max, post) => Math.max(max, Number(post.id || 0)), 0);
-        const uniqueTags = new Set(posts.flatMap(post => parseContent(post.text).hashtags));
+        const loadedPublished =
+          posts.filter(post =>
+            Number(post.is_published) === 1
+          ).length;
 
-        const total = Number(adminStats?.total_posts ?? posts.length);
-        const published = Number(adminStats?.published_posts ?? loadedPublished);
-        const drafts = Number(adminStats?.draft_posts ?? loadedDrafts);
-        const deleted = Number(adminStats?.deleted_posts ?? deletedPosts.length);
-        const withMedia = Number(adminStats?.media_posts ?? loadedWithMedia);
-        const withoutMedia = Number(adminStats?.text_posts ?? loadedWithoutMedia);
-        const latestId = Number(adminStats?.latest_id ?? loadedLatestId);
+        const loadedDrafts =
+          posts.filter(post =>
+            Number(post.is_published) !== 1
+          ).length;
+
+        const loadedWithMedia =
+          posts.filter(post =>
+            post.media_file_id ||
+            post.photo_file_id
+          ).length;
+
+        const loadedWithoutMedia =
+          Math.max(
+            posts.length - loadedWithMedia,
+            0
+          );
+
+        const loadedLatestId =
+          posts.reduce(
+            (max, post) =>
+              Math.max(
+                max,
+                Number(post.id || 0)
+              ),
+            0
+          );
+
+        const uniqueTags = new Set(
+          posts.flatMap(post =>
+            parseContent(post.text).hashtags
+          )
+        );
+
+        const total = Number(
+          adminStats?.total_posts ??
+          postsTotal ??
+          posts.length
+        );
+
+        const published = Number(
+          adminStats?.published_posts ??
+          loadedPublished
+        );
+
+        const drafts = Number(
+          adminStats?.draft_posts ??
+          loadedDrafts
+        );
+
+        const deleted = Number(
+          adminStats?.deleted_posts ??
+          deletedPostsTotal ??
+          deletedPosts.length
+        );
+
+        const withMedia = Number(
+          adminStats?.media_posts ??
+          loadedWithMedia
+        );
+
+        const withoutMedia = Number(
+          adminStats?.text_posts ??
+          loadedWithoutMedia
+        );
+
+        const latestId = Number(
+          adminStats?.latest_id ??
+          loadedLatestId
+        );
 
         totalCount.textContent = total;
         topbarTotalCount.textContent = total;
@@ -3977,20 +4358,35 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         mediaCount.textContent = withMedia;
         textCount.textContent = withoutMedia;
         latestIdCount.textContent = latestId || "-";
-        tagsCount.textContent = uniqueTags.size;
-        exportCount.textContent = total + " مطلب آماده خروجی";
 
-        const rate = total ? Math.round((published / total) * 100) : 0;
+        tagsCount.textContent =
+          `${uniqueTags.size} / صفحه`;
+
+        tagsCount.title =
+          "تعداد هشتگ‌های یکتای صفحه جاری";
+
+        exportCount.textContent =
+          total + " مطلب آماده خروجی کامل";
+
+        const rate = total
+          ? Math.round((published / total) * 100)
+          : 0;
+
         publishRate.textContent = rate + "%";
         publishProgress.style.width = rate + "%";
-        lastRefresh.textContent = "آخرین بروزرسانی: " + new Intl.DateTimeFormat("fa-IR", {
-          hour: "2-digit",
-          minute: "2-digit"
-        }).format(new Date());
+
+        lastRefresh.textContent =
+          "آخرین بروزرسانی: " +
+          new Intl.DateTimeFormat("fa-IR", {
+            hour: "2-digit",
+            minute: "2-digit"
+          }).format(new Date());
 
         renderActivity();
-        mediaPanelCount.textContent = withMedia + " مورد";
-        seoPanelCount.textContent = posts.filter(post => !post.seo_title || !post.seo_description).length + " مورد نیازمند بررسی";
+
+        mediaPanelCount.textContent =
+          withMedia + " مورد";
+
         updateLocalState();
       }
 
@@ -4025,109 +4421,289 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         `).join("");
       }
 
-      function renderMediaLibrary() {
-        const withMedia = posts.filter(post => mediaFromPost(post));
-        mediaPanelCount.textContent = `${withMedia.length} مورد`;
+      async function loadMediaLibrary() {
+        const requestId = ++mediaRequestSerial;
 
-        if (!withMedia.length) {
-          mediaLibrary.innerHTML = `<div class="empty">مطلب دارای رسانه پیدا نشد.</div>`;
+        mediaLibrary.innerHTML =
+          `<div class="empty">در حال دریافت رسانه‌ها...</div>`;
+
+        const offset =
+          (Math.max(mediaCurrentPage, 1) - 1) *
+          MEDIA_POSTS_PER_PAGE;
+
+        try {
+          const data = await api(
+            buildAdminPostsPath({
+              limit: MEDIA_POSTS_PER_PAGE,
+              offset,
+              media: "media",
+              sort: "newest"
+            })
+          );
+
+          if (requestId !== mediaRequestSerial) {
+            return;
+          }
+
+          const nextPosts = Array.isArray(data?.posts)
+            ? data.posts
+            : [];
+
+          const nextTotal = Number(
+            data?.total ?? nextPosts.length
+          );
+
+          const totalPages = pageCount(
+            nextTotal,
+            MEDIA_POSTS_PER_PAGE
+          );
+
+          if (mediaCurrentPage > totalPages) {
+            mediaCurrentPage = totalPages;
+            await loadMediaLibrary();
+            return;
+          }
+
+          mediaPosts = nextPosts;
+          mediaPostsTotal = nextTotal;
+
+          renderMediaLibrary();
+        } catch (error) {
+          if (requestId !== mediaRequestSerial) {
+            return;
+          }
+
+          mediaLibrary.innerHTML =
+            `<div class="empty">${escapeHtml(userFriendlyError(error, "دریافت رسانه‌ها انجام نشد."))}</div>`;
+
+          mediaPagination.innerHTML = "";
+        }
+      }
+
+      function renderMediaLibrary() {
+        const totalPages = pageCount(
+          mediaPostsTotal,
+          MEDIA_POSTS_PER_PAGE
+        );
+
+        mediaPanelCount.textContent =
+          `${mediaPostsTotal} مورد`;
+
+        if (!mediaPosts.length) {
+          mediaLibrary.innerHTML =
+            `<div class="empty">مطلب دارای رسانه پیدا نشد.</div>`;
+
+          renderMediaPagination(
+            totalPages,
+            mediaPostsTotal
+          );
+
           return;
         }
 
         mediaLibrary.innerHTML = `
           <div class="admin-data-list">
-          ${withMedia.slice(0, MEDIA_RENDER_LIMIT).map(post => {
-          const media = mediaFromPost(post);
-          const url = media?.media_url || media?.photo_url || "";
-          const publicHref = post.slug ? `/post/${encodeURIComponent(post.slug)}` : "";
-          const title = makeTitle(post.text);
+          ${mediaPosts.map(post => {
+            const media = mediaFromPost(post);
+            const url =
+              media?.media_url ||
+              media?.photo_url ||
+              "";
 
-          return `
-            <article class="admin-data-row admin-media-row">
-              <div class="admin-row-check">
-                <span class="admin-row-badge blue">رسانه</span>
-              </div>
-              <div class="admin-row-thumb">${renderThumb(post)}</div>
-              <div class="admin-row-main">
-                <h3 class="admin-row-title">${escapeHtml(title)}</h3>
-                <p class="admin-row-excerpt">${escapeHtml(makeExcerpt(post.text))}</p>
-                ${renderAdminTags(post)}
-              </div>
-              <div class="admin-row-meta">
-                <span class="admin-row-badge blue">ID ${escapeHtml(post.id)}</span>
-                <span class="admin-row-badge">${escapeHtml(mediaLabel(media.media_type))}</span>
-                <span class="admin-row-badge gray">${escapeHtml(formatDate(post.created_at))}</span>
-              </div>
-              <div class="admin-row-actions">
-                ${adminRowButton("ویرایش", `data-edit-id="${post.id}"`)}
-                ${publicHref ? adminRowLink("مشاهده", publicHref, "data-row-action") : ""}
-                ${url ? adminRowButton("کپی URL", `data-copy-value="${escapeAttr(url)}"`) : ""}
-              </div>
-            </article>
-          `;
-        }).join("")}
+            const publicHref = post.slug
+              ? `/post/${encodeURIComponent(post.slug)}`
+              : "";
+
+            const title = makeTitle(post.text);
+
+            return `
+              <article class="admin-data-row admin-media-row">
+                <div class="admin-row-check">
+                  <span class="admin-row-badge blue">رسانه</span>
+                </div>
+
+                <div class="admin-row-thumb">
+                  ${renderThumb(post)}
+                </div>
+
+                <div class="admin-row-main">
+                  <h3 class="admin-row-title">${escapeHtml(title)}</h3>
+                  <p class="admin-row-excerpt">${escapeHtml(makeExcerpt(post.text))}</p>
+                  ${renderAdminTags(post)}
+                </div>
+
+                <div class="admin-row-meta">
+                  <span class="admin-row-badge blue">ID ${escapeHtml(post.id)}</span>
+                  <span class="admin-row-badge">${escapeHtml(mediaLabel(media?.media_type))}</span>
+                  <span class="admin-row-badge gray">${escapeHtml(formatDate(post.created_at))}</span>
+                </div>
+
+                <div class="admin-row-actions">
+                  ${adminRowButton("ویرایش", `data-edit-id="${post.id}"`)}
+                  ${publicHref ? adminRowLink("مشاهده", publicHref, "data-row-action") : ""}
+                  ${url ? adminRowButton("کپی URL", `data-copy-value="${escapeAttr(url)}"`) : ""}
+                </div>
+              </article>
+            `;
+          }).join("")}
           </div>
-        ` + (
-          withMedia.length > MEDIA_RENDER_LIMIT
-            ? `<div class="empty">برای سبک ماندن پنل، ${MEDIA_RENDER_LIMIT} رسانه نخست نمایش داده شد.</div>`
-            : ""
+        `;
+
+        renderMediaPagination(
+          totalPages,
+          mediaPostsTotal
         );
       }
 
-      function renderSeoChecklist() {
-        const missingCount = posts.filter(post => !post.seo_title || !post.seo_description).length;
-        const items = [...posts].sort((a, b) => Number(b.id || 0) - Number(a.id || 0)).slice(0, SEO_RENDER_LIMIT);
-        seoPanelCount.textContent = `${missingCount} مورد نیازمند بررسی`;
+      async function loadSeoChecklist() {
+        const requestId = ++seoRequestSerial;
 
-        if (!items.length) {
-          seoChecklist.innerHTML = `<div class="empty">تمام مطالب لودشده حداقل عنوان و توضیح SEO دارند.</div>`;
+        seoChecklist.innerHTML =
+          `<div class="empty">در حال دریافت اطلاعات SEO...</div>`;
+
+        const offset =
+          (Math.max(seoCurrentPage, 1) - 1) *
+          SEO_POSTS_PER_PAGE;
+
+        try {
+          const data = await api(
+            buildAdminPostsPath({
+              limit: SEO_POSTS_PER_PAGE,
+              offset,
+              sort: "id"
+            })
+          );
+
+          if (requestId !== seoRequestSerial) {
+            return;
+          }
+
+          const nextPosts = Array.isArray(data?.posts)
+            ? data.posts
+            : [];
+
+          const nextTotal = Number(
+            data?.total ?? nextPosts.length
+          );
+
+          const totalPages = pageCount(
+            nextTotal,
+            SEO_POSTS_PER_PAGE
+          );
+
+          if (seoCurrentPage > totalPages) {
+            seoCurrentPage = totalPages;
+            await loadSeoChecklist();
+            return;
+          }
+
+          seoPosts = nextPosts;
+          seoPostsTotal = nextTotal;
+
+          renderSeoChecklist();
+        } catch (error) {
+          if (requestId !== seoRequestSerial) {
+            return;
+          }
+
+          seoChecklist.innerHTML =
+            `<div class="empty">${escapeHtml(userFriendlyError(error, "دریافت اطلاعات SEO انجام نشد."))}</div>`;
+
+          seoPagination.innerHTML = "";
+        }
+      }
+
+      function renderSeoChecklist() {
+        const missingCount =
+          seoPosts.filter(post =>
+            !post.seo_title ||
+            !post.seo_description
+          ).length;
+
+        const totalPages = pageCount(
+          seoPostsTotal,
+          SEO_POSTS_PER_PAGE
+        );
+
+        seoPanelCount.textContent =
+          `${seoPostsTotal} مطلب؛ ${missingCount} مورد ناقص در این صفحه`;
+
+        completeSeoBtn.disabled =
+          missingCount === 0;
+
+        if (!seoPosts.length) {
+          seoChecklist.innerHTML =
+            `<div class="empty">مطلبی برای بررسی SEO وجود ندارد.</div>`;
+
+          renderSeoPagination(
+            totalPages,
+            seoPostsTotal
+          );
+
           return;
         }
 
         seoChecklist.innerHTML = `
           <div class="admin-data-list">
-          ${items.map(post => {
-          const publicHref = post.slug ? `/post/${encodeURIComponent(post.slug)}` : "";
-          const publicUrl = publicHref ? `${window.location.origin}${publicHref}` : "";
-          const generatedSeo = ensureSeoForPost(post);
-          const titleStatus = post.seo_title ? "عنوان ثبت‌شده" : "عنوان پیشنهادی";
-          const descStatus = post.seo_description ? "توضیح ثبت‌شده" : "توضیح پیشنهادی";
+          ${seoPosts.map(post => {
+            const publicHref = post.slug
+              ? `/post/${encodeURIComponent(post.slug)}`
+              : "";
 
-          return `
-          <article class="admin-data-row admin-seo-row">
-            <div class="admin-row-check">
-              <span class="admin-row-badge blue">SEO</span>
-            </div>
-            <div class="admin-row-thumb">
-              ${renderThumb(post)}
-            </div>
-            <div class="admin-row-main">
-              <h3 class="admin-row-title">${escapeHtml(makeTitle(post.text))}</h3>
-              <div class="admin-seo-preview">
-                <strong>${escapeHtml(generatedSeo.seo_title)}</strong>
-                <p>${escapeHtml(generatedSeo.seo_description)}</p>
-              </div>
-            </div>
+            const publicUrl = publicHref
+              ? `${window.location.origin}${publicHref}`
+              : "";
 
-            <div class="admin-row-meta">
-              <span class="admin-row-badge blue">ID ${escapeHtml(post.id)}</span>
-              <span class="admin-row-badge ${post.seo_title ? "green" : "gray"}">${escapeHtml(titleStatus)}</span>
-              <span class="admin-row-badge ${post.seo_description ? "green" : "gray"}">${escapeHtml(descStatus)}</span>
-            </div>
+            const generatedSeo =
+              ensureSeoForPost(post);
 
-            <div class="admin-row-actions">
-              ${adminRowButton("ویرایش SEO", `data-edit-id="${post.id}" data-editor-target="seo"`, "warning")}
-              ${publicHref ? adminRowLink("مشاهده", publicHref, "data-row-action") : ""}
-              ${publicUrl ? adminRowButton("کپی لینک", `data-copy-value="${escapeAttr(publicUrl)}"`) : ""}
-            </div>
-          </article>
-        `;
-        }).join("")}
+            const titleStatus = post.seo_title
+              ? "عنوان ثبت‌شده"
+              : "عنوان پیشنهادی";
+
+            const descStatus = post.seo_description
+              ? "توضیح ثبت‌شده"
+              : "توضیح پیشنهادی";
+
+            return `
+              <article class="admin-data-row admin-seo-row">
+                <div class="admin-row-check">
+                  <span class="admin-row-badge blue">SEO</span>
+                </div>
+
+                <div class="admin-row-thumb">
+                  ${renderThumb(post)}
+                </div>
+
+                <div class="admin-row-main">
+                  <h3 class="admin-row-title">${escapeHtml(makeTitle(post.text))}</h3>
+
+                  <div class="admin-seo-preview">
+                    <strong>${escapeHtml(generatedSeo.seo_title)}</strong>
+                    <p>${escapeHtml(generatedSeo.seo_description)}</p>
+                  </div>
+                </div>
+
+                <div class="admin-row-meta">
+                  <span class="admin-row-badge blue">ID ${escapeHtml(post.id)}</span>
+                  <span class="admin-row-badge ${post.seo_title ? "green" : "gray"}">${escapeHtml(titleStatus)}</span>
+                  <span class="admin-row-badge ${post.seo_description ? "green" : "gray"}">${escapeHtml(descStatus)}</span>
+                </div>
+
+                <div class="admin-row-actions">
+                  ${adminRowButton("ویرایش SEO", `data-edit-id="${post.id}" data-editor-target="seo"`, "warning")}
+                  ${publicHref ? adminRowLink("مشاهده", publicHref, "data-row-action") : ""}
+                  ${publicUrl ? adminRowButton("کپی لینک", `data-copy-value="${escapeAttr(publicUrl)}"`) : ""}
+                </div>
+              </article>
+            `;
+          }).join("")}
           </div>
-        ` + (
-          posts.length > SEO_RENDER_LIMIT
-            ? `<div class="empty">برای سرعت بهتر، ${SEO_RENDER_LIMIT} مورد اخیر SEO نمایش داده شد.</div>`
-            : ""
+        `;
+
+        renderSeoPagination(
+          totalPages,
+          seoPostsTotal
         );
       }
 
@@ -4136,46 +4712,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       }
 
       function getFilteredPosts() {
-        const query = (searchInput.value || "").trim().toLowerCase();
-        const status = statusFilter.value;
-        const media = mediaFilter.value;
-        const sort = sortFilter.value;
-
-        let filtered = posts.filter(post => {
-          const parsed = parseContent(post.text);
-          const mediaType = post.media_type || (post.photo_file_id ? "photo" : null);
-          const hasMedia = Boolean(post.media_file_id || post.photo_file_id);
-
-          const searchText = `${post.id} ${post.slug} ${post.text} ${post.seo_title || ""} ${post.seo_description || ""} ${parsed.hashtags.join(" ")}`.toLowerCase();
-
-          const matchesQuery = !query || searchText.includes(query);
-          const matchesStatus =
-            status === "all" ||
-            (status === "published" && Number(post.is_published) === 1) ||
-            (status === "draft" && Number(post.is_published) !== 1);
-
-          const matchesMedia =
-            media === "all" ||
-            (media === "media" && hasMedia) ||
-            (media === "photo" && mediaType === "photo") ||
-            (media === "video" && mediaType === "video") ||
-            (media === "audio" && (mediaType === "audio" || mediaType === "voice")) ||
-            (media === "text" && !hasMedia);
-
-          return matchesQuery && matchesStatus && matchesMedia;
-        });
-
-        if (sort === "oldest") {
-          filtered.sort((a, b) => Number(a.id) - Number(b.id));
-        } else if (sort === "id") {
-          filtered.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
-        } else if (sort === "title") {
-          filtered.sort((a, b) => makeTitle(a.text).localeCompare(makeTitle(b.text), "fa"));
-        } else {
-          filtered.sort((a, b) => Number(b.id) - Number(a.id));
-        }
-
-        return filtered;
+        return [...posts];
       }
 
       function contentKind(post) {
@@ -4230,36 +4767,65 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       }
 
       function renderPosts() {
-        const filtered = getFilteredPosts();
+        const totalPages = pageCount(
+          postsTotal,
+          POSTS_PER_PAGE
+        );
 
-        if (filtered.length === 0) {
-          postsList.innerHTML = `<div class="empty">پستی پیدا نشد.</div>`;
-          postsPagination.innerHTML = "";
+        if (posts.length === 0) {
+          postsList.innerHTML =
+            `<div class="empty">پستی پیدا نشد.</div>`;
+
+          renderPagination(
+            totalPages,
+            postsTotal
+          );
+
           return;
         }
 
-        const totalPages = Math.max(Math.ceil(filtered.length / POSTS_PER_PAGE), 1);
-        currentPage = Math.min(Math.max(currentPage, 1), totalPages);
-        const start = (currentPage - 1) * POSTS_PER_PAGE;
-        const visiblePosts = filtered.slice(start, start + POSTS_PER_PAGE);
-
         postsList.innerHTML = `
           <div class="admin-data-list">
-            ${visiblePosts.map(post => {
-          const active = selectedPost && Number(selectedPost.id) === Number(post.id) ? "active" : "";
-          const checked = selectedIds.has(Number(post.id)) ? "checked" : "";
-          const statusClass = Number(post.is_published) === 1 ? "green" : "red";
-          const statusText = Number(post.is_published) === 1 ? "منتشر شده" : "منتشر نشده";
+            ${posts.map(post => {
+          const active =
+            selectedPost &&
+            Number(selectedPost.id) === Number(post.id)
+              ? "active"
+              : "";
+
+          const checked =
+            selectedIds.has(Number(post.id))
+              ? "checked"
+              : "";
+
+          const statusClass =
+            Number(post.is_published) === 1
+              ? "green"
+              : "red";
+
+          const statusText =
+            Number(post.is_published) === 1
+              ? "منتشر شده"
+              : "منتشر نشده";
+
           const title = makeTitle(post.text);
           const excerpt = makeExcerpt(post.text);
           const media = mediaFromPost(post);
           const kind = contentKind(post);
-          const publicHref = post.slug ? `/post/${encodeURIComponent(post.slug)}` : "";
+
+          const publicHref = post.slug
+            ? `/post/${encodeURIComponent(post.slug)}`
+            : "";
 
           return `
             <article class="admin-data-row admin-post-row ${active}" data-row-id="${post.id}">
               <div class="admin-row-check">
-                <input class="admin-checkbox switch-input" type="checkbox" data-check-id="${post.id}" ${checked} />
+                <input
+                  class="admin-checkbox switch-input"
+                  type="checkbox"
+                  data-check-id="${post.id}"
+                  ${checked}
+                />
               </div>
 
               <div class="admin-row-thumb">
@@ -4294,30 +4860,77 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           </div>
         `;
 
-        renderPagination(totalPages, filtered.length);
+        renderPagination(
+          totalPages,
+          postsTotal
+        );
       }
 
       function renderPagination(totalPages, totalItems) {
-        if (totalPages <= 1) {
-          postsPagination.innerHTML = `<span>${totalItems} مطلب</span>`;
-          return;
-        }
+        postsPagination.innerHTML =
+          paginationMarkup({
+            current: currentPage,
+            totalPages,
+            totalItems,
+            pageAttribute: "data-page",
+            previousAttribute: "data-page-prev",
+            nextAttribute: "data-page-next"
+          });
+      }
 
-        const pageButtons = Array.from({ length: totalPages }, (_, index) => {
-          const page = index + 1;
-          return `<button class="admin-btn admin-glass-btn page-btn ${page === currentPage ? "active" : ""}" type="button" data-page="${page}">${page}</button>`;
-        }).join("");
+      function renderDeletedPagination(totalPages, totalItems) {
+        deletedPostsPagination.innerHTML =
+          paginationMarkup({
+            current: deletedCurrentPage,
+            totalPages,
+            totalItems,
+            pageAttribute: "data-deleted-page",
+            previousAttribute: "data-deleted-page-prev",
+            nextAttribute: "data-deleted-page-next"
+          });
+      }
 
-        postsPagination.innerHTML = `
-          <button class="admin-btn admin-glass-btn page-btn" type="button" data-page-prev ${currentPage === 1 ? "disabled" : ""}>قبلی</button>
-          ${pageButtons}
-          <button class="admin-btn admin-glass-btn page-btn" type="button" data-page-next ${currentPage === totalPages ? "disabled" : ""}>بعدی</button>
-          <span>${totalItems} مطلب</span>
-        `;
+      function renderMediaPagination(totalPages, totalItems) {
+        mediaPagination.innerHTML =
+          paginationMarkup({
+            current: mediaCurrentPage,
+            totalPages,
+            totalItems,
+            pageAttribute: "data-media-page",
+            previousAttribute: "data-media-page-prev",
+            nextAttribute: "data-media-page-next"
+          });
+      }
+
+      function renderSeoPagination(totalPages, totalItems) {
+        seoPagination.innerHTML =
+          paginationMarkup({
+            current: seoCurrentPage,
+            totalPages,
+            totalItems,
+            pageAttribute: "data-seo-page",
+            previousAttribute: "data-seo-page-prev",
+            nextAttribute: "data-seo-page-next"
+          });
       }
 
       function updateSelectedCount() {
-        selectedCount.textContent = `${selectedIds.size} پست انتخاب شده`;
+        const pageIds =
+          posts.map(post => Number(post.id));
+
+        const allPageSelected =
+          pageIds.length > 0 &&
+          pageIds.every(id =>
+            selectedIds.has(id)
+          );
+
+        selectedCount.textContent =
+          `${selectedIds.size} پست از این صفحه انتخاب شده`;
+
+        selectAllBtn.textContent =
+          allPageSelected
+            ? "لغو انتخاب این صفحه"
+            : "انتخاب همه این صفحه";
       }
 
       function setEditorTab(name) {
@@ -4513,36 +5126,65 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         const payload = editorPayload();
 
         if (!payload.text) {
-          showMessage(editorMessage, "متن پست نمی‌تواند خالی باشد.", "error");
+          showMessage(
+            editorMessage,
+            "متن پست نمی‌تواند خالی باشد.",
+            "error"
+          );
+
           return;
         }
 
-        setButtonLoading(saveBtn, true, id ? "در حال ذخیره..." : "در حال ساخت...");
+        setButtonLoading(
+          saveBtn,
+          true,
+          id ? "در حال ذخیره..." : "در حال ساخت..."
+        );
 
         try {
+          let savedId = id;
+
           if (id) {
             await api(`/admin/posts/${id}`, {
               method: "PATCH",
               body: JSON.stringify(payload)
             });
 
-            showMessage(editorMessage, `پست با کد ثابت #${id} با موفقیت ذخیره شد.`, "ok");
+            showMessage(
+              editorMessage,
+              `پست با کد ثابت #${id} با موفقیت ذخیره شد.`,
+              "ok"
+            );
           } else {
             const data = await api("/admin/posts", {
               method: "POST",
               body: JSON.stringify(payload)
             });
 
-            showMessage(editorMessage, `پست جدید ساخته شد. کد ثابت آن #${data.id || "-"} است.`, "ok");
+            savedId = data.id || "";
 
-            postId.value = data.id || "";
-            updateStableIdDisplay(data.id || "");
-            postSlug.value = data.slug || payload.slug;
+            showMessage(
+              editorMessage,
+              `پست جدید ساخته شد. کد ثابت آن #${savedId || "-"} است.`,
+              "ok"
+            );
+
+            postId.value = savedId;
+            updateStableIdDisplay(savedId);
+            postSlug.value =
+              data.slug || payload.slug;
           }
 
           await loadPosts();
 
-          const fresh = posts.find(item => Number(item.id) === Number(postId.value));
+          let fresh =
+            findLoadedPostById(savedId);
+
+          if (!fresh && savedId) {
+            fresh =
+              await fetchAdminPostById(savedId)
+                .catch(() => null);
+          }
 
           if (fresh) {
             selectPost(fresh);
@@ -4550,7 +5192,14 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             resetEditorDirty();
           }
         } catch (error) {
-          showMessage(editorMessage, userFriendlyError(error, "ذخیره پست انجام نشد."), "error");
+          showMessage(
+            editorMessage,
+            userFriendlyError(
+              error,
+              "ذخیره پست انجام نشد."
+            ),
+            "error"
+          );
         } finally {
           setButtonLoading(saveBtn, false);
         }
@@ -4598,15 +5247,29 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         const payload = editorPayload();
 
         if (!payload.text) {
-          showMessage(editorMessage, "متن پست خالی است.", "error");
+          showMessage(
+            editorMessage,
+            "متن پست خالی است.",
+            "error"
+          );
+
           return;
         }
 
         payload.slug = "";
         payload.is_published = 0;
-        payload.admin_note = payload.admin_note ? payload.admin_note + "\nکپی شده از پست قبلی" : "کپی شده از پست قبلی";
 
-        setButtonLoading(duplicateBtn, true, "در حال کپی...");
+        payload.admin_note =
+          payload.admin_note
+            ? payload.admin_note +
+              "\nکپی شده از پست قبلی"
+            : "کپی شده از پست قبلی";
+
+        setButtonLoading(
+          duplicateBtn,
+          true,
+          "در حال کپی..."
+        );
 
         try {
           const data = await api("/admin/posts", {
@@ -4614,63 +5277,131 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             body: JSON.stringify(payload)
           });
 
-          showMessage(editorMessage, `کپی پست ساخته شد و با کد ثابت #${data.id || "-"} در حالت منتشر نشده قرار گرفت.`, "ok");
+          const createdId = data.id || "";
+
+          showMessage(
+            editorMessage,
+            `کپی پست ساخته شد و با کد ثابت #${createdId || "-"} در حالت منتشر نشده قرار گرفت.`,
+            "ok"
+          );
 
           await loadPosts();
 
-          const fresh = posts.find(item => Number(item.id) === Number(data.id));
+          let fresh =
+            findLoadedPostById(createdId);
+
+          if (!fresh && createdId) {
+            fresh =
+              await fetchAdminPostById(createdId)
+                .catch(() => null);
+          }
 
           if (fresh) {
             selectPost(fresh);
           }
         } catch (error) {
-          showMessage(editorMessage, userFriendlyError(error, "کپی پست انجام نشد."), "error");
+          showMessage(
+            editorMessage,
+            userFriendlyError(
+              error,
+              "کپی پست انجام نشد."
+            ),
+            "error"
+          );
         } finally {
-          setButtonLoading(duplicateBtn, false);
+          setButtonLoading(
+            duplicateBtn,
+            false
+          );
         }
       }
 
       async function completeMissingSeo() {
-        const targets = posts.filter(post => !post.seo_title || !post.seo_description);
+        const targets =
+          seoPosts.filter(post =>
+            !post.seo_title ||
+            !post.seo_description
+          );
 
         if (!targets.length) {
-          showToast("همه مطالب لودشده سئوی کامل دارند.", "ok");
+          showToast(
+            "همه مطالب این صفحه سئوی کامل دارند.",
+            "ok"
+          );
+
           return;
         }
 
         const confirmed = await confirmAction({
-          title: "تکمیل سئوی خالی‌ها",
-          message: `برای ${targets.length} مطلب، عنوان و توضیح SEO پیشنهادی ساخته و ذخیره شود؟`,
-          confirmText: "تکمیل سئو"
+          title: "تکمیل سئوی خالی‌های این صفحه",
+          message: `برای ${targets.length} مطلب ناقص در صفحه جاری، عنوان و توضیح SEO پیشنهادی ساخته و ذخیره شود؟`,
+          confirmText: "تکمیل سئوی صفحه"
         });
 
-        if (!confirmed || completeSeoBtn.disabled) return;
+        if (
+          !confirmed ||
+          completeSeoBtn.disabled
+        ) {
+          return;
+        }
 
-        setButtonLoading(completeSeoBtn, true, "در حال تکمیل...");
+        setButtonLoading(
+          completeSeoBtn,
+          true,
+          "در حال تکمیل..."
+        );
 
         let completed = 0;
 
         try {
           for (const post of targets) {
-            const generatedSeo = ensureSeoForPost(post);
+            const generatedSeo =
+              ensureSeoForPost(post);
 
-            await api(`/admin/posts/${post.id}`, {
-              method: "PATCH",
-              body: JSON.stringify(postPatchPayload(post, {
-                seo_title: post.seo_title || generatedSeo.seo_title,
-                seo_description: post.seo_description || generatedSeo.seo_description
-              }))
-            });
+            await api(
+              `/admin/posts/${post.id}`,
+              {
+                method: "PATCH",
+                body: JSON.stringify(
+                  postPatchPayload(post, {
+                    seo_title:
+                      post.seo_title ||
+                      generatedSeo.seo_title,
+
+                    seo_description:
+                      post.seo_description ||
+                      generatedSeo.seo_description
+                  })
+                )
+              }
+            );
 
             completed += 1;
           }
 
-          showToast(`${completed} مطلب با سئوی خودکار تکمیل شد.`, "ok");
-          await loadPosts();
+          showToast(
+            `${completed} مطلب این صفحه با سئوی خودکار تکمیل شد.`,
+            "ok"
+          );
+
+          await loadSeoChecklist();
+          await loadPosts({
+            refreshStats: true
+          });
         } catch (error) {
-          showMessage(editorMessage, userFriendlyError(error, `تکمیل SEO بعد از ${completed} مطلب متوقف شد.`), "error");
+          showMessage(
+            editorMessage,
+            userFriendlyError(
+              error,
+              `تکمیل SEO بعد از ${completed} مطلب متوقف شد.`
+            ),
+            "error"
+          );
         } finally {
-          setButtonLoading(completeSeoBtn, false);
+          setButtonLoading(
+            completeSeoBtn,
+            false
+          );
         }
       }
 
@@ -4833,17 +5564,170 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         }
       }
 
-      function exportJson() {
-        const data = JSON.stringify(posts, null, 2);
-        const blob = new Blob([data], { type: "application/json;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
+      async function exportJson() {
+        const buttons = Array.from(
+          new Set(
+            [
+              exportBtn,
+              document.querySelector(
+                "[data-export-json]"
+              )
+            ].filter(Boolean)
+          )
+        );
 
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `mahoon-posts-${Date.now()}.json`;
-        a.click();
+        if (
+          buttons.some(button =>
+            button.disabled
+          )
+        ) {
+          return;
+        }
 
-        URL.revokeObjectURL(url);
+        const labels = buttons.map(
+          button => button.textContent
+        );
+
+        buttons.forEach(button => {
+          button.disabled = true;
+          button.textContent =
+            "در حال آماده‌سازی خروجی...";
+        });
+
+        try {
+          const allPosts = [];
+          const seenIds = new Set();
+
+          let offset = 0;
+          let total = null;
+
+          while (
+            total === null ||
+            offset < total
+          ) {
+            const data = await api(
+              buildAdminPostsPath({
+                limit: EXPORT_PAGE_SIZE,
+                offset,
+                sort: "newest"
+              }),
+              {
+                timeoutMs: 30000
+              }
+            );
+
+            const batch =
+              Array.isArray(data?.posts)
+                ? data.posts
+                : [];
+
+            if (total === null) {
+              total = Number(
+                data?.total ??
+                batch.length
+              );
+            }
+
+            batch.forEach(post => {
+              const id = Number(post.id);
+
+              if (!seenIds.has(id)) {
+                seenIds.add(id);
+                allPosts.push(post);
+              }
+            });
+
+            buttons.forEach(button => {
+              button.textContent =
+                `دریافت ${allPosts.length} از ${total}`;
+            });
+
+            const nextOffset = Number(
+              data?.next_offset ??
+              offset + batch.length
+            );
+
+            if (
+              batch.length === 0 &&
+              offset < total
+            ) {
+              throw new Error(
+                "دریافت خروجی کامل پیش از پایان داده‌ها متوقف شد."
+              );
+            }
+
+            if (
+              nextOffset <= offset &&
+              offset < total
+            ) {
+              throw new Error(
+                "پیشروی صفحه‌بندی خروجی متوقف شد."
+              );
+            }
+
+            offset = nextOffset;
+          }
+
+          if (
+            total !== null &&
+            allPosts.length !== total
+          ) {
+            throw new Error(
+              `تعداد خروجی کامل نیست؛ ${allPosts.length} از ${total} مطلب دریافت شد.`
+            );
+          }
+
+          const json = JSON.stringify(
+            allPosts,
+            null,
+            2
+          );
+
+          const blob = new Blob(
+            [json],
+            {
+              type:
+                "application/json;charset=utf-8"
+            }
+          );
+
+          const url =
+            URL.createObjectURL(blob);
+
+          const anchor =
+            document.createElement("a");
+
+          anchor.href = url;
+
+          anchor.download =
+            `mahoon-posts-all-${Date.now()}.json`;
+
+          anchor.click();
+
+          URL.revokeObjectURL(url);
+
+          showToast(
+            `${allPosts.length} مطلب در خروجی کامل JSON ذخیره شد.`,
+            "ok"
+          );
+        } catch (error) {
+          showToast(
+            userFriendlyError(
+              error,
+              "ساخت خروجی کامل انجام نشد."
+            ),
+            "error"
+          );
+        } finally {
+          buttons.forEach(
+            (button, index) => {
+              button.disabled = false;
+              button.textContent =
+                labels[index] ||
+                "خروجی JSON";
+            }
+          );
+        }
       }
 
       postsList.addEventListener("click", event => {
@@ -4911,22 +5795,224 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         }
       });
 
-      postsPagination.addEventListener("click", event => {
-        const pageButton = event.target.closest("[data-page]");
-        const prevButton = event.target.closest("[data-page-prev]");
-        const nextButton = event.target.closest("[data-page-next]");
+      postsPagination.addEventListener("click", async event => {
+        const pageButton =
+          event.target.closest("[data-page]");
+
+        const prevButton =
+          event.target.closest("[data-page-prev]");
+
+        const nextButton =
+          event.target.closest("[data-page-next]");
+
+        const totalPages =
+          pageCount(
+            postsTotal,
+            POSTS_PER_PAGE
+          );
+
+        let nextPage = currentPage;
 
         if (pageButton) {
-          currentPage = Number(pageButton.getAttribute("data-page"));
+          nextPage = Number(
+            pageButton.getAttribute("data-page")
+          );
         } else if (prevButton) {
-          currentPage = Math.max(currentPage - 1, 1);
+          nextPage = Math.max(
+            currentPage - 1,
+            1
+          );
         } else if (nextButton) {
-          currentPage += 1;
+          nextPage = Math.min(
+            currentPage + 1,
+            totalPages
+          );
         } else {
           return;
         }
 
-        renderPosts();
+        if (
+          !Number.isInteger(nextPage) ||
+          nextPage === currentPage
+        ) {
+          return;
+        }
+
+        currentPage = nextPage;
+
+        await loadPosts({
+          refreshStats: false
+        });
+
+        postsList.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      });
+
+      deletedPostsPagination.addEventListener("click", async event => {
+        const pageButton =
+          event.target.closest("[data-deleted-page]");
+
+        const prevButton =
+          event.target.closest("[data-deleted-page-prev]");
+
+        const nextButton =
+          event.target.closest("[data-deleted-page-next]");
+
+        const totalPages =
+          pageCount(
+            deletedPostsTotal,
+            DELETED_POSTS_PER_PAGE
+          );
+
+        let nextPage =
+          deletedCurrentPage;
+
+        if (pageButton) {
+          nextPage = Number(
+            pageButton.getAttribute(
+              "data-deleted-page"
+            )
+          );
+        } else if (prevButton) {
+          nextPage = Math.max(
+            deletedCurrentPage - 1,
+            1
+          );
+        } else if (nextButton) {
+          nextPage = Math.min(
+            deletedCurrentPage + 1,
+            totalPages
+          );
+        } else {
+          return;
+        }
+
+        if (
+          !Number.isInteger(nextPage) ||
+          nextPage === deletedCurrentPage
+        ) {
+          return;
+        }
+
+        deletedCurrentPage = nextPage;
+        await loadDeletedPosts();
+
+        deletedPostsList.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      });
+
+      mediaPagination.addEventListener("click", async event => {
+        const pageButton =
+          event.target.closest("[data-media-page]");
+
+        const prevButton =
+          event.target.closest("[data-media-page-prev]");
+
+        const nextButton =
+          event.target.closest("[data-media-page-next]");
+
+        const totalPages =
+          pageCount(
+            mediaPostsTotal,
+            MEDIA_POSTS_PER_PAGE
+          );
+
+        let nextPage =
+          mediaCurrentPage;
+
+        if (pageButton) {
+          nextPage = Number(
+            pageButton.getAttribute(
+              "data-media-page"
+            )
+          );
+        } else if (prevButton) {
+          nextPage = Math.max(
+            mediaCurrentPage - 1,
+            1
+          );
+        } else if (nextButton) {
+          nextPage = Math.min(
+            mediaCurrentPage + 1,
+            totalPages
+          );
+        } else {
+          return;
+        }
+
+        if (
+          !Number.isInteger(nextPage) ||
+          nextPage === mediaCurrentPage
+        ) {
+          return;
+        }
+
+        mediaCurrentPage = nextPage;
+        await loadMediaLibrary();
+
+        mediaLibrary.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      });
+
+      seoPagination.addEventListener("click", async event => {
+        const pageButton =
+          event.target.closest("[data-seo-page]");
+
+        const prevButton =
+          event.target.closest("[data-seo-page-prev]");
+
+        const nextButton =
+          event.target.closest("[data-seo-page-next]");
+
+        const totalPages =
+          pageCount(
+            seoPostsTotal,
+            SEO_POSTS_PER_PAGE
+          );
+
+        let nextPage =
+          seoCurrentPage;
+
+        if (pageButton) {
+          nextPage = Number(
+            pageButton.getAttribute(
+              "data-seo-page"
+            )
+          );
+        } else if (prevButton) {
+          nextPage = Math.max(
+            seoCurrentPage - 1,
+            1
+          );
+        } else if (nextButton) {
+          nextPage = Math.min(
+            seoCurrentPage + 1,
+            totalPages
+          );
+        } else {
+          return;
+        }
+
+        if (
+          !Number.isInteger(nextPage) ||
+          nextPage === seoCurrentPage
+        ) {
+          return;
+        }
+
+        seoCurrentPage = nextPage;
+        await loadSeoChecklist();
+
+        seoChecklist.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
       });
 
       deletedPostsList.addEventListener("click", event => {
@@ -4950,7 +6036,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
           if (editButton) {
             const id = Number(editButton.getAttribute("data-edit-id"));
-            const post = posts.find(item => Number(item.id) === id);
+            const post = findLoadedPostById(id);
             if (post) {
               selectPost(post);
               const target = editButton.getAttribute("data-editor-target");
@@ -5009,8 +6095,24 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       });
 
       refreshBtn.addEventListener("click", () => {
-        if (currentView === "deleted") {
+        const activeKey =
+          activeAdminSectionKey();
+
+        if (
+          currentView === "deleted" ||
+          activeKey === "deleted"
+        ) {
           loadDeletedPosts();
+          return;
+        }
+
+        if (activeKey === "media") {
+          loadMediaLibrary();
+          return;
+        }
+
+        if (activeKey === "seo") {
+          loadSeoChecklist();
           return;
         }
 
@@ -5018,10 +6120,34 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       });
       activePostsTabBtn.addEventListener("click", () => showAdminSection("posts"));
       deletedPostsTabBtn.addEventListener("click", () => showAdminSection("deleted"));
-      [searchInput, statusFilter, mediaFilter, sortFilter].forEach(control => {
-        control.addEventListener(control === searchInput ? "input" : "change", () => {
+      searchInput.addEventListener("input", () => {
+        currentPage = 1;
+        selectedIds = new Set();
+        updateSelectedCount();
+
+        clearTimeout(searchDebounceTimer);
+
+        searchDebounceTimer =
+          window.setTimeout(() => {
+            loadPosts({
+              refreshStats: false
+            });
+          }, 320);
+      });
+
+      [
+        statusFilter,
+        mediaFilter,
+        sortFilter
+      ].forEach(control => {
+        control.addEventListener("change", () => {
           currentPage = 1;
-          renderPosts();
+          selectedIds = new Set();
+          updateSelectedCount();
+
+          loadPosts({
+            refreshStats: false
+          });
         });
       });
 
@@ -5084,13 +6210,20 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       bulkDeleteBtn.addEventListener("click", () => bulkAction("delete"));
 
       selectAllBtn.addEventListener("click", () => {
-        const filtered = getFilteredPosts();
+        const pageIds =
+          posts.map(post =>
+            Number(post.id)
+          );
 
-        if (selectedIds.size === filtered.length) {
-          selectedIds = new Set();
-        } else {
-          selectedIds = new Set(filtered.map(post => Number(post.id)));
-        }
+        const allPageSelected =
+          pageIds.length > 0 &&
+          pageIds.every(id =>
+            selectedIds.has(id)
+          );
+
+        selectedIds = allPageSelected
+          ? new Set()
+          : new Set(pageIds);
 
         updateSelectedCount();
         renderPosts();
@@ -5465,4 +6598,3 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
     }
     /* end-admin-analytics-final-ui-v3 */
   </style>
-
