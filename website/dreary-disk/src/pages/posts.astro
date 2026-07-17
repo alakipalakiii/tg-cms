@@ -1,19 +1,55 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { SITE } from "../config";
+import {
+  fetchPublicArchivePage,
+  renderArchiveCardsHtml,
+  toPersianNumber
+} from "../lib/archive";
 
 export const prerender = false;
 
-const pageTitle = "همه مطالب | " + SITE.name;
+// mahoon-archive-ssr-v1
+const PAGE_SIZE = 20;
+const apiBase = (SITE.workerUrl || "https://api.mahoonartmagazine.ir").replace(/\/+$/, "");
+const pageTitle = "همه مطالب";
 const pageDescription = "آرشیو کامل مطالب منتشرشده در مجله هنری ماهون";
 const canonicalUrl = SITE.url + "/posts";
 
+const initialArchive = await fetchPublicArchivePage({
+  apiBase,
+  limit: PAGE_SIZE,
+  offset: 0,
+  timeoutMs: 5000
+});
+
+if (!initialArchive.ok) {
+  Astro.response.status = 503;
+  Astro.response.statusText = "Service Unavailable";
+  Astro.response.headers.set("Retry-After", "60");
+}
+
+const initialCardsHtml = renderArchiveCardsHtml(initialArchive.posts, { apiBase });
+const initialShown = Math.min(initialArchive.nextOffset, initialArchive.total);
+const initialCountText = initialArchive.ok
+  ? initialArchive.total > 0
+    ? "نمایش " + toPersianNumber(initialShown) + " مطلب از " + toPersianNumber(initialArchive.total)
+    : "۰ مطلب"
+  : "خطا در دریافت مطالب";
+const initialTotalText = initialArchive.ok
+  ? toPersianNumber(initialArchive.total) + " مطلب"
+  : "دریافت موقتاً ناموفق";
+
 const pageConfig = {
-  apiBase: SITE.workerUrl || "https://api.mahoonartmagazine.ir",
+  apiBase,
   title: "همه مطالب",
   description: pageDescription,
   mode: "posts",
-  pageSize: 20
+  pageSize: PAGE_SIZE,
+  initialTotal: initialArchive.total,
+  initialNextOffset: initialArchive.nextOffset,
+  initialHasMore: initialArchive.hasMore,
+  initialLoadFailed: !initialArchive.ok
 };
 
 function safeJson(value) {
@@ -28,7 +64,7 @@ function safeJson(value) {
       <span>آرشیو ماهون</span>
       <h1>همه مطالب</h1>
       <p>{pageDescription}</p>
-      <strong id="archiveTotal">در حال دریافت مطالب...</strong>
+      <strong id="archiveTotal">{initialTotalText}</strong>
     </section>
 
     <section class="mahoon-archive-search">
@@ -48,10 +84,12 @@ function safeJson(value) {
     </section>
 
     <section class="mahoon-archive-results" aria-live="polite">
-      <div class="mahoon-archive-count" id="archiveCount">در حال آماده‌سازی...</div>
-      <div class="mahoon-archive-list" id="archiveGrid"></div>
-      <div class="mahoon-archive-empty" id="archiveEmpty" hidden>نتیجه‌ای پیدا نشد.</div>
-      <button class="mahoon-archive-more" id="archiveMore" type="button" hidden>نمایش ۲۰ مطلب دیگر</button>
+      <div class="mahoon-archive-count" id="archiveCount">{initialCountText}</div>
+      <div class="mahoon-archive-list" id="archiveGrid" set:html={initialCardsHtml}></div>
+      <div class="mahoon-archive-empty" id="archiveEmpty" hidden={initialArchive.ok && initialArchive.total > 0}>
+        {initialArchive.ok ? "نتیجه‌ای پیدا نشد." : "دریافت مطالب انجام نشد."}
+      </div>
+      <button class="mahoon-archive-more" id="archiveMore" type="button" hidden={!initialArchive.hasMore}>نمایش ۲۰ مطلب دیگر</button>
     </section>
 
     <script id="archiveConfig" type="application/json" set:html={safeJson(pageConfig)}></script>
@@ -80,10 +118,11 @@ function safeJson(value) {
       });
 
 
+      // mahoon-archive-ssr-client-seed-v1
       let q = "";
-      let offset = 0;
-      let totalCount = 0;
-      let hasMore = false;
+      let offset = Number(config.initialNextOffset || 0);
+      let totalCount = Number(config.initialTotal || 0);
+      let hasMore = Boolean(config.initialHasMore);
       let loading = false;
 
       function escapeHtml(value) {
@@ -525,7 +564,11 @@ function safeJson(value) {
       });
 
       more.addEventListener("click", () => load(false));
-      load(true);
+      more.hidden = !hasMore;
+
+      if (config.initialLoadFailed) {
+        load(true);
+      }
     })();
   </script>
 
