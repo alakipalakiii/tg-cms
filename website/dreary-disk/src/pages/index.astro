@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { SITE } from "../config";
+import { MAHOON_CATEGORIES } from "../lib/taxonomy";
 import {
   fetchHomeSnapshot,
   renderHomeAdsHtml,
@@ -45,13 +46,7 @@ const homeConfig = {
   apiBase: SITE.workerUrl || "https://api.mahoonartmagazine.ir",
   heroLineOne,
   heroLineTwo,
-  categories: [
-    { title: "کتاب", tags: ["کتاب"] },
-    { title: "دیالوگ ها", tags: ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"] },
-    { title: "صوتی", tags: ["صوتی", "صدا", "موسیقی"] },
-    { title: "شعر و متن", tags: ["متن", "متن‌ها", "متن_ها", "شعر", "اشعار", "شعرها", "شعر_ها"] },
-    { title: "نقاشی", tags: ["نقاشی"] }
-  ],
+  categories: MAHOON_CATEGORIES,
   ads: {
     rightEnabled: siteSettings.home_ad_right_enabled ?? "1",
     rightTitle: siteSettings.home_ad_right_title || "جایگاه تبلیغات",

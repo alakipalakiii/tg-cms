@@ -2,6 +2,11 @@
 import { makeArticleSchema } from "../../lib/seoSchema";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { SITE } from "../../config";
+import {
+  MAHOON_CATEGORIES,
+  MAHOON_CATEGORY_TAGS,
+  normalizeMahoonTaxonomyToken
+} from "../../lib/taxonomy";
 
 export const prerender = false;
 
@@ -39,25 +44,7 @@ type PostFetchResult = {
 const workerUrl = SITE.workerUrl.replace(/\/+$/, "");
 const siteUrl = SITE.url.replace(/\/+$/, "");
 
-const CATEGORY_TAGS = new Set(
-  [
-    "کتاب",
-    "دیالوگ",
-    "دیالوگ‌ها",
-    "دیالوگ_ها",
-    "صوتی",
-    "صدا",
-    "موسیقی",
-    "متن",
-    "متن‌ها",
-    "متن_ها",
-    "شعر",
-    "اشعار",
-    "شعرها",
-    "شعر_ها",
-    "نقاشی"
-  ].map(normalizeTag)
-);
+const CATEGORY_TAGS = MAHOON_CATEGORY_TAGS;
 
 function toPersianNumber(value: string | number | null | undefined): string {
   return String(value || "")
@@ -94,14 +81,7 @@ function cleanPublicText(value: string | null | undefined): string {
 }
 
 function normalizeTag(tag: string | null | undefined): string {
-  return String(tag || "")
-    .replace(/^#/, "")
-    .replace(/[يى]/g, "ی")
-    .replace(/ك/g, "ک")
-    .replace(/\u200c/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
+  return normalizeMahoonTaxonomyToken(tag);
 }
 
 function extractMovieTitle(value: string | null | undefined): string {
@@ -146,12 +126,11 @@ function isDialoguePost(post: PublicPost | null): boolean {
 }
 
 function getPostCategory(post: PublicPost | null): string {
-  if (hasRawTag(post?.text, ["کتاب"])) return "کتاب";
-  if (hasRawTag(post?.text, ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"])) return "دیالوگ ها";
-  if (hasRawTag(post?.text, ["صوتی", "صدا", "موسیقی"])) return "صوتی";
-  if (hasRawTag(post?.text, ["متن", "متن‌ها", "متن_ها", "شعر", "اشعار", "شعرها", "شعر_ها"])) return "شعر و متن";
-  if (hasRawTag(post?.text, ["نقاشی"])) return "نقاشی";
-  return "";
+  const tags = new Set(getRawHashTags(post?.text).map(normalizeTag));
+
+  return MAHOON_CATEGORIES.find((category) =>
+    category.tags.some((tag) => tags.has(normalizeTag(tag)))
+  )?.title || "";
 }
 
 function truncateText(value: string | null | undefined, maxLength: number): string {

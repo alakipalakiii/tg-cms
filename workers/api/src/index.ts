@@ -318,25 +318,9 @@ function getPublicHashTags(text) {
 }
 
 function hasRequiredCategoryHashTag(text) {
-  const categoryTags = new Set([
-    "کتاب",
-    "دیالوگ",
-    "دیالوگ‌ها",
-    "دیالوگ_ها",
-    "دیالوگها",
-    "صوتی",
-    "صدا",
-    "موسیقی",
-    "متن",
-    "متن‌ها",
-    "متن_ها",
-    "متنها",
-    "شعر",
-    "اشعار",
-    "شعرها",
-    "شعر_ها",
-    "نقاشی"
-  ].map(normalizePublicTag));
+  const categoryTags = new Set(
+    mahoonScaleAllCategoryTagsV1().map(normalizePublicTag)
+  );
 
   return getPublicHashTags(text)
     .map(normalizePublicTag)
@@ -802,7 +786,7 @@ async function getLastPost(env) {
       last_viewed_at
     FROM posts
     WHERE deleted_at IS NULL
-    ORDER BY datetime(created_at) DESC, id DESC
+    ORDER BY created_at DESC, id DESC
     LIMIT 1
     `
   ).first();
@@ -1247,7 +1231,7 @@ ${postSummaryText(post, env)}
     await env.DB.prepare(
       `
       UPDATE posts
-      SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      SET is_published = 0, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
       `
     ).bind(post.id).run();
@@ -1365,6 +1349,8 @@ ${postSummaryText(fresh, env)}`,
       SELECT id
       FROM posts
       WHERE slug = ?
+      AND slug IS NOT NULL
+      AND slug != ''
       AND id != ?
       LIMIT 1
       `
@@ -1462,6 +1448,8 @@ async function ensureUniqueSlug(env, slug, currentId = null) {
       SELECT id
       FROM posts
       WHERE slug = ?
+      AND slug IS NOT NULL
+      AND slug != ''
       AND id != ?
       LIMIT 1
       `
@@ -1472,6 +1460,8 @@ async function ensureUniqueSlug(env, slug, currentId = null) {
       SELECT id
       FROM posts
       WHERE slug = ?
+      AND slug IS NOT NULL
+      AND slug != ''
       LIMIT 1
       `
     ).bind(slug).first();
@@ -1644,7 +1634,7 @@ async function mahoonTrackAnalytics(request, env) {
     return mahoonAnalyticsJson({ ok: false, error: "DB binding is missing" }, 500);
   }
 
-  let body = {};
+  let body: Record<string, any> = {};
 
   try {
     body = await request.json();
@@ -2335,7 +2325,7 @@ async function mahoonPublicPostsFullV1(request, env) {
        FROM posts
        WHERE (is_published = 1 OR is_published IS NULL)
          AND (deleted_at IS NULL OR deleted_at = '')
-       ORDER BY datetime(created_at) DESC, id DESC
+       ORDER BY created_at DESC, id DESC
        LIMIT ?`
     ).bind(limit).all();
 
@@ -2357,12 +2347,41 @@ async function mahoonPublicPostsFullV1(request, env) {
 
 
 /* mahoon-scale-v1 */
+const MAHOON_SCALE_AUDIO_BOOK_TAGS_V1 = [
+  "کتاب_گویا",
+  "کتاب‌گویا",
+  "کتابگویا",
+  "کتاب_صوتی",
+  "کتاب‌صوتی",
+  "کتابصوتی"
+];
+
 const MAHOON_SCALE_CATEGORY_DEFS_V1 = [
-  { title: "کتاب", tags: ["کتاب"] },
-  { title: "دیالوگ ها", tags: ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"] },
-  { title: "صوتی", tags: ["صوتی", "صدا", "موسیقی"] },
-  { title: "شعر و متن", tags: ["متن", "متن‌ها", "متن_ها", "شعر", "اشعار", "شعرها", "شعر_ها"] },
-  { title: "نقاشی", tags: ["نقاشی"] }
+  {
+    title: "کتاب",
+    aliases: ["کتاب"],
+    tags: ["کتاب", ...MAHOON_SCALE_AUDIO_BOOK_TAGS_V1]
+  },
+  {
+    title: "دیالوگ ها",
+    aliases: ["دیالوگ ها", "دیالوگ‌ها", "دیالوگ_ها", "دیالوگها", "دیالوگ"],
+    tags: ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها", "دیالوگها"]
+  },
+  {
+    title: "صوتی",
+    aliases: ["صوتی", "صدا", "موسیقی"],
+    tags: ["صوتی", "صدا", "موسیقی", ...MAHOON_SCALE_AUDIO_BOOK_TAGS_V1]
+  },
+  {
+    title: "شعر و متن",
+    aliases: ["شعر و متن", "متن", "متن‌ها", "متن_ها", "متنها", "شعر", "اشعار", "شعرها", "شعر_ها"],
+    tags: ["متن", "متن‌ها", "متن_ها", "متنها", "شعر", "اشعار", "شعرها", "شعر_ها"]
+  },
+  {
+    title: "نقاشی",
+    aliases: ["نقاشی"],
+    tags: ["نقاشی"]
+  }
 ];
 
 function mahoonScaleCorsV1() {
@@ -2409,14 +2428,22 @@ function mahoonScaleNormalizeV1(value) {
 function mahoonScaleCategoryByTitleV1(value) {
   const normalized = mahoonScaleNormalizeV1(value);
 
-  return MAHOON_SCALE_CATEGORY_DEFS_V1.find((category) => {
-    if (mahoonScaleNormalizeV1(category.title) === normalized) return true;
-    return category.tags.some((tag) => mahoonScaleNormalizeV1(tag) === normalized);
-  }) || null;
+  return MAHOON_SCALE_CATEGORY_DEFS_V1.find((category) =>
+    category.aliases.some(
+      (alias) => mahoonScaleNormalizeV1(alias) === normalized
+    )
+  ) || null;
 }
 
 function mahoonScaleAllCategoryTagsV1() {
   return MAHOON_SCALE_CATEGORY_DEFS_V1.flatMap((category) => category.tags);
+}
+
+function mahoonScaleEscapeLikeV1(value) {
+  return String(value || "")
+    .replace(/!/g, "!!")
+    .replace(/%/g, "!%")
+    .replace(/_/g, "!_");
 }
 
 function mahoonScaleTagConditionV1(tags) {
@@ -2429,9 +2456,16 @@ function mahoonScaleTagConditionV1(tags) {
     };
   }
 
+  const paddedText =
+    "(' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ')";
+
   return {
-    sql: "(" + safeTags.map(() => "text LIKE ?").join(" OR ") + ")",
-    params: safeTags.map((tag) => "%#" + tag + "%")
+    sql: "(" + safeTags
+      .map(() => paddedText + " LIKE ? ESCAPE '!'")
+      .join(" OR ") + ")",
+    params: safeTags.map(
+      (tag) => "% #" + mahoonScaleEscapeLikeV1(tag) + " %"
+    )
   };
 }
 
@@ -2443,7 +2477,7 @@ function mahoonScalePublicBaseWhereV1() {
       "slug IS NOT NULL",
       "slug != ''",
       "(deleted_at IS NULL OR deleted_at = '')",
-      "COALESCE(is_published, 1) = 1",
+      "(is_published = 1 OR is_published IS NULL)",
       categoryCondition.sql
     ].join(" AND "),
     params: categoryCondition.params
@@ -2453,7 +2487,7 @@ function mahoonScalePublicBaseWhereV1() {
 function mahoonScaleBuildPublicWhereV1(url) {
   const base = mahoonScalePublicBaseWhereV1();
   const clauses = [base.sql];
-  const params = [...base.params];
+  const params: Array<string | number> = [...base.params];
 
   const categoryValue = String(url.searchParams.get("category") || "").trim();
   const tagValue = String(url.searchParams.get("tag") || "").replace(/^#/, "").trim();
@@ -2472,8 +2506,11 @@ function mahoonScaleBuildPublicWhereV1(url) {
   }
 
   if (tagValue) {
-    clauses.push("text LIKE ?");
-    params.push("%#" + tagValue + "%");
+    const tagCondition = mahoonScaleTagConditionV1(
+      mahoonScaleTagCandidateVariantsV1(tagValue)
+    );
+    clauses.push(tagCondition.sql);
+    params.push(...tagCondition.params);
   }
 
   if (q) {
@@ -2691,7 +2728,7 @@ async function mahoonScalePublicTagPostsV1(request, env, origin) {
         "FROM posts",
         "WHERE " + base.sql,
         "AND (" + candidateSql + ")",
-        "ORDER BY datetime(created_at) DESC, id DESC"
+        "ORDER BY created_at DESC, id DESC"
       ].join(" ")
     ).bind(...base.params, ...candidateParams).all();
 
@@ -2741,7 +2778,7 @@ async function mahoonScalePublicHomeV1(request, env, origin) {
         "SELECT " + mahoonScalePublicColumnsV1(),
         "FROM posts",
         "WHERE " + base.sql,
-        "ORDER BY datetime(created_at) DESC, id DESC",
+        "ORDER BY created_at DESC, id DESC",
         "LIMIT ?"
       ].join(" ")
     ).bind(...base.params, limit).all();
@@ -2787,7 +2824,7 @@ async function mahoonScalePublicPostsV1(request, env, origin) {
         "SELECT " + mahoonScalePublicColumnsV1(),
         "FROM posts",
         "WHERE " + where.sql,
-        "ORDER BY datetime(created_at) DESC, id DESC",
+        "ORDER BY created_at DESC, id DESC",
         "LIMIT ? OFFSET ?"
       ].join(" ")
     ).bind(...where.params, limit, offset).all();
@@ -3619,11 +3656,11 @@ export default {
           }
 
           let orderSql =
-            "datetime(created_at) DESC, id DESC";
+            "created_at DESC, id DESC";
 
           if (sort === "oldest") {
             orderSql =
-              "datetime(created_at) ASC, id ASC";
+              "created_at ASC, id ASC";
           } else if (sort === "id") {
             orderSql = "id DESC";
           } else if (sort === "title") {
@@ -3774,7 +3811,7 @@ export default {
             await env.DB.prepare(
               `
               UPDATE posts
-              SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+              SET is_published = 0, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
               WHERE id IN (${placeholders})
               AND deleted_at IS NULL
               `
@@ -4080,6 +4117,7 @@ export default {
             `
             UPDATE posts
             SET
+              is_published = 0,
               deleted_at = CURRENT_TIMESTAMP,
               updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
@@ -4222,6 +4260,8 @@ export default {
             seo_description
           FROM posts
           WHERE slug = ?
+          AND slug IS NOT NULL
+          AND slug != ''
           AND deleted_at IS NULL
           AND is_published = 1
           LIMIT 1
@@ -4277,6 +4317,8 @@ export default {
             last_viewed_at
           FROM posts
           WHERE slug = ?
+          AND slug IS NOT NULL
+          AND slug != ''
           AND deleted_at IS NULL
           AND COALESCE(is_published, 1) = 1
           LIMIT 1
@@ -4387,7 +4429,7 @@ export default {
           WHERE slug IS NOT NULL
           AND deleted_at IS NULL
           AND COALESCE(is_published, 1) = 1
-          ORDER BY datetime(created_at) DESC, id DESC
+          ORDER BY created_at DESC, id DESC
           LIMIT 250
           `
         ).all();

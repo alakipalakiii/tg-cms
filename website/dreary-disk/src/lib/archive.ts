@@ -1,3 +1,10 @@
+import {
+  MAHOON_CATEGORIES,
+  findMahoonCategory,
+  normalizeMahoonTaxonomyToken,
+  type MahoonCategory
+} from "./taxonomy";
+
 export type ArchivePost = {
   id?: number | string;
   text?: string | null;
@@ -15,10 +22,7 @@ export type ArchivePost = {
   seo_description?: string | null;
 };
 
-export type ArchiveCategory = {
-  title: string;
-  tags: string[];
-};
+export type ArchiveCategory = MahoonCategory;
 
 export type ArchivePageResult = {
   ok: boolean;
@@ -32,13 +36,7 @@ export type ArchivePageResult = {
   error: string;
 };
 
-export const ARCHIVE_CATEGORIES: ArchiveCategory[] = [
-  { title: "کتاب", tags: ["کتاب"] },
-  { title: "دیالوگ ها", tags: ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها"] },
-  { title: "صوتی", tags: ["صوتی", "صدا", "موسیقی"] },
-  { title: "شعر و متن", tags: ["متن", "متن‌ها", "متن_ها", "شعر", "اشعار", "شعرها", "شعر_ها"] },
-  { title: "نقاشی", tags: ["نقاشی"] }
-];
+export const ARCHIVE_CATEGORIES: ArchiveCategory[] = MAHOON_CATEGORIES;
 
 export function safeDecodeArchiveValue(value: string | null | undefined): string {
   try {
@@ -49,24 +47,11 @@ export function safeDecodeArchiveValue(value: string | null | undefined): string
 }
 
 export function normalizeArchiveToken(value: string | null | undefined): string {
-  return String(value || "")
-    .replace(/^#/, "")
-    .replace(/[يى]/g, "ی")
-    .replace(/ك/g, "ک")
-    .replace(/[\u200c\u200f]/g, "")
-    .replace(/_/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
+  return normalizeMahoonTaxonomyToken(value);
 }
 
 export function findArchiveCategory(value: string | null | undefined): ArchiveCategory | null {
-  const normalized = normalizeArchiveToken(value);
-
-  return ARCHIVE_CATEGORIES.find((category) => {
-    if (normalizeArchiveToken(category.title) === normalized) return true;
-    return category.tags.some((tag) => normalizeArchiveToken(tag) === normalized);
-  }) || null;
+  return findMahoonCategory(value);
 }
 
 export function toPersianNumber(value: unknown): string {
