@@ -1,678 +1,199 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { SITE } from "../../config";
+import {
+  fetchPublicTagPage,
+  normalizeTagValue,
+  renderTagCardsHtml,
+  safeDecodeTagValue,
+  toPersianTagNumber
+} from "../../lib/tag";
 
 export const prerender = false;
 
-type RawPost = {
-  id?: number | string;
-  text?: string | null;
-  slug?: string | null;
-  created_at?: string | null;
-  media_type?: string | null;
-  media_url?: string | null;
-  photo_url?: string | null;
-  photo_file_id?: string | null;
-  media_file_id?: string | null;
-  file_id?: string | null;
-  telegram_file_id?: string | null;
-  image_url?: string | null;
-  thumbnail_url?: string | null;
-  file_url?: string | null;
-  seo_title?: string | null;
-  seo_description?: string | null;
-};
-
-type Post = Required<Pick<RawPost, "text" | "slug" | "created_at">> &
-  RawPost & {
-    id: number;
-  };
-
-type CardKind =
-  | "book"
-  | "dialogue"
-  | "audio"
-  | "art"
-  | "text"
-  | "video"
-  | "photo";
-
-const rawTag = Astro.params.tag || "";
-const workerUrl = SITE.workerUrl.replace(/\/+$/, "");
+// mahoon-tag-server-pagination-seo-v1
+const PAGE_SIZE = 20;
+const apiBase = (SITE.workerUrl || "https://api.mahoonartmagazine.ir").replace(/\/+$/, "");
 const siteUrl = SITE.url.replace(/\/+$/, "");
-
-function safeDecode(value: string): string {
-  try {
-    return decodeURIComponent(value || "");
-  } catch {
-    return value || "";
-  }
-}
-
-function normalizeTag(tag: string | null | undefined): string {
-  return String(tag || "")
-    .replace(/^#/, "")
-    .replace(/[يى]/g, "ی")
-    .replace(/ك/g, "ک")
-    .replace(/[\u200c\u200f]/g, "")
-    .replace(/_/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-}
-
-function removeEmoji(value: string | null | undefined): string {
-  return String(value || "")
-    .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function extractMovieTitle(value: string | null | undefined): string {
-  const lines = String(value || "").split(/\r?\n/);
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    const match = line.match(/^(?:🎥|🎬|فیلم\s*:?)\s*#?\s*(.+)$/iu);
-
-    if (!match) continue;
-
-    const title = match[1]
-      .replace(/[🔹•●▪▫◦]+/gu, "")
-      .replace(/@mahoonartmagazine/giu, "")
-      .replace(/^#/, "")
-      .replace(/_/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (title) return title;
-  }
-
-  return "";
-}
-
-function getRawHashTags(text: string | null | undefined): string[] {
-  return Array.from(String(text || "").matchAll(/(^|\s)#([^\s#]+)/gu))
-    .map((match) => match[2])
-    .filter(Boolean);
-}
-
-function getTags(text: string | null | undefined): string[] {
-  const tags = getRawHashTags(text);
-  const movieTitle = extractMovieTitle(text);
-
-  if (movieTitle) tags.push(movieTitle);
-
-  return Array.from(new Set(tags.filter(Boolean)));
-}
-
-function hasExactTag(
-  text: string | null | undefined,
-  variants: string[]
-): boolean {
-  const expected = new Set(variants.map(normalizeTag));
-
-  return getRawHashTags(text).some((tag) =>
-    expected.has(normalizeTag(tag))
-  );
-}
-
-function hasDialogueTag(text: string | null | undefined): boolean {
-  return hasExactTag(text, [
-    "دیالوگ",
-    "دیالوگ‌ها",
-    "دیالوگ_ها",
-    "دیالوگ ها",
-    "دیالوگها"
-  ]);
-}
-
-function cleanPublicText(value: string | null | undefined): string {
-  return removeEmoji(
-    String(value || "")
-      .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
-      .replace(/\u{1F539}/gu, "")
-      .replace(
-        /(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+/giu,
-        "\n"
-      )
-      .replace(
-        /https?:\/\/(?:t\.me|telegram\.me|telegram\.dog)\/[^\s]+/giu,
-        ""
-      )
-      .replace(/https?:\/\/[^\s]+/giu, "")
-      .replace(/@[a-zA-Z0-9_]+/g, "")
-      .replace(/(^|\s)#([^\s#]+)/gu, " ")
-      .replace(/[•●▪▫◦]/g, "")
-      .replace(/_/g, " ")
-      .replace(/\n{3,}/g, "\n\n")
-      .replace(/[ \t]{2,}/g, " ")
-      .trim()
-  );
-}
-
-function limitWords(
-  value: string | null | undefined,
-  maximum: number
-): string {
-  const words = String(value || "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .split(" ")
-    .filter(Boolean);
-
-  if (!words.length) return "";
-  if (words.length <= maximum) return words.join(" ");
-
-  return words.slice(0, maximum).join(" ") + "…";
-}
-
-function makeDisplayTitle(post: Post): string {
-  const movieTitle = extractMovieTitle(post.text);
-
-  if (movieTitle && hasDialogueTag(post.text)) {
-    return "دیالوگی از فیلم " + limitWords(movieTitle, 6);
-  }
-
-  const seoTitle = cleanPublicText(post.seo_title);
-
-  if (seoTitle) {
-    return limitWords(seoTitle, 5);
-  }
-
-  return limitWords(cleanPublicText(post.text), 5) || "مطلبی از ماهون";
-}
-
-function removeInsensitiveTagText(source, token) {
-  let result = String(source || "");
-  const target = String(token || "");
-  if (!target) return result;
-
-  let lowerResult = result.toLowerCase();
-  const lowerTarget = target.toLowerCase();
-  let index = lowerResult.indexOf(lowerTarget);
-
-  while (index >= 0) {
-    result = result.slice(0, index) + " " + result.slice(index + target.length);
-    lowerResult = result.toLowerCase();
-    index = lowerResult.indexOf(lowerTarget);
-  }
-
-  return result;
-}
-
-function cleanTagExcerpt(value, movieTitle) {
-  return removeInsensitiveTagText(value, movieTitle)
-    .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, " ")
-    .replace(/#\S+/gu, " ")
-    .replace(/@mahoonartmagazine/giu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function makeExcerpt(post) {
-  const movieTitle = extractMovieTitle(post.text);
-  const raw = post.seo_description || post.text || "";
-  const source = cleanTagExcerpt(cleanPublicText(raw), movieTitle);
-  return limitWords(source, 14) || "روایتی تازه از مجله هنری ماهون";
-}
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) return "";
-
-  try {
-    return new Intl.DateTimeFormat("fa-IR", {
-      year: "numeric",
-      month: "long",
-      day: "numeric"
-    }).format(new Date(String(value).replace(" ", "T")));
-  } catch {
-    return String(value || "");
-  }
-}
-
-function validMediaValue(
-  value: string | null | undefined
-): string | null {
-  const source = String(value || "").trim();
-
-  if (
-    !source ||
-    source.toLowerCase() === "about:blank" ||
-    /^javascript:/i.test(source)
-  ) {
-    return null;
-  }
-
-  return source;
-}
-
-function looksLikeImageUrl(value: string | null | undefined): boolean {
-  return /\.(avif|webp|png|jpe?g|gif|bmp)(\?|#|$)/i.test(
-    String(value || "")
-  );
-}
-
-function getMediaSrc(post: Post): string | null {
-  const directImage = [
-    post.photo_url,
-    post.image_url,
-    post.thumbnail_url
-  ]
-    .map(validMediaValue)
-    .find(Boolean);
-
-  if (directImage) return directImage;
-
-  const fileUrl = validMediaValue(post.file_url);
-
-  if (fileUrl && looksLikeImageUrl(fileUrl)) {
-    return fileUrl;
-  }
-
-  const mediaUrl = validMediaValue(post.media_url);
-
-  if (
-    mediaUrl &&
-    (post.media_type === "photo" ||
-      post.media_type === "image" ||
-      looksLikeImageUrl(mediaUrl))
-  ) {
-    return mediaUrl;
-  }
-
-  const photoFileId = String(post.photo_file_id || "").trim();
-
-  if (photoFileId) {
-    return workerUrl + "/media/" + encodeURIComponent(photoFileId);
-  }
-
-  const mediaFileId = String(
-    post.media_file_id ||
-      post.telegram_file_id ||
-      post.file_id ||
-      ""
-  ).trim();
-
-  if (
-    mediaFileId &&
-    (post.media_type === "photo" || post.media_type === "image")
-  ) {
-    return workerUrl + "/media/" + encodeURIComponent(mediaFileId);
-  }
-
-  return null;
-}
-
-function getPostHref(post: Post): string {
-  const slug = String(post.slug || "").trim();
-
-  if (slug) {
-    return "/post/" + encodeURIComponent(slug);
-  }
-
-  return "/post/" + encodeURIComponent(String(post.id));
-}
-
-function normalizePost(raw: RawPost): Post | null {
-  const id = Number(raw.id || 0);
-
-  if (!id) return null;
-
-  return {
-    ...raw,
-    id,
-    text: String(raw.text || ""),
-    slug: String(raw.slug || ""),
-    created_at: String(raw.created_at || "")
-  };
-}
-
-function extractPosts(payload: any): Post[] {
-  const source = Array.isArray(payload)
-    ? payload
-    : Array.isArray(payload?.posts)
-      ? payload.posts
-      : Array.isArray(payload?.data)
-        ? payload.data
-        : [];
-
-  return source
-    .map(normalizePost)
-    .filter(Boolean) as Post[];
-}
-
-async function loadPosts(): Promise<Post[]> {
-  try {
-    const response = await fetch(workerUrl + "/", {
-      method: "GET",
-      headers: {
-        Accept: "application/json"
-      }
-    });
-
-    if (!response.ok) return [];
-
-    return extractPosts(await response.json());
-  } catch {
-    return [];
-  }
-}
-
-function primaryKind(post: Post): CardKind {
-  if (
-    hasExactTag(post.text, [
-      "کتاب",
-      "کتاب گویا",
-      "کتاب_گویا",
-      "کتابگویا"
-    ])
-  ) {
-    return "book";
-  }
-
-  if (hasDialogueTag(post.text)) {
-    return "dialogue";
-  }
-
-  if (hasExactTag(post.text, ["صوتی", "صدا", "موسیقی"])) {
-    return "audio";
-  }
-
-  if (hasExactTag(post.text, ["نقاشی"])) {
-    return "art";
-  }
-
-  if (
-    hasExactTag(post.text, [
-      "شعر و متن",
-      "شعر_و_متن",
-      "شعر",
-      "اشعار",
-      "شعرها",
-      "شعر ها",
-      "شعر_ها",
-      "متن",
-      "متن‌ها",
-      "متن ها",
-      "متن_ها"
-    ])
-  ) {
-    return "text";
-  }
-
-  const mediaType = String(post.media_type || "").toLowerCase();
-
-  if (mediaType === "audio" || mediaType === "voice") {
-    return "audio";
-  }
-
-  if (mediaType === "video" || mediaType === "animation") {
-    return "video";
-  }
-
-  if (mediaType === "photo" || mediaType === "image") {
-    return "photo";
-  }
-
-  return "text";
-}
-
-function kindLabel(kind: CardKind): string {
-  if (kind === "book") return "کتاب";
-  if (kind === "dialogue") return "دیالوگ";
-  if (kind === "audio") return "صوتی";
-  if (kind === "art") return "نقاشی";
-  if (kind === "video") return "ویدیو";
-  if (kind === "photo") return "تصویری";
-
-  return "متن";
-}
-
-function kindIcon(kind: CardKind): string {
-  if (kind === "book") return "▤";
-  if (kind === "dialogue") return "❞";
-  if (kind === "audio") return "♪";
-  if (kind === "art") return "◐";
-  if (kind === "video") return "▶";
-  if (kind === "photo") return "◇";
-
-  return "✎";
-}
-
-function searchText(post: Post): string {
-  return normalizeTag(
-    [
-      post.text,
-      post.seo_title,
-      post.seo_description,
-      post.slug,
-      makeDisplayTitle(post),
-      makeExcerpt(post)
-    ].join(" ")
-  );
-}
-
-function postTimestamp(post: Post): number {
-  const timestamp = new Date(
-    String(post.created_at).replace(" ", "T")
-  ).getTime();
-
-  return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
-const currentTag = safeDecode(rawTag)
+const requestedTag = safeDecodeTagValue(Astro.params.tag)
   .replace(/^#/, "")
   .replace(/_/g, " ")
   .trim();
+const normalizedTag = normalizeTagValue(requestedTag);
+const validTagValue = Boolean(normalizedTag);
+const displayTag = requestedTag || "برچسب";
 
-const normalizedCurrentTag = normalizeTag(currentTag);
-const allPosts = await loadPosts();
+const initialTagPage = validTagValue
+  ? await fetchPublicTagPage({
+      apiBase,
+      tag: displayTag,
+      limit: PAGE_SIZE,
+      offset: 0,
+      timeoutMs: 6000
+    })
+  : {
+      ok: true,
+      status: 404,
+      posts: [],
+      total: 0,
+      limit: PAGE_SIZE,
+      offset: 0,
+      nextOffset: 0,
+      hasMore: false,
+      error: ""
+    };
 
-const matchingPosts = allPosts
-  .filter((post) =>
-    getTags(post.text).some(
-      (tag) => normalizeTag(tag) === normalizedCurrentTag
-    )
-  )
-  .sort((a, b) => {
-    const dateDifference = postTimestamp(b) - postTimestamp(a);
+const temporaryFailure = validTagValue && !initialTagPage.ok;
+const tagExists = validTagValue && initialTagPage.ok && initialTagPage.total > 0;
 
-    if (dateDifference) return dateDifference;
+if (temporaryFailure) {
+  Astro.response.status = 503;
+  Astro.response.statusText = "Service Unavailable";
+  Astro.response.headers.set("Retry-After", "60");
+} else if (!tagExists) {
+  Astro.response.status = 404;
+  Astro.response.statusText = "Not Found";
+}
 
-    return Number(b.id || 0) - Number(a.id || 0);
-  });
+const pageTitle = temporaryFailure
+  ? "دریافت برچسب موقتاً ناموفق"
+  : tagExists
+    ? "#" + displayTag
+    : "برچسب پیدا نشد";
+const pageDescription = temporaryFailure
+  ? "دریافت مطالب این برچسب موقتاً امکان‌پذیر نیست."
+  : tagExists
+    ? "مطالب منتشرشده با برچسب " + displayTag + " در مجله هنری ماهون"
+    : "برچسب " + displayTag + " در مجله هنری ماهون پیدا نشد.";
+const canonicalUrl = tagExists
+  ? siteUrl + "/tag/" + encodeURIComponent(displayTag)
+  : siteUrl + Astro.url.pathname;
+const initialCardsHtml = tagExists
+  ? renderTagCardsHtml(initialTagPage.posts, apiBase)
+  : "";
+const initialShown = Math.min(initialTagPage.nextOffset, initialTagPage.total);
+const initialCountText = tagExists
+  ? "نمایش " + toPersianTagNumber(initialShown) + " مطلب از " + toPersianTagNumber(initialTagPage.total)
+  : "۰ مطلب";
 
-const displayTag = currentTag || "برچسب";
-const pageTitle = "#" + displayTag + " | " + SITE.name;
+const tagConfig = {
+  apiBase,
+  tag: displayTag,
+  pageSize: PAGE_SIZE,
+  validTag: tagExists,
+  initialTotal: initialTagPage.total,
+  initialNextOffset: initialTagPage.nextOffset,
+  initialHasMore: initialTagPage.hasMore
+};
 
-const pageDescription = matchingPosts.length
-  ? "مطالب منتشرشده با برچسب " +
-    displayTag +
-    " در مجله هنری ماهون"
-  : "برچسب " + displayTag + " در مجله هنری ماهون";
-
-const canonicalUrl =
-  siteUrl + "/tag/" + encodeURIComponent(displayTag);
+function safeJson(value: unknown) {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
 ---
 
-<BaseLayout
-  title={pageTitle}
-  description={pageDescription}
-  canonical={canonicalUrl}
->
+<BaseLayout title={pageTitle} description={pageDescription} canonical={canonicalUrl}>
+  {!tagExists && <meta slot="head" name="robots" content="noindex,follow" />}
+
   <main class="mahoon-tag-archive">
     <section class="mahoon-tag-hero">
       <a class="mahoon-tag-back" href="/">بازگشت به صفحه اصلی</a>
-
       <span>آرشیو برچسب‌های ماهون</span>
-
       <h1 dir="auto">#{displayTag}</h1>
-
       <p>
-        {matchingPosts.length
-          ? "همه روایت‌های مرتبط با این برچسب در مجله هنری ماهون."
-          : "هنوز مطلبی برای این برچسب پیدا نشده است."}
+        {temporaryFailure
+          ? "دریافت مطالب این برچسب موقتاً امکان‌پذیر نیست."
+          : tagExists
+            ? "همه روایت‌های مرتبط با این برچسب در مجله هنری ماهون."
+            : "هنوز مطلبی برای این برچسب پیدا نشده است."}
       </p>
-
-      <strong>
-        {new Intl.NumberFormat("fa-IR").format(matchingPosts.length)}
-        {" "}
-        مطلب
-      </strong>
+      <strong>{toPersianTagNumber(initialTagPage.total)} مطلب</strong>
     </section>
 
-    {
-      matchingPosts.length ? (
-        <>
-          <section class="mahoon-tag-search">
-            <label for="tagSearchInput">
-              <span>جستجو در مطالب این برچسب</span>
-
-              <input
-                id="tagSearchInput"
-                type="search"
-                placeholder="عنوان، متن یا کلمه مورد نظر را جستجو کن..."
-                autocomplete="off"
-              />
-            </label>
-          </section>
-
-          <nav
-            class="mahoon-tag-navigation"
-            aria-label="دسته‌بندی‌های ماهون"
-          >
-            <a href="/posts">همه مطالب</a>
-            <a href="/category/کتاب">کتاب</a>
-            <a href="/category/دیالوگ ها">دیالوگ ها</a>
-            <a href="/category/صوتی">صوتی</a>
-            <a href="/category/شعر و متن">شعر و متن</a>
-            <a href="/category/نقاشی">نقاشی</a>
-          </nav>
-
-          <section class="mahoon-tag-results">
-            <div class="mahoon-tag-count" id="tagVisibleCount">
-              در حال آماده‌سازی مطالب...
-            </div>
-
-            <div class="mahoon-tag-grid" id="tagGrid">
-              {
-                matchingPosts.map((post) => {
-                  const kind = primaryKind(post);
-                  const label = kindLabel(kind);
-                  const title = makeDisplayTitle(post);
-                  const excerpt = makeExcerpt(post);
-                  const image = getMediaSrc(post);
-                  const href = getPostHref(post);
-
-                  return (
-                    <article
-                      class={"mahoon-tag-card mahoon-tag-card--" + kind}
-                      data-tag-card
-                      data-search={searchText(post)}
-                    >
-                      <a
-                        class:list={[
-                          "mahoon-tag-card__media",
-                          !image &&
-                            "mahoon-tag-card__media--placeholder"
-                        ]}
-                        href={href}
-                      >
-                        {
-                          image ? (
-                            <img
-                              src={image}
-                              alt={title}
-                              width="720"
-                              height="430"
-                              loading="lazy"
-                              decoding="async"
-                            />
-                          ) : (
-                            <span
-                              class="mahoon-tag-card__icon"
-                              aria-hidden="true"
-                            >
-                              {kindIcon(kind)}
-                            </span>
-                          )
-                        }
-
-                        <span class="mahoon-tag-card__badge">
-                          {label}
-                        </span>
-                      </a>
-
-                      <div class="mahoon-tag-card__body">
-                        <div class="mahoon-tag-card__meta">
-                          <span>{formatDate(post.created_at)}</span>
-                          <span>{label}</span>
-                        </div>
-
-                        <h2>
-                          <a href={href}>{title}</a>
-                        </h2>
-
-                        <p>{excerpt}</p>
-
-                        <a class="mahoon-tag-card__cta" href={href}>
-                          ادامه مطلب
-                        </a>
-                      </div>
-                    </article>
-                  );
-                })
-              }
-            </div>
-
-            <div class="mahoon-tag-empty" id="tagEmpty" hidden>
-              <strong>مطلبی پیدا نشد</strong>
-              <span>عبارت دیگری را جستجو کن.</span>
-            </div>
-
-            <button
-              class="mahoon-tag-more"
-              id="tagMore"
-              type="button"
-              hidden
-            >
-              نمایش ۲۰ مطلب دیگر
-            </button>
-          </section>
-        </>
-      ) : (
-        <section class="mahoon-tag-not-found">
-          <span>نتیجه‌ای پیدا نشد</span>
-          <h2>مطلبی برای این برچسب وجود ندارد</h2>
-          <p>
-            از آرشیو کامل ماهون می‌توانی روایت‌های دیگر را دنبال کنی.
-          </p>
-          <a href="/posts">مشاهده همه مطالب</a>
+    {tagExists ? (
+      <>
+        <section class="mahoon-tag-search">
+          <label for="tagSearchInput">
+            <span>جستجو در مطالب این برچسب</span>
+            <input
+              id="tagSearchInput"
+              type="search"
+              placeholder="عنوان، متن یا کلمه مورد نظر را جستجو کن..."
+              autocomplete="off"
+            />
+          </label>
         </section>
-      )
-    }
+
+        <nav class="mahoon-tag-navigation" aria-label="دسته‌بندی‌های ماهون">
+          <a href="/posts">همه مطالب</a>
+          <a href="/category/کتاب">کتاب</a>
+          <a href="/category/دیالوگ ها">دیالوگ ها</a>
+          <a href="/category/صوتی">صوتی</a>
+          <a href="/category/شعر و متن">شعر و متن</a>
+          <a href="/category/نقاشی">نقاشی</a>
+        </nav>
+
+        <section class="mahoon-tag-results" aria-live="polite">
+          <div class="mahoon-tag-count" id="tagVisibleCount">{initialCountText}</div>
+          <div class="mahoon-tag-grid" id="tagGrid" set:html={initialCardsHtml}></div>
+          <div class="mahoon-tag-empty" id="tagEmpty" hidden={initialTagPage.total > 0}>
+            <strong>مطلبی پیدا نشد</strong>
+            <span>عبارت دیگری را جستجو کن.</span>
+          </div>
+          <button class="mahoon-tag-more" id="tagMore" type="button" hidden={!initialTagPage.hasMore}>
+            نمایش ۲۰ مطلب دیگر
+          </button>
+        </section>
+      </>
+    ) : (
+      <section class="mahoon-tag-not-found">
+        <span>{temporaryFailure ? "اختلال موقت" : "نتیجه‌ای پیدا نشد"}</span>
+        <h2>{temporaryFailure ? "دریافت مطالب انجام نشد" : "مطلبی برای این برچسب وجود ندارد"}</h2>
+        <p>
+          {temporaryFailure
+            ? "لطفاً کمی بعد دوباره این صفحه را باز کن."
+            : "از آرشیو کامل ماهون می‌توانی روایت‌های دیگر را دنبال کنی."}
+        </p>
+        <a href={temporaryFailure ? Astro.url.pathname : "/posts"}>
+          {temporaryFailure ? "تلاش دوباره" : "مشاهده همه مطالب"}
+        </a>
+      </section>
+    )}
+
+    <script id="tagArchiveConfig" type="application/json" set:html={safeJson(tagConfig)}></script>
   </main>
 
   <script is:inline>
-    (function () {
-      const cards = Array.from(
-        document.querySelectorAll("[data-tag-card]")
-      );
+    (() => {
+      const config = JSON.parse(document.getElementById("tagArchiveConfig")?.textContent || "{}");
+      if (config.validTag === false) return;
 
-      if (!cards.length) return;
-
+      const API_BASE = String(config.apiBase || "https://api.mahoonartmagazine.ir").replace(/\/+$/, "");
+      const PAGE_SIZE = Number(config.pageSize || 20);
       const input = document.getElementById("tagSearchInput");
       const count = document.getElementById("tagVisibleCount");
+      const grid = document.getElementById("tagGrid");
       const empty = document.getElementById("tagEmpty");
       const more = document.getElementById("tagMore");
 
-      const pageSize = 20;
-      let visibleLimit = pageSize;
+      let q = "";
+      let offset = Number(config.initialNextOffset || 0);
+      let totalCount = Number(config.initialTotal || 0);
+      let hasMore = Boolean(config.initialHasMore);
+      let loading = false;
       let timer = 0;
+
+      function escapeHtml(value) {
+        return String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
 
       function normalize(value) {
         return String(value || "")
+          .replace(/^#/, "")
           .replace(/[يى]/g, "ی")
           .replace(/ك/g, "ک")
           .replace(/[\u200c\u200f]/g, "")
@@ -683,60 +204,195 @@ const canonicalUrl =
       }
 
       function persianNumber(value) {
-        return new Intl.NumberFormat("fa-IR").format(value);
+        return new Intl.NumberFormat("fa-IR").format(Number(value || 0));
       }
 
-      function apply(reset) {
-        if (reset) visibleLimit = pageSize;
+      function removeEmoji(value) {
+        return String(value || "").replace(/[\p{Extended_Pictographic}\uFE0F]/gu, " ").replace(/\s+/g, " ").trim();
+      }
 
-        const query = normalize(input ? input.value : "");
-
-        const matched = cards.filter(function (card) {
-          return !query || normalize(card.dataset.search).includes(query);
-        });
-
-        cards.forEach(function (card) {
-          card.hidden = true;
-        });
-
-        matched.slice(0, visibleLimit).forEach(function (card) {
-          card.hidden = false;
-        });
-
-        if (count) {
-          count.textContent =
-            "نمایش " +
-            persianNumber(Math.min(matched.length, visibleLimit)) +
-            " مطلب از " +
-            persianNumber(matched.length);
+      function movieTitle(value) {
+        for (const rawLine of String(value || "").split(/\r?\n/)) {
+          const match = rawLine.trim().match(/^(?:🎥|🎬|فیلم\s*:?)\s*#?\s*(.+)$/iu);
+          if (!match?.[1]) continue;
+          const title = match[1].replace(/[🔹•●▪▫◦]+/gu, "").replace(/@mahoonartmagazine/giu, "").replace(/^#/, "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+          if (title) return title;
         }
+        return "";
+      }
 
-        if (empty) {
-          empty.hidden = matched.length !== 0;
-        }
+      function rawTags(text) {
+        return Array.from(String(text || "").matchAll(/(^|\s)#([^\s#]+)/gu)).map((match) => match[2]).filter(Boolean);
+      }
 
+      function hasTag(text, variants) {
+        const expected = new Set(variants.map(normalize));
+        return rawTags(text).some((tag) => expected.has(normalize(tag)));
+      }
+
+      function dialogue(post) {
+        return hasTag(post.text, ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها", "دیالوگ ها", "دیالوگها"]);
+      }
+
+      function clean(value) {
+        return removeEmoji(String(value || "")
+          .replace(/\u{1F539}?\s*@mahoonartmagazine/giu, "")
+          .replace(/\u{1F539}/gu, "")
+          .replace(/(^|\n)\s*(?:🎥|🎬|فیلم\s*:?)\s*#?\s*[^\n]+/giu, "\n")
+          .replace(/https?:\/\/[^\s]+/giu, "")
+          .replace(/@[a-zA-Z0-9_]+/g, "")
+          .replace(/(^|\s)#([^\s#]+)/gu, " ")
+          .replace(/[•●▪▫◦]/g, "")
+          .replace(/_/g, " ")
+          .replace(/\s+/g, " ")
+          .trim());
+      }
+
+      function words(value, maximum) {
+        const list = String(value || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+        return list.length <= maximum ? list.join(" ") : list.slice(0, maximum).join(" ") + "…";
+      }
+
+      function title(post) {
+        const movie = movieTitle(post.text);
+        if (movie && dialogue(post)) return "دیالوگی از فیلم " + words(movie, 6);
+        return words(clean(post.seo_title), 5) || words(clean(post.text), 5) || "مطلبی از ماهون";
+      }
+
+      function excerpt(post) {
+        const movie = movieTitle(post.text);
+        let source = clean(post.seo_description || post.text || "");
+        if (movie) source = source.replace(new RegExp(movie.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu"), " ");
+        return words(source.replace(/\s+/g, " ").trim(), 14) || "روایتی تازه از مجله هنری ماهون";
+      }
+
+      function date(value) {
+        try {
+          return new Intl.DateTimeFormat("fa-IR", { year: "numeric", month: "long", day: "numeric" }).format(new Date(String(value || "").replace(" ", "T")));
+        } catch { return String(value || ""); }
+      }
+
+      function kind(post) {
+        if (hasTag(post.text, ["کتاب", "کتاب گویا", "کتاب_گویا", "کتابگویا"])) return "book";
+        if (dialogue(post)) return "dialogue";
+        if (hasTag(post.text, ["صوتی", "صدا", "موسیقی"])) return "audio";
+        if (hasTag(post.text, ["نقاشی"])) return "art";
+        if (hasTag(post.text, ["شعر و متن", "شعر_و_متن", "شعر", "اشعار", "شعرها", "شعر ها", "شعر_ها", "متن", "متن‌ها", "متن ها", "متن_ها"])) return "text";
+        const type = String(post.media_type || "").toLowerCase();
+        if (["audio", "voice"].includes(type)) return "audio";
+        if (["video", "animation"].includes(type)) return "video";
+        if (["photo", "image"].includes(type)) return "photo";
+        return "text";
+      }
+
+      function label(value) {
+        return ({ book: "کتاب", dialogue: "دیالوگ", audio: "صوتی", art: "نقاشی", video: "ویدیو", photo: "تصویری", text: "متن" })[value] || "متن";
+      }
+
+      function icon(value) {
+        return ({ book: "▤", dialogue: "❞", audio: "♪", art: "◐", video: "▶", photo: "◇", text: "✎" })[value] || "✎";
+      }
+
+      function href(post) {
+        return "/post/" + encodeURIComponent(String(post.slug || post.id || ""));
+      }
+
+      function media(post) {
+        const direct = post.media_url || post.photo_url || post.image_url || post.thumbnail_url || post.file_url;
+        if (direct) return String(direct);
+        const id = post.photo_file_id || post.media_file_id || post.file_id || post.telegram_file_id;
+        return id ? API_BASE + "/media/" + encodeURIComponent(String(id)) : "";
+      }
+
+      function renderCard(post) {
+        const cardKind = kind(post);
+        const cardLabel = label(cardKind);
+        const cardTitle = title(post);
+        const cardExcerpt = excerpt(post);
+        const cardHref = href(post);
+        const image = media(post);
+        const mediaInner = image
+          ? '<img src="' + escapeHtml(image) + '" alt="' + escapeHtml(cardTitle) + '" width="720" height="430" loading="lazy" decoding="async">'
+          : '<span class="mahoon-tag-card__icon" aria-hidden="true">' + escapeHtml(icon(cardKind)) + '</span>';
+
+        return '<article class="mahoon-tag-card mahoon-tag-card--' + escapeHtml(cardKind) + '" data-tag-card>' +
+          '<a class="mahoon-tag-card__media ' + (image ? "" : "mahoon-tag-card__media--placeholder") + '" href="' + escapeHtml(cardHref) + '">' +
+            mediaInner + '<span class="mahoon-tag-card__badge">' + escapeHtml(cardLabel) + '</span>' +
+          '</a>' +
+          '<div class="mahoon-tag-card__body">' +
+            '<div class="mahoon-tag-card__meta"><span>' + escapeHtml(date(post.created_at)) + '</span><span>' + escapeHtml(cardLabel) + '</span></div>' +
+            '<h2><a href="' + escapeHtml(cardHref) + '">' + escapeHtml(cardTitle) + '</a></h2>' +
+            '<p>' + escapeHtml(cardExcerpt) + '</p>' +
+            '<a class="mahoon-tag-card__cta" href="' + escapeHtml(cardHref) + '">ادامه مطلب</a>' +
+          '</div>' +
+        '</article>';
+      }
+
+      function updateState() {
+        if (count) count.textContent = "نمایش " + persianNumber(Math.min(offset, totalCount)) + " مطلب از " + persianNumber(totalCount);
+        if (empty) empty.hidden = totalCount !== 0;
         if (more) {
-          more.hidden = matched.length <= visibleLimit;
+          more.hidden = !hasMore;
+          more.disabled = loading;
+          more.textContent = loading ? "در حال دریافت..." : "نمایش ۲۰ مطلب دیگر";
         }
       }
 
-      if (input) {
-        input.addEventListener("input", function () {
-          window.clearTimeout(timer);
-          timer = window.setTimeout(function () {
-            apply(true);
-          }, 180);
-        });
+      async function request(reset) {
+        if (loading) return;
+        loading = true;
+        let failed = false;
+        updateState();
+
+        try {
+          const url = new URL(API_BASE + "/public/tag-posts-v1");
+          url.searchParams.set("tag", String(config.tag || ""));
+          url.searchParams.set("limit", String(PAGE_SIZE));
+          url.searchParams.set("offset", String(reset ? 0 : offset));
+          if (q) url.searchParams.set("q", q);
+
+          const response = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
+          const payload = await response.json();
+          if (!response.ok || payload?.ok === false) throw new Error(payload?.error || "HTTP " + response.status);
+
+          const posts = Array.isArray(payload.posts) ? payload.posts : [];
+          if (grid) {
+            const html = posts.map(renderCard).join("");
+            if (reset) grid.innerHTML = html;
+            else grid.insertAdjacentHTML("beforeend", html);
+          }
+
+          totalCount = Number(payload.total || 0);
+          offset = Number(payload.next_offset ?? (reset ? posts.length : offset + posts.length));
+          hasMore = Boolean(payload.has_more);
+        } catch (error) {
+          failed = true;
+          console.error(error);
+          if (count) count.textContent = "دریافت مطالب انجام نشد.";
+        } finally {
+          loading = false;
+
+          if (failed) {
+            if (more) {
+              more.disabled = false;
+              more.textContent = "تلاش دوباره";
+            }
+          } else {
+            updateState();
+          }
+        }
       }
 
-      if (more) {
-        more.addEventListener("click", function () {
-          visibleLimit += pageSize;
-          apply(false);
-        });
-      }
+      input?.addEventListener("input", () => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          q = String(input.value || "").trim();
+          request(true);
+        }, 300);
+      });
 
-      apply(true);
+      more?.addEventListener("click", () => request(false));
+      updateState();
     })();
   </script>
 

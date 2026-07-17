@@ -1,6 +1,14 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { SITE } from "../config";
+import {
+  fetchHomeSnapshot,
+  renderHomeAdsHtml,
+  renderHomeCategoriesHtml,
+  renderHomeFeaturedHtml,
+  renderHomeListHtml,
+  renderHomeStatsHtml
+} from "../lib/home";
 
 export const prerender = false;
 
@@ -62,6 +70,41 @@ const homeConfig = {
   }
 };
 
+// mahoon-home-ssr-v1
+const homeSnapshot = await fetchHomeSnapshot({
+  apiBase: homeConfig.apiBase,
+  categories: homeConfig.categories,
+  timeoutMs: 6000
+});
+
+if (!homeSnapshot.ok) {
+  Astro.response.status = 503;
+  Astro.response.statusText = "Service Unavailable";
+  Astro.response.headers.set("Retry-After", "60");
+}
+
+const initialFeaturedHtml = renderHomeFeaturedHtml({
+  post: homeSnapshot.posts[0] || null,
+  apiBase: homeConfig.apiBase,
+  categories: homeConfig.categories
+});
+const initialStatsHtml = renderHomeStatsHtml(homeSnapshot.stats, homeSnapshot.posts);
+const initialListHtml = renderHomeListHtml(homeSnapshot.posts, homeConfig.apiBase);
+const initialCategoriesHtml = renderHomeCategoriesHtml({
+  categories: homeSnapshot.categories,
+  stats: homeSnapshot.stats,
+  apiBase: homeConfig.apiBase,
+  ads: homeConfig.ads
+});
+const adsAfterLatest = renderHomeAdsHtml(homeConfig.ads, "after_latest");
+const adsAfterAllPosts = renderHomeAdsHtml(homeConfig.ads, "after_all_posts");
+const adsBeforeCategories = renderHomeAdsHtml(homeConfig.ads, "before_categories");
+const adsAfterCategories = renderHomeAdsHtml(homeConfig.ads, "after_categories");
+const clientHomeConfig = {
+  ...homeConfig,
+  initialPosts: homeSnapshot.posts
+};
+
 function safeJson(value: unknown) {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
@@ -83,13 +126,21 @@ function safeJson(value: unknown) {
     </section>
 
     <section class="m-featured-wrap">
-      <div id="mFeatured"></div>
-      <div id="mStatus" class="m-status">در حال دریافت مطالب...</div>
+      <div id="mFeatured" set:html={initialFeaturedHtml}></div>
+      <div id="mStatus" class="m-status" hidden={homeSnapshot.ok}>
+        {homeSnapshot.ok ? "" : "دریافت مطالب موقتاً امکان‌پذیر نیست. لطفاً کمی بعد دوباره تلاش کنید."}
+      </div>
     </section>
 
-    <section id="mAdsAfterLatest" class="m-ads m-ads-slot" aria-label="تبلیغات بعد از تازه‌ترین مطلب"></section>
+    <section
+      id="mAdsAfterLatest"
+      class:list={["m-ads", "m-ads-slot", adsAfterLatest.count === 1 && "m-ads--single"]}
+      aria-label="تبلیغات بعد از تازه‌ترین مطلب"
+      hidden={adsAfterLatest.count === 0}
+      set:html={adsAfterLatest.html}
+    ></section>
 
-    <section id="mStats" class="m-stats" aria-label="آمار مطالب ماهون"></section>
+    <section id="mStats" class="m-stats" aria-label="آمار مطالب ماهون" set:html={initialStatsHtml}></section>
 
     <section class="m-search-wrap">
       <label class="m-search">
@@ -105,20 +156,38 @@ function safeJson(value: unknown) {
       </div>
 
       <div class="m-all-scroll">
-        <div id="mAllGrid" class="m-all-grid"></div>
+        <div id="mAllGrid" class="m-all-grid" set:html={initialListHtml}></div>
       </div>
     </section>
 
 
-    <section id="mAdsAfterAllPosts" class="m-ads m-ads-slot" aria-label="تبلیغات بعد از همه مطالب"></section>
+    <section
+      id="mAdsAfterAllPosts"
+      class:list={["m-ads", "m-ads-slot", adsAfterAllPosts.count === 1 && "m-ads--single"]}
+      aria-label="تبلیغات بعد از همه مطالب"
+      hidden={adsAfterAllPosts.count === 0}
+      set:html={adsAfterAllPosts.html}
+    ></section>
 
-    <section id="mAdsBeforeCategories" class="m-ads m-ads-slot" aria-label="تبلیغات بالای دسته‌بندی‌ها"></section>
+    <section
+      id="mAdsBeforeCategories"
+      class:list={["m-ads", "m-ads-slot", adsBeforeCategories.count === 1 && "m-ads--single"]}
+      aria-label="تبلیغات بالای دسته‌بندی‌ها"
+      hidden={adsBeforeCategories.count === 0}
+      set:html={adsBeforeCategories.html}
+    ></section>
 
-    <section id="mCategories" class="m-categories" aria-label="دسته‌بندی مطالب ماهون"></section>
+    <section id="mCategories" class="m-categories" aria-label="دسته‌بندی مطالب ماهون" set:html={initialCategoriesHtml}></section>
 
-    <section id="mAdsAfterCategories" class="m-ads m-ads-slot" aria-label="تبلیغات زیر دسته‌بندی‌ها"></section>
+    <section
+      id="mAdsAfterCategories"
+      class:list={["m-ads", "m-ads-slot", adsAfterCategories.count === 1 && "m-ads--single"]}
+      aria-label="تبلیغات زیر دسته‌بندی‌ها"
+      hidden={adsAfterCategories.count === 0}
+      set:html={adsAfterCategories.html}
+    ></section>
 
-    <script id="mHomeConfig" type="application/json" set:html={safeJson(homeConfig)}></script>
+    <script id="mHomeConfig" type="application/json" set:html={safeJson(clientHomeConfig)}></script>
   </main>
 
   <script is:inline>
@@ -140,7 +209,8 @@ function safeJson(value: unknown) {
       const adsBeforeCategoriesEl = document.getElementById("mAdsBeforeCategories");
       const adsAfterCategoriesEl = document.getElementById("mAdsAfterCategories");
 
-      let latestPosts = [];
+      // mahoon-home-ssr-client-seed-v1
+      let latestPosts = extractPosts(config.initialPosts || []);
       let stats = null;
       let categoryPayloads = [];
 
@@ -780,40 +850,12 @@ function safeJson(value: unknown) {
         return res.json();
       }
 
-      async function loadHome() {
-        try {
-          startTypewriter();
+      function initializeHome() {
+        startTypewriter();
+        bindRailButtonsAndDrag();
 
-          statusEl.hidden = false;
-          statusEl.textContent = "در حال دریافت مطالب...";
-
-          const [postsPayload, statsPayload, ...categoryResults] = await Promise.all([
-            api("/public/posts-v1", { limit: 20, offset: 0 }),
-            api("/public/stats-v1"),
-            ...categories.map((category) =>
-              api("/public/posts-v1", { category: category.title, limit: 10, offset: 0 })
-                .then((payload) => ({ category, posts: extractPosts(payload), total: payload.total }))
-                .catch(() => ({ category, posts: [], total: 0 }))
-            )
-          ]);
-
-          latestPosts = extractPosts(postsPayload);
-          stats = statsPayload?.stats || null;
-          categoryPayloads = categoryResults;
-
-          if (!latestPosts.length) throw new Error("No posts");
-
-          renderFeatured(latestPosts[0]);
-          renderStats();
-          renderList(latestPosts);
-          renderAdSlots();
-          renderCategories();
-
+        if (statusEl && latestPosts.length) {
           statusEl.hidden = true;
-        } catch (error) {
-          console.error(error);
-          statusEl.hidden = false;
-          statusEl.textContent = "دریافت مطالب انجام نشد. لطفاً صفحه را دوباره Refresh کنید.";
         }
       }
 
@@ -852,13 +894,10 @@ function safeJson(value: unknown) {
         }, 300);
       });
 
-      loadHome();
+      initializeHome();
     })();
   </script>
   <script is:inline>
-    /* mahoon-category-card-link-fix-v1 */
-    (() => {
-      if (window.__mahoonCategory  <script is:inline>
     /* mahoon-category-card-link-fix-v1 */
     (() => {
       if (window.__mahoonCategoryCardLinkFixV1) return;

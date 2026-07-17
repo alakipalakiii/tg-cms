@@ -2610,6 +2610,119 @@ async function mahoonScalePublicStatsObjectV1(env) {
   };
 }
 
+
+
+// mahoon-public-tag-posts-v1
+function mahoonScaleNormalizeExactTagV1(value) {
+  return String(value || "")
+    .replace(/^#/, "")
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/[\u200c\u200f]/g, "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function mahoonScaleExtractExactTagsV1(value) {
+  return Array.from(String(value || "").matchAll(/(^|\s)#([^\s#]+)/gu))
+    .map((match) => mahoonScaleNormalizeExactTagV1(match[2]))
+    .filter(Boolean);
+}
+
+function mahoonScaleTagCandidateVariantsV1(value) {
+  const raw = String(value || "")
+    .replace(/^#/, "")
+    .trim();
+  const spaced = raw
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return Array.from(new Set([
+    raw,
+    spaced,
+    spaced.replace(/ /g, "_"),
+    spaced.replace(/ /g, "\u200c"),
+    raw.replace(/[\u200c\u200f]/g, ""),
+    spaced.replace(/[\u200c\u200f]/g, "")
+  ].map((item) => String(item || "").trim()).filter(Boolean)));
+}
+
+function mahoonScaleTagSearchTextV1(post) {
+  return mahoonScaleNormalizeExactTagV1([
+    post?.id,
+    post?.text,
+    post?.slug,
+    post?.seo_title,
+    post?.seo_description,
+    post?.media_file_name
+  ].join(" "));
+}
+
+async function mahoonScalePublicTagPostsV1(request, env, origin) {
+  try {
+    if (!env.DB) {
+      return mahoonScaleJsonV1({ ok: false, error: "DB binding is missing" }, 500);
+    }
+
+    const url = new URL(request.url);
+    const tag = String(url.searchParams.get("tag") || "").replace(/^#/, "").trim();
+    const normalizedTag = mahoonScaleNormalizeExactTagV1(tag);
+
+    if (!normalizedTag) {
+      return mahoonScaleJsonV1({ ok: false, error: "Tag is required" }, 400);
+    }
+
+    const rawLimit = Number(url.searchParams.get("limit") || "20");
+    const rawOffset = Number(url.searchParams.get("offset") || "0");
+    const limit = Math.max(1, Math.min(Number.isFinite(rawLimit) ? rawLimit : 20, 120));
+    const offset = Math.max(0, Number.isFinite(rawOffset) ? rawOffset : 0);
+    const q = mahoonScaleNormalizeExactTagV1(url.searchParams.get("q") || "");
+    const base = mahoonScalePublicBaseWhereV1();
+    const variants = mahoonScaleTagCandidateVariantsV1(tag);
+    const candidateSql = variants.map(() => "text LIKE ?").join(" OR ");
+    const candidateParams = variants.map((variant) => "%#" + variant + "%");
+
+    const result = await env.DB.prepare(
+      [
+        "SELECT " + mahoonScalePublicColumnsV1(),
+        "FROM posts",
+        "WHERE " + base.sql,
+        "AND (" + candidateSql + ")",
+        "ORDER BY datetime(created_at) DESC, id DESC"
+      ].join(" ")
+    ).bind(...base.params, ...candidateParams).all();
+
+    const candidates = Array.isArray(result?.results) ? result.results : [];
+    const exact = candidates.filter((post) => {
+      const tags = mahoonScaleExtractExactTagsV1(post?.text);
+      if (!tags.includes(normalizedTag)) return false;
+      if (!q) return true;
+      return mahoonScaleTagSearchTextV1(post).includes(q);
+    });
+    const total = exact.length;
+    const page = exact.slice(offset, offset + limit);
+    const nextOffset = offset + page.length;
+
+    return mahoonScaleJsonV1({
+      ok: true,
+      mode: "tag",
+      tag,
+      posts: page.map((post) => postWithMediaUrl(post, origin)),
+      total,
+      limit,
+      offset,
+      next_offset: nextOffset,
+      has_more: nextOffset < total
+    });
+  } catch (error) {
+    return mahoonScaleJsonV1({ ok: false, error: String(error?.message || error) }, 500);
+  }
+}
+// end-mahoon-public-tag-posts-v1
+
 async function mahoonScalePublicHomeV1(request, env, origin) {
   try {
     if (!env.DB) {
@@ -3057,6 +3170,10 @@ export default {
       return new Response(null, { status: 204, headers: mahoonScaleCorsV1() });
     }
 
+    if (url.pathname === "/public/tag-posts-v1" && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonScaleCorsV1() });
+    }
+
     if (url.pathname === "/public/stats-v1" && request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: mahoonScaleCorsV1() });
     }
@@ -3071,6 +3188,10 @@ export default {
 
     if (url.pathname === "/public/posts-v1" && request.method === "GET") {
       return mahoonScalePublicPostsV1(request, env, url.origin);
+    }
+
+    if (url.pathname === "/public/tag-posts-v1" && request.method === "GET") {
+      return mahoonScalePublicTagPostsV1(request, env, url.origin);
     }
 
     if (url.pathname === "/public/stats-v1" && request.method === "GET") {
