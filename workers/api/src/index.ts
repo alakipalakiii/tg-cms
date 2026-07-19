@@ -2446,6 +2446,26 @@ function mahoonScaleEscapeLikeV1(value) {
     .replace(/_/g, "!_");
 }
 
+function mahoonScaleNormalizeSearchTextV2(value) {
+  return String(value || "")
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/[\u200c\u200f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function mahoonScaleNormalizeSearchQueryV2(value) {
+  return Array.from(
+    mahoonScaleNormalizeSearchTextV2(value)
+  ).slice(0, 120).join("");
+}
+
+function mahoonScaleIsUsefulSearchQueryV2(value) {
+  return /[\p{L}\p{N}]/u.test(String(value || ""));
+}
+
 function mahoonScaleTagConditionV1(tags) {
   const safeTags = Array.from(new Set((tags || []).filter(Boolean)));
 
@@ -2491,7 +2511,10 @@ function mahoonScaleBuildPublicWhereV1(url) {
 
   const categoryValue = String(url.searchParams.get("category") || "").trim();
   const tagValue = String(url.searchParams.get("tag") || "").replace(/^#/, "").trim();
-  const q = String(url.searchParams.get("q") || "").trim();
+  const rawQ = String(url.searchParams.get("q") || "");
+  const q = mahoonScaleNormalizeSearchQueryV2(rawQ);
+  const qRequested = rawQ.trim() !== "";
+  const qUseful = mahoonScaleIsUsefulSearchQueryV2(q);
 
   if (categoryValue) {
     const category = mahoonScaleCategoryByTitleV1(categoryValue);
@@ -2513,20 +2536,21 @@ function mahoonScaleBuildPublicWhereV1(url) {
     params.push(...tagCondition.params);
   }
 
-  if (q) {
-    const like = "%" + q + "%";
-    const maybeId = Number(q.replace(/[^\d]/g, ""));
+  if (qRequested && !qUseful) {
+    clauses.push("1 = 0");
+  } else if (q) {
+    const maybeId = /^[0-9]+$/.test(q) ? Number(q) : NaN;
 
     clauses.push("(" + [
-      "text LIKE ?",
-      "slug LIKE ?",
-      "seo_title LIKE ?",
-      "seo_description LIKE ?",
-      "media_file_name LIKE ?",
+      "INSTR(LOWER(COALESCE(text, '')), ?) > 0",
+      "INSTR(LOWER(COALESCE(slug, '')), ?) > 0",
+      "INSTR(LOWER(COALESCE(seo_title, '')), ?) > 0",
+      "INSTR(LOWER(COALESCE(seo_description, '')), ?) > 0",
+      "INSTR(LOWER(COALESCE(media_file_name, '')), ?) > 0",
       Number.isFinite(maybeId) && maybeId > 0 ? "id = ?" : "1 = 0"
     ].join(" OR ") + ")");
 
-    params.push(like, like, like, like, like);
+    params.push(q, q, q, q, q);
 
     if (Number.isFinite(maybeId) && maybeId > 0) {
       params.push(maybeId);
@@ -2688,7 +2712,7 @@ function mahoonScaleTagCandidateVariantsV1(value) {
 }
 
 function mahoonScaleTagSearchTextV1(post) {
-  return mahoonScaleNormalizeExactTagV1([
+  return mahoonScaleNormalizeSearchTextV2([
     post?.id,
     post?.text,
     post?.slug,
@@ -2716,7 +2740,10 @@ async function mahoonScalePublicTagPostsV1(request, env, origin) {
     const rawOffset = Number(url.searchParams.get("offset") || "0");
     const limit = Math.max(1, Math.min(Number.isFinite(rawLimit) ? rawLimit : 20, 120));
     const offset = Math.max(0, Number.isFinite(rawOffset) ? rawOffset : 0);
-    const q = mahoonScaleNormalizeExactTagV1(url.searchParams.get("q") || "");
+    const rawQ = String(url.searchParams.get("q") || "");
+    const q = mahoonScaleNormalizeSearchQueryV2(rawQ);
+    const qRequested = rawQ.trim() !== "";
+    const qUseful = mahoonScaleIsUsefulSearchQueryV2(q);
     const base = mahoonScalePublicBaseWhereV1();
     const variants = mahoonScaleTagCandidateVariantsV1(tag);
     const candidateSql = variants.map(() => "text LIKE ?").join(" OR ");
@@ -2736,6 +2763,7 @@ async function mahoonScalePublicTagPostsV1(request, env, origin) {
     const exact = candidates.filter((post) => {
       const tags = mahoonScaleExtractExactTagsV1(post?.text);
       if (!tags.includes(normalizedTag)) return false;
+      if (qRequested && !qUseful) return false;
       if (!q) return true;
       return mahoonScaleTagSearchTextV1(post).includes(q);
     });
