@@ -121,7 +121,7 @@ const mahoonStructuredDataJson = stringifySchema(mahoonStructuredData);
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={absoluteImage} />
 
-    <script type="application/ld+json" set:html={JSON.stringify(websiteJsonLd)} />
+    <script type="application/ld+json" set:html={mahoonStructuredDataJson} />
 
     <slot name="head" />
   </head>
