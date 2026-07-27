@@ -132,8 +132,18 @@ function safeJson(value) {
       <section class="mahoon-archive-results" aria-live="polite">
         <div class="mahoon-archive-count" id="archiveCount">{initialCountText}</div>
         <div class="mahoon-archive-list" id="archiveGrid" set:html={initialCardsHtml}></div>
-        <div class="mahoon-archive-empty" id="archiveEmpty" hidden={initialArchive.ok && initialArchive.total > 0}>
-          {initialArchive.ok ? "نتیجه‌ای پیدا نشد." : "دریافت مطالب انجام نشد."}
+        <div
+          class="mahoon-archive-empty"
+          id="archiveEmpty"
+          hidden={initialArchive.ok && initialArchive.total > 0}
+          data-empty-message="نتیجه‌ای پیدا نشد."
+          data-error-message="دریافت مطالب انجام نشد."
+        >
+          {initialArchive.ok && initialArchive.total === 0
+            ? "نتیجه‌ای پیدا نشد."
+            : !initialArchive.ok
+              ? "دریافت مطالب انجام نشد."
+              : null}
         </div>
         <button class="mahoon-archive-more" id="archiveMore" type="button" hidden={!initialArchive.hasMore}>نمایش ۲۰ مطلب دیگر</button>
       </section>
@@ -593,6 +603,9 @@ function safeJson(value) {
           offset = Number(data.next_offset || offset + posts.length);
 
           grid.insertAdjacentHTML("beforeend", posts.map(renderCard).join(""));
+          empty.textContent = totalCount === 0
+            ? String(empty.dataset.emptyMessage || "نتیجه‌ای پیدا نشد.")
+            : "";
           empty.hidden = totalCount > 0;
           more.hidden = !hasMore;
           count.textContent = "نمایش " + toPersianNumber(Math.min(offset, totalCount)) + " مطلب از " + toPersianNumber(totalCount);
@@ -601,7 +614,7 @@ function safeJson(value) {
           console.error(error);
           count.textContent = "خطا در دریافت مطالب";
           empty.hidden = false;
-          empty.textContent = "دریافت مطالب انجام نشد.";
+          empty.textContent = String(empty.dataset.errorMessage || "دریافت مطالب انجام نشد.");
           more.hidden = true;
         } finally {
           loading = false;

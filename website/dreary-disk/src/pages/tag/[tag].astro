@@ -135,10 +135,13 @@ function safeJson(value: unknown) {
         <section class="mahoon-tag-results" aria-live="polite">
           <div class="mahoon-tag-count" id="tagVisibleCount">{initialCountText}</div>
           <div class="mahoon-tag-grid" id="tagGrid" set:html={initialCardsHtml}></div>
-          <div class="mahoon-tag-empty" id="tagEmpty" hidden={initialTagPage.total > 0}>
-            <strong>مطلبی پیدا نشد</strong>
-            <span>عبارت دیگری را جستجو کن.</span>
-          </div>
+          <div
+            class="mahoon-tag-empty"
+            id="tagEmpty"
+            hidden={initialTagPage.total > 0}
+            data-empty-title="مطلبی پیدا نشد"
+            data-empty-description="عبارت دیگری را جستجو کن."
+          ></div>
           <button class="mahoon-tag-more" id="tagMore" type="button" hidden={!initialTagPage.hasMore}>
             نمایش ۲۰ مطلب دیگر
           </button>
@@ -330,7 +333,20 @@ function safeJson(value: unknown) {
 
       function updateState() {
         if (count) count.textContent = "نمایش " + persianNumber(Math.min(offset, totalCount)) + " مطلب از " + persianNumber(totalCount);
-        if (empty) empty.hidden = totalCount !== 0;
+        if (empty) {
+          empty.hidden = totalCount !== 0;
+          empty.replaceChildren();
+
+          if (totalCount === 0) {
+            const title = document.createElement("strong");
+            title.textContent = String(empty.dataset.emptyTitle || "مطلبی پیدا نشد");
+
+            const description = document.createElement("span");
+            description.textContent = String(empty.dataset.emptyDescription || "عبارت دیگری را جستجو کن.");
+
+            empty.append(title, description);
+          }
+        }
         if (more) {
           more.hidden = !hasMore;
           more.disabled = loading;
