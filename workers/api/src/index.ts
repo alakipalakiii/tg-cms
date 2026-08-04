@@ -2639,24 +2639,42 @@ async function mahoonScalePublicStatsObjectV1(env) {
     ].join(" ")
   ).bind(...base.params).first();
 
-  const categoryCounts = [];
-  const categoryMap = {};
+    const categoryConditions = MAHOON_SCALE_CATEGORY_DEFS_V1.map((category, index) => ({
+    category,
+    alias: "category_" + index,
+    condition: mahoonScaleTagConditionV1(category.tags)
+  }));
 
-  for (const category of MAHOON_SCALE_CATEGORY_DEFS_V1) {
-    const categoryCondition = mahoonScaleTagConditionV1(category.tags);
-    const row = await env.DB.prepare(
-      [
-        "SELECT COUNT(*) AS count",
-        "FROM posts",
-        "WHERE " + base.sql,
-        "AND " + categoryCondition.sql
-      ].join(" ")
-    ).bind(...base.params, ...categoryCondition.params).first();
+  const categorySelects = categoryConditions.map(({ alias, condition }) =>
+    `COALESCE(SUM(CASE WHEN ${condition.sql} THEN 1 ELSE 0 END), 0) AS ${alias}`
+  );
 
-    const count = Number(row?.count || 0);
-    categoryCounts.push({ title: category.title, count });
-    categoryMap[category.title] = count;
-  }
+  const categoryParams = categoryConditions.flatMap(({ condition }) =>
+    condition.params
+  );
+
+  const categoryRow = await env.DB.prepare(
+    [
+      `SELECT ${categorySelects.join(", ")}`,
+      "FROM posts",
+      "WHERE " + base.sql
+    ].join(" ")
+  ).bind(
+    ...categoryParams,
+    ...base.params
+  ).first();
+
+  const categoryValues =
+    (categoryRow || {}) as Record<string, unknown>;
+
+  const categoryCounts = categoryConditions.map(({ category, alias }) => ({
+    title: category.title,
+    count: Number(categoryValues[alias] || 0)
+  }));
+
+  const categoryMap = Object.fromEntries(
+    categoryCounts.map(({ title, count }) => [title, count])
+  );
 
   return {
     visible_posts: Number(visible?.visible_posts || 0),
