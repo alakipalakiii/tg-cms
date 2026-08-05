@@ -2594,50 +2594,17 @@ function mahoonScalePublicColumnsV1() {
 async function mahoonScalePublicStatsObjectV1(env) {
   const base = mahoonScalePublicBaseWhereV1();
 
-  const visible = await env.DB.prepare(
-    [
-      "SELECT COUNT(*) AS visible_posts,",
-      "MAX(id) AS latest_id",
-      "FROM posts",
-      "WHERE " + base.sql
-    ].join(" ")
-  ).bind(...base.params).first();
+    const statsRow = (await env.DB.prepare(
+    `WITH flags AS ( SELECT id, CASE WHEN (slug IS NOT NULL AND slug != '' AND (deleted_at IS NULL OR deleted_at = '') AND (is_published = 1 OR is_published IS NULL) AND ((' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابگویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابصوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ‌ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #صدا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #موسیقی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن‌ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متنها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعر %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #اشعار %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعرها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعر!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #نقاشی %' ESCAPE '!')) THEN 1 ELSE 0 END AS visible_flag, CASE WHEN ((deleted_at IS NULL OR deleted_at = '') AND COALESCE(is_published, 1) = 1) THEN 1 ELSE 0 END AS published_flag, CASE WHEN ((deleted_at IS NULL OR deleted_at = '')) THEN 1 ELSE 0 END AS total_flag, CASE WHEN ((deleted_at IS NOT NULL AND deleted_at != '')) THEN 1 ELSE 0 END AS deleted_flag, CASE WHEN ((slug IS NOT NULL AND slug != '' AND (deleted_at IS NULL OR deleted_at = '') AND (is_published = 1 OR is_published IS NULL) AND ((' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابگویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابصوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ‌ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #صدا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #موسیقی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن‌ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متنها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعر %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #اشعار %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعرها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعر!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #نقاشی %' ESCAPE '!')) AND COALESCE(media_type, '') = '' AND COALESCE(media_file_id, '') = '' AND COALESCE(photo_file_id, '') = '') THEN 1 ELSE 0 END AS text_flag, CASE WHEN (((' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابگویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابصوتی %' ESCAPE '!')) THEN 1 ELSE 0 END AS category_0_flag, CASE WHEN (((' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ‌ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگها %' ESCAPE '!')) THEN 1 ELSE 0 END AS category_1_flag, CASE WHEN (((' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #صدا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #موسیقی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابگویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابصوتی %' ESCAPE '!')) THEN 1 ELSE 0 END AS category_2_flag, CASE WHEN (((' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن‌ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متنها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعر %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #اشعار %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعرها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعر!_ها %' ESCAPE '!')) THEN 1 ELSE 0 END AS category_3_flag, CASE WHEN (((' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #نقاشی %' ESCAPE '!')) THEN 1 ELSE 0 END AS category_4_flag FROM posts ) SELECT COALESCE(SUM(visible_flag), 0) AS visible_posts, MAX(CASE WHEN visible_flag = 1 THEN id ELSE NULL END) AS latest_id, COALESCE(SUM(published_flag), 0) AS published_posts, COALESCE(SUM(total_flag), 0) AS total_posts, COALESCE(SUM(deleted_flag), 0) AS deleted_posts, COALESCE(SUM(text_flag), 0) AS text_posts, COALESCE(SUM(CASE WHEN visible_flag = 1 AND category_0_flag = 1 THEN 1 ELSE 0 END), 0) AS category_0, COALESCE(SUM(CASE WHEN visible_flag = 1 AND category_1_flag = 1 THEN 1 ELSE 0 END), 0) AS category_1, COALESCE(SUM(CASE WHEN visible_flag = 1 AND category_2_flag = 1 THEN 1 ELSE 0 END), 0) AS category_2, COALESCE(SUM(CASE WHEN visible_flag = 1 AND category_3_flag = 1 THEN 1 ELSE 0 END), 0) AS category_3, COALESCE(SUM(CASE WHEN visible_flag = 1 AND category_4_flag = 1 THEN 1 ELSE 0 END), 0) AS category_4 FROM flags`
+  ).first()) as Record<string, number | null> | null;
 
-  const published = await env.DB.prepare(
-    [
-      "SELECT COUNT(*) AS published_posts",
-      "FROM posts",
-      "WHERE (deleted_at IS NULL OR deleted_at = '')",
-      "AND COALESCE(is_published, 1) = 1"
-    ].join(" ")
-  ).first();
+  
 
-  const total = await env.DB.prepare(
-    [
-      "SELECT COUNT(*) AS total_posts",
-      "FROM posts",
-      "WHERE (deleted_at IS NULL OR deleted_at = '')"
-    ].join(" ")
-  ).first();
+  
 
-  const deleted = await env.DB.prepare(
-    [
-      "SELECT COUNT(*) AS deleted_posts",
-      "FROM posts",
-      "WHERE deleted_at IS NOT NULL AND deleted_at != ''"
-    ].join(" ")
-  ).first();
+  
 
-  const textOnly = await env.DB.prepare(
-    [
-      "SELECT COUNT(*) AS text_posts",
-      "FROM posts",
-      "WHERE " + base.sql,
-      "AND COALESCE(media_type, '') = ''",
-      "AND COALESCE(media_file_id, '') = ''",
-      "AND COALESCE(photo_file_id, '') = ''"
-    ].join(" ")
-  ).bind(...base.params).first();
+  
 
     const categoryConditions = MAHOON_SCALE_CATEGORY_DEFS_V1.map((category, index) => ({
     category,
@@ -2653,19 +2620,10 @@ async function mahoonScalePublicStatsObjectV1(env) {
     condition.params
   );
 
-  const categoryRow = await env.DB.prepare(
-    [
-      `SELECT ${categorySelects.join(", ")}`,
-      "FROM posts",
-      "WHERE " + base.sql
-    ].join(" ")
-  ).bind(
-    ...categoryParams,
-    ...base.params
-  ).first();
+  
 
   const categoryValues =
-    (categoryRow || {}) as Record<string, unknown>;
+    (statsRow || {}) as Record<string, unknown>;
 
   const categoryCounts = categoryConditions.map(({ category, alias }) => ({
     title: category.title,
@@ -2677,12 +2635,12 @@ async function mahoonScalePublicStatsObjectV1(env) {
   );
 
   return {
-    visible_posts: Number(visible?.visible_posts || 0),
-    published_posts: Number(published?.published_posts || 0),
-    total_posts: Number(total?.total_posts || 0),
-    deleted_posts: Number(deleted?.deleted_posts || 0),
-    text_posts: Number(textOnly?.text_posts || 0),
-    latest_id: Number(visible?.latest_id || 0),
+    visible_posts: Number(statsRow?.visible_posts || 0),
+    published_posts: Number(statsRow?.published_posts || 0),
+    total_posts: Number(statsRow?.total_posts || 0),
+    deleted_posts: Number(statsRow?.deleted_posts || 0),
+    text_posts: Number(statsRow?.text_posts || 0),
+    latest_id: Number(statsRow?.latest_id || 0),
     active_categories: categoryCounts.filter((item) => item.count > 0).length,
     category_counts: categoryCounts,
     category_map: categoryMap
