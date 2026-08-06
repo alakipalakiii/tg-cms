@@ -2780,7 +2780,7 @@ async function mahoonScalePublicHomeV1(request, env, origin) {
     const result = await env.DB.prepare(
       [
         "SELECT " + mahoonScalePublicColumnsV1(),
-        "FROM posts",
+        "FROM posts INDEXED BY idx_posts_public_created_id",
         "WHERE " + base.sql,
         "ORDER BY created_at DESC, id DESC",
         "LIMIT ?"
