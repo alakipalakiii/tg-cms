@@ -2813,27 +2813,45 @@ async function mahoonScalePublicPostsV1(request, env, origin) {
     const offset = Math.max(0, Number.isFinite(rawOffset) ? rawOffset : 0);
     const where = mahoonScaleBuildPublicWhereV1(url);
 
-    const totalRow = await env.DB.prepare(
+    const envelopeRow = await env.DB.prepare(
       [
-        "SELECT COUNT(*) AS total",
-        "FROM posts",
-        "WHERE " + where.sql
-      ].join(" ")
-    ).bind(...where.params).first();
-
-    const total = Number(totalRow?.total || 0);
-
-    const result = await env.DB.prepare(
-      [
+        "WITH filtered AS MATERIALIZED (",
         "SELECT " + mahoonScalePublicColumnsV1(),
         "FROM posts",
         "WHERE " + where.sql,
+        "), page AS MATERIALIZED (",
+        "SELECT \"id\", \"text\", \"slug\", \"created_at\", \"updated_at\", \"is_published\", \"media_type\", \"media_file_id\", \"media_unique_id\", \"media_mime_type\", \"media_file_name\", \"media_duration\", \"media_width\", \"media_height\", \"media_size\", \"photo_file_id\", \"photo_unique_id\", \"photo_width\", \"photo_height\", \"seo_title\", \"seo_description\", \"view_count\", \"last_viewed_at\"",
+        "FROM filtered",
         "ORDER BY created_at DESC, id DESC",
-        "LIMIT ? OFFSET ?"
+        "LIMIT ? OFFSET ?",
+        ")",
+        "SELECT",
+        "json_object('total', (SELECT COUNT(*) FROM filtered), 'posts', json(COALESCE((SELECT json_group_array(json_object('id', ordered_page.\"id\", 'text', ordered_page.\"text\", 'slug', ordered_page.\"slug\", 'created_at', ordered_page.\"created_at\", 'updated_at', ordered_page.\"updated_at\", 'is_published', ordered_page.\"is_published\", 'media_type', ordered_page.\"media_type\", 'media_file_id', ordered_page.\"media_file_id\", 'media_unique_id', ordered_page.\"media_unique_id\", 'media_mime_type', ordered_page.\"media_mime_type\", 'media_file_name', ordered_page.\"media_file_name\", 'media_duration', ordered_page.\"media_duration\", 'media_width', ordered_page.\"media_width\", 'media_height', ordered_page.\"media_height\", 'media_size', ordered_page.\"media_size\", 'photo_file_id', ordered_page.\"photo_file_id\", 'photo_unique_id', ordered_page.\"photo_unique_id\", 'photo_width', ordered_page.\"photo_width\", 'photo_height', ordered_page.\"photo_height\", 'seo_title', ordered_page.\"seo_title\", 'seo_description', ordered_page.\"seo_description\", 'view_count', ordered_page.\"view_count\", 'last_viewed_at', ordered_page.\"last_viewed_at\")) FROM (SELECT * FROM page ORDER BY created_at DESC, id DESC) AS ordered_page), json('[]')))) AS payload",
       ].join(" ")
-    ).bind(...where.params, limit, offset).all();
+    ).bind(...where.params, limit, offset).first();
 
-    const posts = Array.isArray(result?.results) ? result.results : [];
+    const rawEnvelope =
+      envelopeRow && typeof envelopeRow === "object"
+        ? Object.values(envelopeRow as Record<string, unknown>)[0]
+        : null;
+
+    const envelope =
+      rawEnvelope && typeof rawEnvelope === "object" && !Array.isArray(rawEnvelope)
+        ? rawEnvelope as { total?: unknown; posts?: unknown }
+        : typeof rawEnvelope === "string"
+          ? JSON.parse(rawEnvelope) as { total?: unknown; posts?: unknown }
+          : null;
+
+    if (!envelope) {
+      throw new Error("Public posts single-scan envelope is missing.");
+    }
+
+    const total = Number(envelope.total || 0);
+    const posts = Array.isArray(envelope.posts) ? envelope.posts : [];
+
+    if (!Number.isFinite(total) || total < 0) {
+      throw new Error("Public posts single-scan total is invalid.");
+    }
 
     return mahoonScaleJsonV1({
       ok: true,
