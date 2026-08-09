@@ -1416,6 +1416,7 @@ ${postSummaryText(fresh, env)}`,
       WHERE id = ?
       `
     ).bind(newText, postId).run();
+    await mahoonScaleSyncPostTagProjectionV1(env, postId, newText);
 
     const fresh = await getPostById(env, postId);
     await sendTelegramMessage(chatId, `متن پست ویرایش شد.\n\n${postSummaryText(fresh, env)}`, env, replyId);
@@ -2698,6 +2699,35 @@ function mahoonScaleTagSearchTextV1(post) {
   ].join(" "));
 }
 
+async function mahoonScaleSyncPostTagProjectionV1(env, postId, text) {
+  const id = Number(postId);
+
+  if (!env.DB || !Number.isInteger(id) || id <= 0) {
+    return;
+  }
+
+  const tags = [
+    ...new Set(
+      Array.from(
+        mahoonScaleExtractExactTagsV1(text || "")
+      ).map(String)
+    ),
+  ];
+
+  const statements = [
+    env.DB.prepare(
+      "DELETE FROM mahoon_post_tags_v1 WHERE post_id = ?"
+    ).bind(id),
+    ...tags.map((tag) =>
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO mahoon_post_tags_v1(post_id, tag_norm) VALUES (?, ?)"
+      ).bind(id, tag)
+    ),
+  ];
+
+  await env.DB.batch(statements);
+}
+
 async function mahoonScalePublicTagPostsV1(request, env, origin) {
   try {
     if (!env.DB) {
@@ -3925,6 +3955,14 @@ export default {
             media.photo_width,
             media.photo_height
           ).run();
+          const mahoonProjectionAdminCreatedId = Number(result.meta?.last_row_id || 0);
+          if (mahoonProjectionAdminCreatedId > 0) {
+            await mahoonScaleSyncPostTagProjectionV1(
+              env,
+              mahoonProjectionAdminCreatedId,
+              text
+            );
+          }
 
           return json({
             ok: true,
@@ -4116,6 +4154,7 @@ export default {
             media.photo_height,
             id
           ).run();
+          await mahoonScaleSyncPostTagProjectionV1(env, id, text);
 
           return json({
             ok: true,
@@ -4541,6 +4580,7 @@ export default {
               telegramPost.photo_height,
               existing.id
             ).run();
+            await mahoonScaleSyncPostTagProjectionV1(env, existing.id, telegramPost.text);
 
             /* mahoon-update-original-telegram-date */
             if (telegramPost.created_at) {
@@ -4617,6 +4657,14 @@ export default {
           telegramPost.photo_width,
           telegramPost.photo_height
         ).run();
+        const mahoonProjectionTelegramCreatedId = Number(result.meta?.last_row_id || 0);
+        if (mahoonProjectionTelegramCreatedId > 0) {
+          await mahoonScaleSyncPostTagProjectionV1(
+            env,
+            mahoonProjectionTelegramCreatedId,
+            telegramPost.text
+          );
+        }
 
         const insertedId = result.meta?.last_row_id || null;
 
