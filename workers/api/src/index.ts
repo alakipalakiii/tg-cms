@@ -2746,30 +2746,28 @@ async function mahoonScalePublicTagPostsV1(request, env, origin) {
     const rawOffset = Number(url.searchParams.get("offset") || "0");
     const limit = Math.max(1, Math.min(Number.isFinite(rawLimit) ? rawLimit : 20, 120));
     const offset = Math.max(0, Number.isFinite(rawOffset) ? rawOffset : 0);
-    const rawQ = String(url.searchParams.get("q") || "");
-    const q = mahoonScaleNormalizeSearchQueryV2(rawQ);
-    const qRequested = rawQ.trim() !== "";
-    const qUseful = mahoonScaleIsUsefulSearchQueryV2(q);
+    const q = mahoonScaleNormalizeExactTagV1(url.searchParams.get("q") || "");
     const base = mahoonScalePublicBaseWhereV1();
     const variants = mahoonScaleTagCandidateVariantsV1(tag);
-    const candidateSql = variants.map(() => "text LIKE ?").join(" OR ");
+    const candidateSql = variants.map(() => "p.text LIKE ?").join(" OR ");
     const candidateParams = variants.map((variant) => "%#" + variant + "%");
 
     const result = await env.DB.prepare(
       [
         "SELECT " + mahoonScalePublicColumnsV1(),
-        "FROM posts",
-        "WHERE " + base.sql,
+        "FROM mahoon_post_tags_v1 AS t",
+        "JOIN posts AS p ON p.id = t.post_id",
+        "WHERE t.tag_norm = ?",
+        "AND " + base.sql,
         "AND (" + candidateSql + ")",
         "ORDER BY created_at DESC, id DESC"
       ].join(" ")
-    ).bind(...base.params, ...candidateParams).all();
+    ).bind(normalizedTag, ...base.params, ...candidateParams).all();
 
     const candidates = Array.isArray(result?.results) ? result.results : [];
     const exact = candidates.filter((post) => {
       const tags = mahoonScaleExtractExactTagsV1(post?.text);
       if (!tags.includes(normalizedTag)) return false;
-      if (qRequested && !qUseful) return false;
       if (!q) return true;
       return mahoonScaleTagSearchTextV1(post).includes(q);
     });
