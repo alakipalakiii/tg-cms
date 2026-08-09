@@ -508,7 +508,7 @@ function getTags(text: string | null | undefined): string[] {
 }
 
 function getPublicTags(text: string | null | undefined): string[] {
-  return getTags(text).filter((tag) => !CATEGORY_TAGS.has(normalizeTag(tag)));
+  return getRawHashTags(text).filter((tag) => !CATEGORY_TAGS.has(normalizeTag(tag)));
 }
 
 function getTagHref(tag: string): string {
