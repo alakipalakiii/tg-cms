@@ -34,7 +34,10 @@ async function loadSiteSettings() {
   return payload?.settings || {};
 }
 
+// MAHOON_STAGE18C_R4_TIMING settings
+const __mahoonStage18CR4SettingsStartedAt = Date.now();
 const siteSettings = await loadSiteSettings();
+const __mahoonStage18CR4SettingsDuration = Date.now() - __mahoonStage18CR4SettingsStartedAt;
 
 const pageTitle = siteSettings.site_name || SITE.name;
 const pageDescription = siteSettings.header_description || SITE.description;
@@ -66,11 +69,24 @@ const homeConfig = {
 };
 
 // mahoon-home-ssr-v1
+// MAHOON_STAGE18C_R4_TIMING home
+const __mahoonStage18CR4HomeStartedAt = Date.now();
 const homeSnapshot = await fetchHomeSnapshot({
   apiBase: homeConfig.apiBase,
   categories: homeConfig.categories,
   timeoutMs: 6000
 });
+const __mahoonStage18CR4HomeDuration = Date.now() - __mahoonStage18CR4HomeStartedAt;
+// MAHOON_STAGE18E_R5_R4_AUTHORITATIVE_TIMING
+const __mahoonStage18ER5R4Internal = (homeSnapshot as any).__stage18eR5R4Timing;
+if (__mahoonStage18ER5R4Internal) {
+  const __mahoonStage18ER5R4Header = `primary;dur=${__mahoonStage18ER5R4Internal.primaryMs},categories;dur=${__mahoonStage18ER5R4Internal.categoryGroupMs},snapshot;dur=${__mahoonStage18ER5R4Internal.snapshotMs},assembly;dur=${__mahoonStage18ER5R4Internal.assemblyMs}`;
+  Astro.response.headers.set("X-Mahoon-Stage18E-R5-R4-Internal-Timing", __mahoonStage18ER5R4Header);
+  Astro.response.headers.append("Server-Timing", `mahoonPrimary;dur=${__mahoonStage18ER5R4Internal.primaryMs},mahoonCategories;dur=${__mahoonStage18ER5R4Internal.categoryGroupMs},mahoonSnapshot;dur=${__mahoonStage18ER5R4Internal.snapshotMs},mahoonAssembly;dur=${__mahoonStage18ER5R4Internal.assemblyMs}`);
+}
+const __mahoonStage18CR4Timing = `settings;dur=${__mahoonStage18CR4SettingsDuration},home;dur=${__mahoonStage18CR4HomeDuration}`;
+Astro.response.headers.set("X-Mahoon-Stage18C-R4-Timing", __mahoonStage18CR4Timing);
+Astro.response.headers.append("Server-Timing", `mahoonSettings;dur=${__mahoonStage18CR4SettingsDuration},mahoonHome;dur=${__mahoonStage18CR4HomeDuration}`);
 
 if (!homeSnapshot.ok) {
   Astro.response.status = 503;
@@ -105,7 +121,8 @@ function safeJson(value: unknown) {
 }
 ---
 
-<BaseLayout title={pageTitle} description={pageDescription} siteSettings={siteSettings}>
+<BaseLayout
+  preloadMahoorExtraBold={true} title={pageTitle} description={pageDescription} siteSettings={siteSettings}>
   <main class="m-home m-home-clean-v4">
     <section class="m-hero" aria-label="شعار مجله هنری ماهون">
       <div class="m-hero__panel">
@@ -971,7 +988,7 @@ function safeJson(value: unknown) {
       gap: 5px;
       font-size: clamp(24px, 3.45vw, 40px);
       line-height: 1.8;
-      font-weight: 900;
+      font-weight: 800;
     }
 
     .m-type-line {

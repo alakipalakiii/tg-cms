@@ -398,6 +398,27 @@ export async function fetchHomeSnapshot(options: {
   categories: HomeCategory[];
   timeoutMs?: number;
 }): Promise<HomeSnapshot> {
+  // MAHOON_STAGE18E_R5_R4_AUTHORITATIVE_TIMING
+  const __mahoonStage18ER5R4StartedAt = Date.now();
+  const __mahoonStage18ER5R4Timing = {
+    primaryMs: 0,
+    categoryGroupMs: 0
+  };
+  const __mahoonStage18ER5R4TimedPrimary = async <T>(operation: () => Promise<T>): Promise<T> => {
+    const startedAt = Date.now();
+    try {
+      return await operation();
+    } finally {
+      __mahoonStage18ER5R4Timing.primaryMs = Date.now() - startedAt;
+    }
+  };
+  const __mahoonStage18ER5R4TimedCategoryGroup = async <T>(operation: () => Promise<T>, startedAt: number): Promise<T> => {
+    try {
+      return await operation();
+    } finally {
+      __mahoonStage18ER5R4Timing.categoryGroupMs = Date.now() - startedAt;
+    }
+  };
   const apiBase = String(options.apiBase || "").replace(/\/+$/, "");
   const timeoutMs = Math.max(1500, Number(options.timeoutMs || 6000));
   const categories = Array.isArray(options.categories) ? options.categories : [];
@@ -405,7 +426,8 @@ export async function fetchHomeSnapshot(options: {
   const homeUrl = new URL(`${apiBase}/public/home-v1`);
   homeUrl.searchParams.set("limit", "20");
 
-  const homePromise = fetchJson(homeUrl.toString(), timeoutMs);
+  const homePromise = __mahoonStage18ER5R4TimedPrimary(() => fetchJson(homeUrl.toString(), timeoutMs));
+  const __mahoonStage18ER5R4CategoryStartedAt = Date.now();
   const categoryPromises = categories.map(async (category) => {
     const url = new URL(`${apiBase}/public/posts-v1`);
     url.searchParams.set("category", category.title);
@@ -424,8 +446,9 @@ export async function fetchHomeSnapshot(options: {
   });
   const [homeResult, categoryResults] = await Promise.all([
     homePromise,
-    Promise.all(categoryPromises)
+    __mahoonStage18ER5R4TimedCategoryGroup(() => Promise.all(categoryPromises), __mahoonStage18ER5R4CategoryStartedAt)
   ]);
+  const __mahoonStage18ER5R4NetworkReadyAt = Date.now();
 
   const posts = extractPosts(homeResult.payload);
   const stats = homeResult.payload?.stats || null;
@@ -438,7 +461,7 @@ export async function fetchHomeSnapshot(options: {
   const categoryFailure = categoryResults.find((result) => !result.ok);
   const ok = homeResult.ok && posts.length > 0 && !categoryFailure;
 
-  return {
+  const __mahoonStage18ER5R4Result: HomeSnapshot = {
     ok,
     status: ok ? 200 : 503,
     posts,
@@ -446,6 +469,20 @@ export async function fetchHomeSnapshot(options: {
     categories: categoriesPayload,
     error: homeResult.error || categoryFailure?.error || (!posts.length ? "No public posts" : "")
   };
+  const __mahoonStage18ER5R4SnapshotMs = Date.now() - __mahoonStage18ER5R4StartedAt;
+  const __mahoonStage18ER5R4AssemblyMs = Date.now() - __mahoonStage18ER5R4NetworkReadyAt;
+  Object.defineProperty(__mahoonStage18ER5R4Result, "__stage18eR5R4Timing", {
+    value: {
+      primaryMs: __mahoonStage18ER5R4Timing.primaryMs,
+      categoryGroupMs: __mahoonStage18ER5R4Timing.categoryGroupMs,
+      snapshotMs: __mahoonStage18ER5R4SnapshotMs,
+      assemblyMs: __mahoonStage18ER5R4AssemblyMs
+    },
+    enumerable: false,
+    configurable: false,
+    writable: false
+  });
+  return __mahoonStage18ER5R4Result;
 }
 
 export function renderHomeFeaturedHtml(options: {
