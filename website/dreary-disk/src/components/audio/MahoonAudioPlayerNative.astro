@@ -1,0 +1,1917 @@
+---
+interface Props {
+  audioSrc: string;
+  imageSrc?: string;
+  title: string;
+  description?: string;
+  dateText?: string;
+  categoryText?: string;
+  durationSeconds?: number;
+  fileName?: string;
+  shareUrl?: string;
+}
+
+const {
+  audioSrc,
+  imageSrc = "",
+  title,
+  description = "",
+  dateText = "",
+  categoryText = "صوتی",
+  durationSeconds = 0,
+  fileName = "",
+  shareUrl = ""
+} = Astro.props;
+
+const instanceId = "mahoon-audio-" + Math.random().toString(36).slice(2, 10);
+---
+
+<section
+  id={instanceId}
+  class="mahoon-native-player"
+  data-mahoon-native-player
+  data-duration={String(durationSeconds || 0)}
+  data-file-name={fileName}
+  data-share-url={shareUrl}
+  dir="rtl"
+>
+  <div
+    class="mahoon-native-player__blur"
+    style={imageSrc ? `background-image:url("${imageSrc.replace(/"/g, "%22")}")` : undefined}
+    aria-hidden="true"
+  ></div>
+
+  <div class="mahoon-native-player__surface">
+    <div class="mahoon-native-player__topbar">
+      <div class="mahoon-native-player__labels">
+        <span class="mahoon-native-player__badge">صوت ماهون</span>
+        <span class="mahoon-native-player__kind">{categoryText || "صوتی"}</span>
+      </div>
+
+    </div>
+
+    <div class="mahoon-native-player__hero">
+      <div class="mahoon-native-player__copy">
+        <h1 class="mahoon-native-player__title">{title}</h1>
+
+        {description && (
+          <p class="mahoon-native-player__description">{description}</p>
+        )}
+
+        <div class="mahoon-native-player__meta" aria-label="اطلاعات فایل صوتی">
+          {dateText && <span>{dateText}</span>}
+          {categoryText && <span>{categoryText}</span>}
+          <span class="js-duration-label">۰:۰۰</span>
+        </div>
+      </div>
+
+      <figure class="mahoon-native-player__cover">
+        {imageSrc ? (
+          <img src={imageSrc} alt={title} width="520" height="520" loading="eager" decoding="async" />
+        ) : (
+          <span class="mahoon-native-player__cover-fallback" aria-hidden="true">م</span>
+        )}
+      </figure>
+    </div>
+
+    <div class="mahoon-native-player__timeline">
+      <canvas class="mahoon-native-player__wave js-wave" height="100" aria-label="نوار زمانی فایل صوتی"></canvas>
+      <div class="mahoon-native-player__times">
+        <span class="js-elapsed">۰:۰۰</span>
+        <span class="js-duration">۰:۰۰</span>
+      </div>
+    </div>
+
+    <div class="mahoon-native-player__controls">
+      <div class="mahoon-native-player__control-group mahoon-native-player__control-group--utility">
+        <button class="mahoon-native-control js-download" type="button" aria-label="دانلود">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4h2v9l3-3 1.4 1.4L12 16.8l-5.4-5.4L8 10l3 3V4Zm-5 14h12v2H6v-2Z"/></svg>
+          <span>دانلود</span>
+        </button>
+        <button class="mahoon-native-control js-share" type="button" aria-label="اشتراک‌گذاری">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 16a3 3 0 0 0-2.4 1.2L8.9 13.6a3.3 3.3 0 0 0 0-3.2l6.7-3.6A3 3 0 1 0 15 5c0 .2 0 .4.1.6L8.4 9.2a3 3 0 1 0 0 5.6l6.7 3.6A3 3 0 1 0 18 16Z"/></svg>
+          <span>اشتراک‌گذاری</span>
+        </button>
+        <button class="mahoon-native-control js-forward" type="button" aria-label="ده ثانیه جلو">
+          <b>+۱۰</b>
+          <span>۱۰ ثانیه جلو</span>
+        </button>
+      </div>
+
+      <button class="mahoon-native-play js-play" type="button" aria-label="پخش">
+        <svg class="js-play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15L19 12 7 4.5Z"/></svg>
+      </button>
+
+      <div class="mahoon-native-player__control-group">
+        <button class="mahoon-native-control js-back" type="button" aria-label="ده ثانیه عقب">
+          <b>−۱۰</b>
+          <span>۱۰ ثانیه عقب</span>
+        </button>
+        <button class="mahoon-native-control js-speed" type="button" aria-label="سرعت پخش">
+          <b class="js-speed-value">۱×</b>
+          <span>سرعت</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="mahoon-native-premium">
+      <div class="mahoon-native-premium__info">
+        <span class="mahoon-native-premium__diamond" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="m5 10 5-5h12l5 5-11 17L5 10Zm5.8-3-2.7 3h5.4l-2.7-3Zm4.8 0-1.9 3h4.6l-1.9-3h-.8Zm5.6 0-2.7 3h5.4l-2.7-3ZM9 12l6 10.2L13.1 12H9Zm6.1 0L16 19l.9-7h-1.8Zm3.8 0L17 22.2 23 12h-4.1Z"/></svg>
+        </span>
+        <span class="mahoon-native-premium__copy">
+          <strong>دسترسی پریمیوم</strong>
+          <small>به تمامی آثار با مطالعه و دانلود اختصاصی دسترسی داشته باشید.</small>
+        </span>
+      </div>
+      <button class="mahoon-native-premium__cta js-premium" type="button">مشاهده بیشتر</button>
+    </div>
+  </div>
+
+  <audio class="mahoon-native-player__audio" preload="metadata" src={audioSrc}></audio>
+  <div class="mahoon-native-toast js-toast" role="status" aria-live="polite"></div>
+
+  <div class="mahoon-native-modal js-modal" aria-hidden="true">
+    <button class="mahoon-native-modal__backdrop js-close" type="button" aria-label="بستن"></button>
+    <div
+      class="mahoon-native-modal__blur"
+      style={imageSrc ? `background-image:url("${imageSrc.replace(/"/g, "%22")}")` : undefined}
+      aria-hidden="true"
+    ></div>
+
+    <section class="mahoon-native-modal__panel" role="dialog" aria-modal="true" aria-label={`پخش ${title}`}>
+      <button class="mahoon-native-modal__close js-close" type="button" aria-label="بستن">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.7 5.3 5.3 5.3 5.3-5.3 1.4 1.4-5.3 5.3 5.3 5.3-1.4 1.4-5.3-5.3-5.3 5.3-1.4-1.4 5.3-5.3-5.3-5.3 1.4-1.4Z"/></svg>
+      </button>
+
+      <span class="mahoon-native-modal__kind">{categoryText || "صوتی"}</span>
+      <h2 class="mahoon-native-modal__title">{title}</h2>
+
+      <figure class="mahoon-native-modal__cover">
+        {imageSrc ? (
+          <img src={imageSrc} alt="" width="460" height="460" loading="eager" decoding="async" />
+        ) : (
+          <span aria-hidden="true">م</span>
+        )}
+      </figure>
+
+      <div class="mahoon-native-modal__meta">
+        {dateText && <span>{dateText}</span>}
+        {categoryText && <span>{categoryText}</span>}
+        <span class="js-duration-label">۰:۰۰</span>
+      </div>
+
+      <div class="mahoon-native-modal__timeline">
+        <canvas class="mahoon-native-player__wave js-wave" height="90"></canvas>
+        <div class="mahoon-native-player__times">
+          <span class="js-elapsed">۰:۰۰</span>
+          <span class="js-duration">۰:۰۰</span>
+        </div>
+      </div>
+
+      <div class="mahoon-native-modal__controls">
+        <button class="mahoon-native-control js-back" type="button"><b>−۱۰</b><span>عقب</span></button>
+        <button class="mahoon-native-control js-forward" type="button"><b>+۱۰</b><span>جلو</span></button>
+        <button class="mahoon-native-control js-share" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 16a3 3 0 0 0-2.4 1.2L8.9 13.6a3.3 3.3 0 0 0 0-3.2l6.7-3.6A3 3 0 1 0 15 5c0 .2 0 .4.1.6L8.4 9.2a3 3 0 1 0 0 5.6l6.7 3.6A3 3 0 1 0 18 16Z"/></svg>
+          <span>اشتراک</span>
+        </button>
+        <button class="mahoon-native-play js-play" type="button" aria-label="پخش">
+          <svg class="js-play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15L19 12 7 4.5Z"/></svg>
+        </button>
+        <button class="mahoon-native-control js-download" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4h2v9l3-3 1.4 1.4L12 16.8l-5.4-5.4L8 10l3 3V4Zm-5 14h12v2H6v-2Z"/></svg>
+          <span>دانلود</span>
+        </button>
+        <button class="mahoon-native-control js-speed" type="button"><b class="js-speed-value">۱×</b><span>سرعت پخش</span></button>
+      </div>
+
+      <div class="mahoon-native-premium mahoon-native-premium--modal">
+        <div class="mahoon-native-premium__info">
+          <span class="mahoon-native-premium__diamond" aria-hidden="true">
+            <svg viewBox="0 0 32 32"><path d="m5 10 5-5h12l5 5-11 17L5 10Zm5.8-3-2.7 3h5.4l-2.7-3Zm4.8 0-1.9 3h4.6l-1.9-3h-.8Zm5.6 0-2.7 3h5.4l-2.7-3ZM9 12l6 10.2L13.1 12H9Zm6.1 0L16 19l.9-7h-1.8Zm3.8 0L17 22.2 23 12h-4.1Z"/></svg>
+          </span>
+          <span class="mahoon-native-premium__copy">
+            <strong>دسترسی پریمیوم</strong>
+            <small>به تمامی آثار با مطالعه و دانلود اختصاصی دسترسی داشته باشید.</small>
+          </span>
+        </div>
+        <button class="mahoon-native-premium__cta js-premium" type="button">مشاهده بیشتر</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="mahoon-native-sticky js-sticky" aria-hidden="true">
+    <div class="mahoon-native-sticky__cover">
+      {imageSrc ? <img src={imageSrc} alt="" width="52" height="52" /> : <span>م</span>}
+    </div>
+    <div class="mahoon-native-sticky__copy">
+      <strong>{title}</strong>
+      <span><span class="js-elapsed">۰:۰۰</span> / <span class="js-duration">۰:۰۰</span></span>
+    </div>
+    <button class="mahoon-native-sticky__play js-play" type="button" aria-label="پخش">
+      <svg class="js-play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15L19 12 7 4.5Z"/></svg>
+    </button>
+  </div>
+</section>
+
+<style>
+  .mahoon-native-player,
+  .mahoon-native-player * { box-sizing: border-box; }
+
+  .mahoon-native-player {
+    --audio-mahoon: var(--mahoon, #4b0d0d);
+    --audio-accent: #f14e5e;
+    --audio-cream: #f5eee7;
+    --audio-muted: #c4b7ae;
+    --audio-line: rgba(255,255,255,.12);
+    position: relative;
+    isolation: isolate;
+    width: 100%;
+    color: var(--audio-cream);
+    font-family: inherit;
+    direction: rtl;
+  }
+
+  .mahoon-native-player button { font: inherit; }
+
+  .mahoon-native-player__blur {
+    position: absolute;
+    inset: -20px;
+    z-index: -2;
+    background-position: center;
+    background-size: cover;
+    filter: blur(42px) saturate(.75);
+    opacity: .18;
+    border-radius: 42px;
+  }
+
+  .mahoon-native-player__surface {
+    position: relative;
+    overflow: hidden;
+    border-radius: 30px;
+    background:
+      radial-gradient(circle at 25% 15%, rgba(113,27,34,.3), transparent 34%),
+      linear-gradient(145deg, #1c1012 0%, #0b0809 60%, #090708 100%);
+    border: 1px solid rgba(255,255,255,.09);
+    box-shadow: 0 34px 80px rgba(34,11,12,.2);
+  }
+
+  .mahoon-native-player__surface::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(120deg, rgba(255,255,255,.025), transparent 26%),
+      radial-gradient(circle at 82% 10%, rgba(255,255,255,.035), transparent 28%);
+  }
+
+  .mahoon-native-player__topbar {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 26px 30px 0;
+  }
+
+  .mahoon-native-player__labels {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .mahoon-native-player__badge,
+  .mahoon-native-player__kind {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 5px 13px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .mahoon-native-player__badge {
+    color: #ff7a86;
+    border: 1px solid rgba(241,78,94,.42);
+    background: rgba(96,13,23,.22);
+  }
+
+  .mahoon-native-player__kind {
+    padding-inline: 2px;
+    color: var(--audio-muted);
+    background: transparent;
+  }
+
+  .mahoon-native-icon-button,
+  .mahoon-native-control,
+  .mahoon-native-play,
+  .mahoon-native-modal__close,
+  .mahoon-native-sticky__play {
+    appearance: none;
+    border: 0;
+    cursor: pointer;
+    color: inherit;
+    background: transparent;
+  }
+
+  .mahoon-native-icon-button {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    border: 1px solid var(--audio-line);
+    background: rgba(255,255,255,.025);
+  }
+
+  .mahoon-native-icon-button svg,
+  .mahoon-native-control svg,
+  .mahoon-native-modal__close svg,
+  .mahoon-native-sticky__play svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+  }
+
+  .mahoon-native-player__hero {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(230px, .75fr);
+    align-items: center;
+    gap: clamp(28px, 5vw, 68px);
+    padding: 28px 34px 38px;
+  }
+
+  .mahoon-native-player__copy { min-width: 0; text-align: right; }
+
+  .mahoon-native-player__title {
+    margin: 0;
+    max-width: 700px;
+    color: var(--audio-cream);
+    font-size: clamp(34px, 4.4vw, 64px);
+    font-weight: 800;
+    line-height: 1.48;
+    letter-spacing: -.025em;
+    text-wrap: balance;
+  }
+
+  .mahoon-native-player__description {
+    margin: 14px 0 0;
+    max-width: 640px;
+    color: var(--audio-muted);
+    font-size: 15px;
+    line-height: 2;
+  }
+
+  .mahoon-native-player__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin-top: 20px;
+    color: #b6a9a2;
+    font-size: 12px;
+  }
+
+  .mahoon-native-player__cover {
+    width: min(100%, 310px);
+    aspect-ratio: 1;
+    margin: 0;
+    justify-self: end;
+    overflow: hidden;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.18);
+    background: var(--audio-mahoon);
+    box-shadow: 0 24px 55px rgba(0,0,0,.32);
+  }
+
+  .mahoon-native-player__cover img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+  }
+
+  .mahoon-native-player__cover-fallback {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 90px;
+    font-weight: 800;
+  }
+
+  .mahoon-native-player__timeline {
+    position: relative;
+    z-index: 1;
+    padding: 24px 32px 0;
+    border-top: 1px solid rgba(255,255,255,.055);
+    background: rgba(0,0,0,.24);
+  }
+
+  .mahoon-native-player__wave {
+    width: 100%;
+    height: 94px;
+    display: block;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .mahoon-native-player__times {
+    display: flex;
+    direction: ltr;
+    justify-content: space-between;
+    min-height: 26px;
+    color: #978a83;
+    font-size: 10px;
+  }
+
+  .mahoon-native-player__controls {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 18px;
+    padding: 8px 32px 24px;
+    background: rgba(0,0,0,.24);
+  }
+
+  .mahoon-native-player__control-group {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 14px;
+  }
+
+  .mahoon-native-player__control-group--utility { justify-content: flex-end; }
+
+  .mahoon-native-control {
+    min-width: 62px;
+    min-height: 58px;
+    padding: 7px 8px;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    border-radius: 14px;
+    border: 1px solid var(--audio-line);
+    color: #f0e9e3;
+    background: rgba(255,255,255,.015);
+  }
+
+  .mahoon-native-control b { font-size: 13px; font-weight: 800; }
+  .mahoon-native-control span { color: #aaa09a; font-size: 10px; white-space: nowrap; }
+
+  .mahoon-native-play {
+    width: 82px;
+    height: 82px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    color: var(--audio-cream);
+    border: 1px solid rgba(241,78,94,.82);
+    background: #171113;
+    box-shadow: 0 0 0 8px rgba(241,78,94,.045), 0 14px 38px rgba(0,0,0,.3);
+  }
+
+  .mahoon-native-play svg {
+    width: 34px;
+    height: 34px;
+    fill: currentColor;
+  }
+
+  .mahoon-native-premium {
+    position: relative;
+    z-index: 1;
+    margin: 0 32px 28px;
+    min-height: 72px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    border-radius: 14px;
+    border: 1px solid rgba(241,78,94,.28);
+    background: linear-gradient(90deg, rgba(67,13,18,.72), rgba(91,16,24,.54));
+  }
+
+  .mahoon-native-premium__info {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    direction: rtl;
+    text-align: right;
+    min-width: 0;
+    margin-right: 0;
+    margin-left: auto;
+  }
+
+  .mahoon-native-premium__diamond {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    color: var(--audio-accent);
+  }
+
+  .mahoon-native-premium__diamond svg { width: 32px; height: 32px; fill: currentColor; }
+  .mahoon-native-premium__copy { min-width: 0; }
+  .mahoon-native-premium__copy strong,
+  .mahoon-native-premium__copy small { display: block; }
+
+  .mahoon-native-premium__copy strong {
+    color: #fff4ed;
+    font-size: 15px;
+    font-weight: 800;
+  }
+
+  .mahoon-native-premium__copy small {
+    margin-top: 3px;
+    color: #bca9a4;
+    font-size: 10px;
+    line-height: 1.7;
+  }
+
+  .mahoon-native-premium__cta {
+    order: -1;
+    flex: 0 0 auto;
+    min-width: 116px;
+    min-height: 42px;
+    padding: 8px 18px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.16);
+    color: #fff;
+    background: rgba(255,255,255,.02);
+    cursor: pointer;
+    font-weight: 800;
+    font-size: 12px;
+  }
+
+  .mahoon-native-player__audio { display: none; }
+
+  .mahoon-native-toast {
+    position: fixed;
+    z-index: 2147483647;
+    left: 50%;
+    top: max(18px, env(safe-area-inset-top));
+    max-width: min(90vw, 520px);
+    padding: 10px 16px;
+    border-radius: 12px;
+    color: #fff;
+    background: rgba(15,10,11,.96);
+    border: 1px solid rgba(255,255,255,.12);
+    box-shadow: 0 18px 50px rgba(0,0,0,.35);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, -18px);
+    transition: opacity .18s ease, transform .18s ease;
+    font-size: 12px;
+  }
+
+  .mahoon-native-toast.is-visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  .mahoon-native-modal {
+    position: fixed;
+    z-index: 10000;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 28px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity .2s ease, visibility .2s ease;
+  }
+
+  .mahoon-native-modal.is-open { opacity: 1; visibility: visible; }
+
+  .mahoon-native-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: rgba(5,4,4,.78);
+    backdrop-filter: blur(9px);
+  }
+
+  .mahoon-native-modal__blur {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-position: center;
+    background-size: cover;
+    filter: blur(78px) saturate(.65);
+    opacity: .22;
+    transform: scale(1.15);
+  }
+
+  .mahoon-native-modal__panel {
+    position: relative;
+    width: min(880px, 100%);
+    max-height: min(90vh, 920px);
+    overflow: auto;
+    padding: 28px 30px 24px;
+    border-radius: 28px;
+    color: var(--audio-cream);
+    background:
+      radial-gradient(circle at 35% 5%, rgba(112,29,34,.28), transparent 35%),
+      linear-gradient(150deg, #1a1011, #090708 72%);
+    border: 1px solid rgba(255,255,255,.13);
+    box-shadow: 0 34px 90px rgba(0,0,0,.55);
+    text-align: center;
+  }
+
+  .mahoon-native-modal__close {
+    position: absolute;
+    top: 18px;
+    left: 18px;
+    width: 46px;
+    height: 46px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,.16);
+    background: rgba(255,255,255,.025);
+  }
+
+  .mahoon-native-modal__kind {
+    display: block;
+    margin: 2px auto 8px;
+    color: #d2c7c1;
+    font-size: 12px;
+  }
+
+  .mahoon-native-modal__title {
+    width: min(680px, 88%);
+    margin: 0 auto 18px;
+    color: var(--audio-cream);
+    font-size: clamp(29px, 4vw, 48px);
+    font-weight: 800;
+    line-height: 1.5;
+    text-wrap: balance;
+  }
+
+  .mahoon-native-modal__cover {
+    width: min(280px, 48vw);
+    aspect-ratio: 1;
+    margin: 0 auto 12px;
+    overflow: hidden;
+    border-radius: 14px;
+    background: var(--audio-mahoon);
+    border: 1px solid rgba(255,255,255,.18);
+    box-shadow: 0 22px 52px rgba(0,0,0,.28);
+  }
+
+  .mahoon-native-modal__cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .mahoon-native-modal__cover span {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    font-size: 80px;
+    font-weight: 800;
+  }
+
+  .mahoon-native-modal__meta {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    color: #b8aaa4;
+    font-size: 10px;
+  }
+
+  .mahoon-native-modal__timeline { margin-top: 12px; }
+
+  .mahoon-native-modal__controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin: 4px 0 20px;
+  }
+
+  .mahoon-native-premium--modal { margin: 0; }
+
+  .mahoon-native-sticky {
+    position: fixed;
+    z-index: 8000;
+    left: 50%;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    width: min(620px, calc(100vw - 24px));
+    min-height: 68px;
+    padding: 8px 10px;
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr) 48px;
+    align-items: center;
+    gap: 10px;
+    border-radius: 18px;
+    color: #f7efe8;
+    background: rgba(16,10,11,.94);
+    border: 1px solid rgba(255,255,255,.12);
+    box-shadow: 0 24px 70px rgba(0,0,0,.36);
+    backdrop-filter: blur(18px);
+    opacity: 0;
+    visibility: hidden;
+    transform: translate(-50%, 18px);
+    transition: opacity .18s ease, transform .18s ease, visibility .18s ease;
+  }
+
+  .mahoon-native-sticky.is-visible {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, 0);
+  }
+
+  .mahoon-native-sticky__cover {
+    width: 52px;
+    height: 52px;
+    overflow: hidden;
+    border-radius: 11px;
+    background: var(--audio-mahoon);
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+  }
+
+  .mahoon-native-sticky__cover img { width: 100%; height: 100%; object-fit: cover; }
+
+  .mahoon-native-sticky__copy { min-width: 0; text-align: right; }
+  .mahoon-native-sticky__copy strong,
+  .mahoon-native-sticky__copy span { display: block; }
+
+  .mahoon-native-sticky__copy strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+
+  .mahoon-native-sticky__copy span {
+    margin-top: 3px;
+    color: #b1a49d;
+    font-size: 10px;
+  }
+
+  .mahoon-native-sticky__play {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 1px solid rgba(241,78,94,.65);
+    background: #1c1214;
+  }
+
+  @media (max-width: 880px) {
+    .mahoon-native-player__hero {
+      grid-template-columns: minmax(0, 1fr) minmax(190px, 240px);
+      gap: 26px;
+      padding-inline: 26px;
+    }
+    .mahoon-native-player__title { font-size: clamp(30px, 5vw, 46px); }
+    .mahoon-native-player__controls { padding-inline: 24px; }
+    .mahoon-native-player__control-group { gap: 8px; }
+    .mahoon-native-control { min-width: 56px; }
+  }
+
+  @media (max-width: 620px) {
+    .mahoon-native-player__surface { border-radius: 26px; }
+    .mahoon-native-player__topbar { padding: 20px 18px 0; }
+    .mahoon-native-player__kind { display: none; }
+
+    .mahoon-native-player__hero {
+      grid-template-columns: 1fr;
+      gap: 20px;
+      padding: 22px 18px 24px;
+    }
+
+    .mahoon-native-player__title {
+      font-size: clamp(28px, 9vw, 38px);
+      line-height: 1.58;
+    }
+
+    .mahoon-native-player__description { font-size: 13px; line-height: 1.9; }
+    .mahoon-native-player__meta { margin-top: 12px; font-size: 10px; }
+
+    .mahoon-native-player__cover {
+      width: min(54vw, 205px);
+      justify-self: center;
+      border-radius: 12px;
+    }
+
+    .mahoon-native-player__timeline { padding: 16px 16px 0; }
+    .mahoon-native-player__wave { height: 78px; }
+
+    .mahoon-native-player__controls {
+      grid-template-columns: 1fr;
+      gap: 12px;
+      padding: 4px 16px 18px;
+    }
+
+    .mahoon-native-play {
+      grid-row: 1;
+      width: 72px;
+      height: 72px;
+      justify-self: center;
+    }
+
+    .mahoon-native-player__control-group,
+    .mahoon-native-player__control-group--utility {
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .mahoon-native-player__control-group { grid-row: 2; }
+    .mahoon-native-player__control-group--utility { grid-row: 3; }
+
+    .mahoon-native-control {
+      min-width: 58px;
+      min-height: 54px;
+      padding: 6px;
+    }
+
+    .mahoon-native-control span { display: none; }
+
+    .mahoon-native-premium {
+      margin: 0 16px 18px;
+      padding: 10px 12px;
+      gap: 10px;
+      min-height: 64px;
+    }
+
+    .mahoon-native-premium__info { gap: 8px; }
+    .mahoon-native-premium__diamond { width: 30px; height: 30px; }
+    .mahoon-native-premium__diamond svg { width: 28px; height: 28px; }
+    .mahoon-native-premium__copy strong { font-size: 12px; }
+    .mahoon-native-premium__copy small { display: none; }
+
+    .mahoon-native-premium__cta {
+      min-width: 96px;
+      min-height: 38px;
+      padding: 7px 11px;
+      font-size: 10px;
+    }
+
+    .mahoon-native-modal { padding: 10px; align-items: center; }
+
+    .mahoon-native-modal__panel {
+      width: 100%;
+      max-height: 94vh;
+      padding: 22px 14px 16px;
+      border-radius: 22px;
+    }
+
+    .mahoon-native-modal__close {
+      top: 12px;
+      left: 12px;
+      width: 40px;
+      height: 40px;
+    }
+
+    .mahoon-native-modal__title {
+      width: calc(100% - 42px);
+      margin-top: 20px;
+      font-size: clamp(25px, 8vw, 34px);
+    }
+
+    .mahoon-native-modal__cover { width: min(48vw, 190px); }
+    .mahoon-native-modal__timeline { margin-top: 6px; }
+
+    .mahoon-native-modal__controls {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .mahoon-native-modal__controls .mahoon-native-control {
+      min-width: 0;
+      width: 100%;
+    }
+
+    .mahoon-native-modal__controls .mahoon-native-play {
+      width: 62px;
+      height: 62px;
+      justify-self: center;
+    }
+
+    .mahoon-native-premium--modal { margin: 0; }
+  }
+</style>
+
+
+<style>
+  /* MAHOON_STAGE19B_D_R1_PREMIUM_PHYSICAL_ORDER
+     Physical layout contract:
+     - CTA = LEFT
+     - Premium information = RIGHT
+     - Diamond = RIGHT of the premium text
+     Explicit physical grid/flex axes are used so RTL direction cannot invert the layout.
+  */
+  .mahoon-native-premium {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) !important;
+    grid-template-rows: auto !important;
+    align-items: center !important;
+    column-gap: 18px !important;
+    direction: ltr !important;
+  }
+
+  .mahoon-native-premium__cta {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    order: 0 !important;
+    justify-self: start !important;
+    align-self: center !important;
+  }
+
+  .mahoon-native-premium__info {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    flex-direction: row-reverse !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 12px !important;
+    direction: ltr !important;
+    text-align: right !important;
+  }
+
+  .mahoon-native-premium__diamond {
+    order: 0 !important;
+    flex: 0 0 auto !important;
+    margin: 0 !important;
+  }
+
+  .mahoon-native-premium__copy {
+    order: 0 !important;
+    min-width: 0 !important;
+    direction: rtl !important;
+    text-align: right !important;
+  }
+
+  @media (max-width: 620px) {
+    .mahoon-native-premium {
+      grid-template-columns: auto minmax(0, 1fr) !important;
+      column-gap: 10px !important;
+    }
+
+    .mahoon-native-premium__info {
+      gap: 8px !important;
+    }
+  }
+</style>
+
+
+<style is:global>
+  /* MAHOON_STAGE19B_E_R1_VISUAL_COMPOSITION_POLISH
+     Human visual QA fixes:
+     1) modal must escape the player's local stacking context;
+     2) suggested-post sidebar must stay behind the modal backdrop;
+     3) expanded player must fit comfortably in the viewport;
+     4) empty post-body/tag wrappers must not render as blank white pills.
+  */
+
+  .mahoon-native-player {
+    isolation: auto !important;
+  }
+
+  .mahoon-native-modal {
+    z-index: 2147483000 !important;
+    --audio-mahoon: #4b0d0d;
+    --audio-accent: #f14e5e;
+    --audio-cream: #f5eee7;
+    --audio-muted: #c4b7ae;
+  }
+
+  .mahoon-native-modal__backdrop {
+    z-index: 0 !important;
+  }
+
+  .mahoon-native-modal__blur {
+    z-index: 1 !important;
+  }
+
+  .mahoon-native-modal__panel {
+    z-index: 2 !important;
+    width: min(760px, calc(100vw - 36px)) !important;
+    max-height: calc(100dvh - 32px) !important;
+    overflow: hidden !important;
+    padding: 20px 24px 18px !important;
+  }
+
+  .mahoon-native-modal__close {
+    z-index: 5 !important;
+  }
+
+  .mahoon-native-modal__kind {
+    margin: 0 auto 4px !important;
+  }
+
+  .mahoon-native-modal__title {
+    width: min(650px, calc(100% - 70px)) !important;
+    margin: 0 auto 10px !important;
+    font-size: clamp(27px, 3.2vw, 39px) !important;
+    line-height: 1.45 !important;
+  }
+
+  .mahoon-native-modal__cover {
+    width: min(205px, 24vh) !important;
+    margin: 0 auto 8px !important;
+  }
+
+  .mahoon-native-modal__meta {
+    min-height: 18px !important;
+  }
+
+  .mahoon-native-modal__timeline {
+    margin-top: 6px !important;
+  }
+
+  .mahoon-native-modal__timeline .mahoon-native-player__wave {
+    height: 66px !important;
+  }
+
+  .mahoon-native-modal__controls {
+    gap: 8px !important;
+    margin: 2px 0 12px !important;
+  }
+
+  .mahoon-native-modal__controls .mahoon-native-control {
+    min-height: 50px !important;
+  }
+
+  .mahoon-native-modal__controls .mahoon-native-play {
+    width: 66px !important;
+    height: 66px !important;
+  }
+
+  .mahoon-native-premium--modal {
+    min-height: 58px !important;
+    padding-block: 8px !important;
+  }
+
+  article[data-audio-native="1"] .client-single-text[data-mahoon-empty="1"],
+  article[data-audio-native="1"] .client-single-tags[data-mahoon-empty="1"],
+  article[data-audio-native="1"] .client-single-text:not(:has(*)),
+  article[data-audio-native="1"] .client-single-tags:not(:has(*)) {
+    display: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  @media (max-width: 620px) {
+    .mahoon-native-modal {
+      padding: 8px !important;
+    }
+
+    .mahoon-native-modal__panel {
+      width: calc(100vw - 16px) !important;
+      max-height: calc(100dvh - 16px) !important;
+      overflow-y: auto !important;
+      padding: 18px 12px 14px !important;
+      border-radius: 20px !important;
+    }
+
+    .mahoon-native-modal__title {
+      width: calc(100% - 52px) !important;
+      margin-top: 10px !important;
+      margin-bottom: 8px !important;
+      font-size: clamp(23px, 7vw, 31px) !important;
+      line-height: 1.48 !important;
+    }
+
+    .mahoon-native-modal__cover {
+      width: min(160px, 31vh) !important;
+    }
+
+    .mahoon-native-modal__timeline .mahoon-native-player__wave {
+      height: 56px !important;
+    }
+
+    .mahoon-native-modal__controls {
+      gap: 5px !important;
+      margin-bottom: 10px !important;
+    }
+
+    .mahoon-native-modal__controls .mahoon-native-play {
+      width: 58px !important;
+      height: 58px !important;
+    }
+
+    .mahoon-native-premium--modal {
+      min-height: 54px !important;
+    }
+  }
+</style>
+
+<script is:inline>
+  (() => {
+    const FA = "۰۱۲۳۴۵۶۷۸۹";
+    const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
+
+    function toFa(value) {
+      return String(value).replace(/\d/g, (d) => FA[Number(d)]);
+    }
+
+    function formatTime(value) {
+      const seconds = Math.max(0, Number(value || 0) || 0);
+      const minutes = Math.floor(seconds / 60);
+      const rest = Math.floor(seconds % 60);
+      return toFa(minutes + ":" + String(rest).padStart(2, "0"));
+    }
+
+    function speedLabel(value) {
+      if (value === 0.75) return "۰٫۷۵×";
+      if (value === 1) return "۱×";
+      if (value === 1.25) return "۱٫۲۵×";
+      if (value === 1.5) return "۱٫۵×";
+      return "۲×";
+    }
+
+    function amplitude(index) {
+      const a = Math.abs(Math.sin(index * 0.49));
+      const b = Math.abs(Math.sin(index * 0.113 + 1.8));
+      const c = Math.abs(Math.sin(index * 0.071 + .2));
+      return Math.min(.92, .18 + a * .37 + b * .19 + c * .11);
+    }
+
+    function initialize(root) {
+      if (!(root instanceof HTMLElement) || root.dataset.initialized === "1") return;
+      root.dataset.initialized = "1";
+      /* MAHOON_STAGE19B_E_R1_EMPTY_WRAPPER_CLEANUP */
+      const audioArticle = root.closest('article[data-audio-native="1"]');
+      if (audioArticle) {
+        audioArticle
+          .querySelectorAll(".client-single-text, .client-single-tags")
+          .forEach((el) => {
+            const meaningfulText = String(el.textContent || "").trim();
+            const meaningfulElement = el.querySelector(
+              "img,video,audio,iframe,canvas,svg,a[href],button,input,textarea"
+            );
+            if (!meaningfulText && !meaningfulElement) {
+              el.setAttribute("data-mahoon-empty", "1");
+            }
+          });
+      }
+
+
+      const audio = root.querySelector(".mahoon-native-player__audio");
+      if (!(audio instanceof HTMLAudioElement)) return;
+
+      const modal = root.querySelector(".js-modal");
+      const sticky = root.querySelector(".js-sticky");
+      const toast = root.querySelector(".js-toast");
+      const surface = root.querySelector(".mahoon-native-player__surface");
+      const declaredDuration = Math.max(0, Number(root.dataset.duration || 0) || 0);
+      const title = root.querySelector(".mahoon-native-player__title")?.textContent?.trim() || document.title;
+      const shareUrl = root.dataset.shareUrl || window.location.href;
+      const fileName = root.dataset.fileName || "mahoon-audio";
+
+      let speedIndex = 1;
+      let surfaceVisible = true;
+      let toastTimer = 0;
+
+      const totalDuration = () =>
+        Number.isFinite(audio.duration) && audio.duration > 0
+          ? audio.duration
+          : declaredDuration;
+
+      function notify(message) {
+        if (!toast) return;
+        toast.textContent = message;
+        toast.classList.add("is-visible");
+        window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => toast.classList.remove("is-visible"), 1800);
+      }
+
+      function drawWave(canvas) {
+        if (!(canvas instanceof HTMLCanvasElement)) return;
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width < 2 || rect.height < 2) return;
+
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        canvas.width = Math.floor(rect.width * dpr);
+        canvas.height = Math.floor(rect.height * dpr);
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, rect.width, rect.height);
+
+        const total = totalDuration();
+        const progress = total > 0 ? Math.min(1, Math.max(0, audio.currentTime / total)) : 0;
+        const count = Math.max(48, Math.floor(rect.width / 4));
+        const gap = rect.width / count;
+        const mid = rect.height / 2;
+
+        for (let i = 0; i < count; i++) {
+          const amp = amplitude(i);
+          const height = Math.max(3, amp * rect.height * .82);
+          const played = i / Math.max(1, count - 1) <= progress;
+          ctx.fillStyle = played ? "#f14e5e" : "rgba(104,92,92,.52)";
+          ctx.fillRect(i * gap, mid - height / 2, Math.max(1.35, gap * .46), height);
+        }
+      }
+
+      function sync() {
+        /*
+          MAHOON_STAGE19B_F_R4_R5_R4_R8_NATIVE_RATE_STATE_RECONCILIATION
+
+          R6-R2 already changes audio.playbackRate correctly.
+          The visible speed label is rendered only from private speedIndex.
+          Reconcile speedIndex from the actual native playbackRate before
+          every render so owner->native rate sync and the UI cannot diverge.
+        */
+        const actualRate = Number(audio.playbackRate || 1);
+        const actualRateIndex = SPEEDS.findIndex(
+          (value) => Math.abs(value - actualRate) < .001
+        );
+        if (actualRateIndex >= 0) speedIndex = actualRateIndex;
+
+        const duration = totalDuration();
+        root.querySelectorAll(".js-elapsed").forEach((el) => {
+          el.textContent = formatTime(audio.currentTime);
+        });
+        root.querySelectorAll(".js-duration,.js-duration-label").forEach((el) => {
+          el.textContent = formatTime(duration);
+        });
+        root.querySelectorAll(".js-speed-value").forEach((el) => {
+          el.textContent = speedLabel(SPEEDS[speedIndex]);
+        });
+        root.querySelectorAll(".js-play-icon").forEach((svg) => {
+          svg.innerHTML = audio.paused
+            ? '<path d="M7 4.5v15L19 12 7 4.5Z"/>'
+            : '<path d="M7 4.5h4v15H7v-15Zm6 0h4v15h-4v-15Z"/>';
+        });
+        root.querySelectorAll(".js-wave").forEach(drawWave);
+
+        if (sticky) {
+          const visible = !audio.paused && !surfaceVisible;
+          sticky.classList.toggle("is-visible", visible);
+          sticky.setAttribute("aria-hidden", visible ? "false" : "true");
+        }
+      }
+
+      async function togglePlay() {
+        /* MAHOON_STAGE19B_F_R4_R5_R3_NATIVE_OWNER_TOGGLE */
+        const owner=window.__MAHOON_AUDIO_OWNER_API__;
+
+        if (owner && typeof owner.toggleFromNative==="function") {
+          try {
+            await owner.toggleFromNative(audio);
+          } catch {
+            notify("پخش فایل صوتی در مرورگر انجام نشد.");
+          }
+          sync();
+          return;
+        }
+
+        /*
+          Safe fallback only if the persistent owner is unavailable.
+        */
+        try {
+          if (audio.paused) await audio.play();
+          else audio.pause();
+        } catch {
+          notify("پخش فایل صوتی در مرورگر انجام نشد.");
+        }
+        sync();
+      }
+
+      root.querySelectorAll(".js-play").forEach((button) => button.addEventListener("click", togglePlay));
+
+      root.querySelectorAll(".js-back").forEach((button) => {
+        button.addEventListener("click", () => {
+          audio.currentTime = Math.max(0, audio.currentTime - 10);
+          sync();
+        });
+      });
+
+      root.querySelectorAll(".js-forward").forEach((button) => {
+        button.addEventListener("click", () => {
+          const duration = totalDuration();
+          audio.currentTime = duration > 0 ? Math.min(duration, audio.currentTime + 10) : audio.currentTime + 10;
+          sync();
+        });
+      });
+
+      root.querySelectorAll(".js-speed").forEach((button) => {
+        button.addEventListener("click", () => {
+          speedIndex = (speedIndex + 1) % SPEEDS.length;
+          audio.playbackRate = SPEEDS[speedIndex];
+          sync();
+        });
+      });
+
+      root.querySelectorAll(".js-wave").forEach((canvas) => {
+        canvas.addEventListener("click", (event) => {
+          const duration = totalDuration();
+          if (duration <= 0) return;
+          const rect = canvas.getBoundingClientRect();
+          const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / Math.max(1, rect.width)));
+          audio.currentTime = duration * ratio;
+          sync();
+        });
+      });
+
+      root.querySelectorAll(".js-download").forEach((button) => {
+        button.addEventListener("click", () => {
+          const url = audio.currentSrc || audio.src;
+          if (!url) return notify("فایل صوتی برای دانلود در دسترس نیست.");
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = fileName;
+          a.target = "_blank";
+          a.rel = "noopener";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        });
+      });
+
+      root.querySelectorAll(".js-share").forEach((button) => {
+        button.addEventListener("click", async () => {
+          try {
+            if (navigator.share) {
+              await navigator.share({ title, url: shareUrl });
+              return;
+            }
+            if (navigator.clipboard?.writeText) {
+              await navigator.clipboard.writeText(shareUrl);
+              notify("لینک مطلب کپی شد.");
+              return;
+            }
+          } catch (error) {
+            if (error && error.name === "AbortError") return;
+          }
+          notify("اشتراک‌گذاری در این مرورگر در دسترس نیست.");
+        });
+      });
+
+      root.querySelectorAll(".js-premium").forEach((button) => {
+        button.addEventListener("click", () => notify("دسترسی پریمیوم در مرحله بعد به سیستم عضویت متصل می‌شود."));
+      });
+
+      function openModal() {
+        if (!modal) return;
+        const modalPanel = modal.querySelector(".mahoon-native-modal__panel");
+        if (modalPanel) modalPanel.scrollTop = 0;
+        modal.classList.add("is-open");
+        modal.setAttribute("aria-hidden", "false");
+        document.documentElement.style.overflow = "hidden";
+        window.setTimeout(sync, 50);
+      }
+
+      function closeModal() {
+        if (!modal) return;
+        modal.classList.remove("is-open");
+        modal.setAttribute("aria-hidden", "true");
+        document.documentElement.style.overflow = "";
+      }
+
+      root.querySelectorAll(".js-expand").forEach((button) => button.addEventListener("click", openModal));
+      root.querySelectorAll(".js-close").forEach((button) => button.addEventListener("click", closeModal));
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && modal?.classList.contains("is-open")) closeModal();
+      });
+
+      audio.addEventListener("play", sync);
+      audio.addEventListener("pause", sync);
+      audio.addEventListener("ended", sync);
+      audio.addEventListener("timeupdate", sync);
+      audio.addEventListener("loadedmetadata", sync);
+      audio.addEventListener("durationchange", sync);
+
+      /*
+        MAHOON_STAGE19B_F_R4_R5_R4_R8_NATIVE_RATECHANGE_RENDER_SYNC
+        Refresh the private speed state immediately whenever R6-R2 changes
+        the muted native clock playbackRate.
+      */
+      audio.addEventListener("ratechange", sync);
+
+      audio.addEventListener("error", () => notify("بارگذاری فایل صوتی انجام نشد."));
+
+      if ("IntersectionObserver" in window && surface) {
+        const observer = new IntersectionObserver((entries) => {
+          surfaceVisible = Boolean(entries[0]?.isIntersecting);
+          sync();
+        }, { threshold: .16 });
+        observer.observe(surface);
+      }
+
+      if ("ResizeObserver" in window) {
+        const observer = new ResizeObserver(sync);
+        root.querySelectorAll(".js-wave").forEach((canvas) => observer.observe(canvas));
+      } else {
+        window.addEventListener("resize", sync, { passive: true });
+      }
+
+      audio.playbackRate = SPEEDS[speedIndex];
+      window.setTimeout(sync, 50);
+      window.setTimeout(sync, 260);
+    }
+
+    function boot() {
+      document.querySelectorAll("[data-mahoon-native-player]").forEach(initialize);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", boot, { once: true });
+    } else {
+      boot();
+    }
+
+    document.addEventListener("astro:page-load", boot);
+  })();
+</script>
+
+
+<style is:global>
+  /* MAHOON_STAGE19B_F_R1_NATIVE_DUAL_THEME */
+  .mahoon-native-sticky {
+    display: none !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-player {
+    --audio-mahoon: #6a1519;
+    --audio-accent: #d93649;
+    --audio-cream: #3d1518;
+    --audio-muted: #776865;
+    --audio-line: rgba(91,16,20,.12);
+    color: #3d1518;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-player__blur {
+    opacity: .10 !important;
+    filter: blur(48px) saturate(.75) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-player__surface {
+    background:
+      radial-gradient(circle at 24% 12%, rgba(179,74,78,.10), transparent 32%),
+      linear-gradient(145deg, #fffaf5 0%, #f7ebe1 61%, #f3e3d8 100%) !important;
+    border-color: rgba(91,16,20,.11) !important;
+    box-shadow: 0 34px 80px rgba(66,28,25,.13) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-player__surface::before {
+    background:
+      linear-gradient(120deg, rgba(255,255,255,.62), transparent 28%),
+      radial-gradient(circle at 82% 10%, rgba(91,16,20,.035), transparent 28%) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-player__title {
+    color: #3f1417 !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-player__description,
+  html[data-mahoon-theme="light"] .mahoon-native-player__meta,
+  html[data-mahoon-theme="light"] .mahoon-native-player__kind,
+  html[data-mahoon-theme="light"] .mahoon-native-player__times,
+  html[data-mahoon-theme="light"] .mahoon-native-control span {
+    color: #746562 !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-player__badge {
+    color: #a8212d !important;
+    border-color: rgba(168,33,45,.25) !important;
+    background: rgba(168,33,45,.055) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-icon-button,
+  html[data-mahoon-theme="light"] .mahoon-native-control {
+    color: #48181b !important;
+    border-color: rgba(91,16,20,.12) !important;
+    background: rgba(255,255,255,.48) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-player__timeline,
+  html[data-mahoon-theme="light"] .mahoon-native-player__controls {
+    background: rgba(91,16,20,.025) !important;
+    border-color: rgba(91,16,20,.075) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-play {
+    color: #fff !important;
+    background: #65151a !important;
+    border-color: #b62b39 !important;
+    box-shadow: 0 0 0 8px rgba(182,43,57,.05), 0 14px 38px rgba(84,28,25,.18) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-premium {
+    background: linear-gradient(90deg, rgba(255,244,239,.95), rgba(246,218,214,.88)) !important;
+    border-color: rgba(183,44,56,.20) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-premium__copy strong {
+    color: #4a1519 !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-premium__copy small {
+    color: #756360 !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-premium__cta {
+    color: #54171b !important;
+    border-color: rgba(91,16,20,.16) !important;
+    background: rgba(255,255,255,.46) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-modal__backdrop {
+    background: rgba(72,52,48,.32) !important;
+    backdrop-filter: blur(16px) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-modal__panel {
+    color: #401416 !important;
+    background:
+      radial-gradient(circle at 35% 5%, rgba(171,63,67,.10), transparent 35%),
+      linear-gradient(150deg, #fffaf5, #f4e6dc 76%) !important;
+    border-color: rgba(91,16,20,.13) !important;
+    box-shadow: 0 34px 90px rgba(61,29,27,.24) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-modal__title {
+    color: #401416 !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-modal__kind,
+  html[data-mahoon-theme="light"] .mahoon-native-modal__meta {
+    color: #756562 !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-modal__close {
+    color: #4a171a !important;
+    border-color: rgba(91,16,20,.14) !important;
+    background: rgba(255,255,255,.42) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-toast {
+    color: #3f1417 !important;
+    background: rgba(255,250,245,.97) !important;
+    border-color: rgba(91,16,20,.12) !important;
+    box-shadow: 0 18px 50px rgba(52,22,21,.18) !important;
+  }
+
+  @media (min-width: 1400px) {
+    .mahoon-native-player__surface {
+      border-radius: 32px;
+    }
+
+    .mahoon-native-player__hero {
+      grid-template-columns: minmax(0,1.35fr) minmax(260px,.65fr);
+      padding: 34px 42px 42px;
+    }
+
+    .mahoon-native-player__cover {
+      width: min(100%, 340px);
+    }
+  }
+
+  @media (min-width: 1900px) {
+    .mahoon-native-player__hero {
+      min-height: 500px;
+      padding-inline: 56px;
+    }
+
+    .mahoon-native-player__title {
+      font-size: clamp(48px, 3.3vw, 72px);
+      max-width: 830px;
+    }
+
+    .mahoon-native-player__cover {
+      width: min(100%, 390px);
+    }
+
+    .mahoon-native-player__wave {
+      height: 112px;
+    }
+
+    .mahoon-native-play {
+      width: 92px;
+      height: 92px;
+    }
+  }
+</style>
+
+<script is:inline>
+  (() => {
+    const KEY = "mahoon-global-audio-state-v1";
+
+    function readStored() {
+      try { return JSON.parse(localStorage.getItem(KEY) || "null"); }
+      catch { return null; }
+    }
+
+    function bindNativeState(root) {
+      if (!root || root.dataset.globalStateBound === "1") return;
+      root.dataset.globalStateBound = "1";
+
+      const audio = root.querySelector("audio.mahoon-native-player__audio");
+      if (!(audio instanceof HTMLAudioElement)) return;
+
+      const title = root.querySelector(".mahoon-native-player__title")?.textContent?.trim() || document.title;
+      const image = root.querySelector(".mahoon-native-player__cover img")?.src || "";
+      let engaged = false;
+      let lastEmit = 0;
+
+      function emit(force = false) {
+        if (!engaged && !force) return;
+        const now = performance.now();
+        if (!force && now - lastEmit < 450) return;
+        lastEmit = now;
+
+        const detail = {
+          src: audio.currentSrc || audio.src || "",
+          title,
+          image,
+          shareUrl: root.dataset.shareUrl || location.href,
+          currentTime: Number(audio.currentTime || 0),
+          duration: Number.isFinite(audio.duration)
+            ? audio.duration
+            : Number(root.dataset.duration || 0),
+          rate: Number(audio.playbackRate || 1),
+          wasPlaying: !audio.paused,
+          engaged: true
+        };
+
+        if (!detail.src) return;
+
+        try { localStorage.setItem(KEY, JSON.stringify(detail)); } catch {}
+        window.dispatchEvent(new CustomEvent("mahoon:audio-state", { detail }));
+      }
+
+      const stored = readStored();
+      const src = audio.currentSrc || audio.src;
+
+      if (stored?.src && stored.src === src && stored.engaged) {
+        engaged = true;
+
+        const restore = () => {
+          try {
+            if (Number.isFinite(stored.currentTime)) {
+              audio.currentTime = Math.min(
+                Number.isFinite(audio.duration) && audio.duration > 0
+                  ? audio.duration
+                  : stored.currentTime,
+                stored.currentTime
+              );
+            }
+            if (Number.isFinite(stored.rate) && stored.rate > 0) {
+              audio.playbackRate = stored.rate;
+            }
+          } catch {}
+          emit(true);
+        };
+
+        if (audio.readyState >= 1) restore();
+        else audio.addEventListener("loadedmetadata", restore, { once: true });
+      }
+
+      audio.addEventListener("play", () => {
+        engaged = true;
+        emit(true);
+      });
+
+      audio.addEventListener("pause", () => emit(true));
+      audio.addEventListener("timeupdate", () => emit(false));
+      audio.addEventListener("ratechange", () => emit(true));
+      audio.addEventListener("loadedmetadata", () => {
+        if (engaged) emit(true);
+      });
+      audio.addEventListener("ended", () => emit(true));
+
+      window.addEventListener("mahoon:theme-change", () => {
+        window.dispatchEvent(new Event("resize"));
+      });
+    }
+
+    function boot() {
+      document.querySelectorAll("[data-mahoon-native-player]").forEach(bindNativeState);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", boot, { once: true });
+    } else {
+      boot();
+    }
+
+    document.addEventListener("astro:page-load", boot);
+  })();
+</script>
+
+
+
+<style is:global>
+  /* MAHOON_STAGE19B_F_R2_LIGHT_THEME_FIDELITY */
+  html[data-mahoon-theme="light"] .mahoon-native-player {
+    --audio-mahoon: #68151a;
+    --audio-accent: #d9384a;
+    --audio-cream: #3f1518;
+    --audio-muted: #776864;
+    --audio-line: rgba(91,16,20,.12);
+    color: #3f1518 !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-player__surface {
+    background:
+      radial-gradient(circle at 26% 13%, rgba(178,72,77,.11), transparent 34%),
+      linear-gradient(145deg, #fffaf5 0%, #f8eee5 61%, #f1dfd3 100%) !important;
+    border-color: rgba(91,16,20,.12) !important;
+    box-shadow: 0 34px 80px rgba(66,28,25,.14) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-player__surface::before {
+    background:
+      linear-gradient(120deg, rgba(255,255,255,.66), transparent 29%),
+      radial-gradient(circle at 82% 10%, rgba(91,16,20,.04), transparent 28%) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-player__blur {
+    opacity: .08 !important;
+    filter: blur(48px) saturate(.7) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-player__title,
+  html[data-mahoon-theme="light"] .mahoon-native-modal__title {
+    color: #3f1417 !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-player__description,
+  html[data-mahoon-theme="light"] .mahoon-native-player__meta,
+  html[data-mahoon-theme="light"] .mahoon-native-player__kind,
+  html[data-mahoon-theme="light"] .mahoon-native-player__times,
+  html[data-mahoon-theme="light"] .mahoon-native-modal__meta,
+  html[data-mahoon-theme="light"] .mahoon-native-modal__kind {
+    color: #756662 !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-icon-button,
+  html[data-mahoon-theme="light"] .mahoon-native-control {
+    color: #48181b !important;
+    background: rgba(255,255,255,.50) !important;
+    border-color: rgba(91,16,20,.13) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-control span {
+    color: #786864 !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-play {
+    color: #fff !important;
+    background: #65151a !important;
+    border-color: #b62b39 !important;
+    box-shadow: 0 0 0 8px rgba(182,43,57,.05), 0 14px 38px rgba(84,28,25,.18) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-premium {
+    background: linear-gradient(90deg, rgba(255,244,239,.96), rgba(246,218,214,.90)) !important;
+    border-color: rgba(183,44,56,.20) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-premium__copy strong {
+    color: #4a1519 !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-premium__copy small {
+    color: #756360 !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-premium__cta {
+    color: #54171b !important;
+    background: rgba(255,255,255,.50) !important;
+    border-color: rgba(91,16,20,.16) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-modal__panel {
+    color: #401416 !important;
+    background:
+      radial-gradient(circle at 35% 5%, rgba(171,63,67,.10), transparent 35%),
+      linear-gradient(150deg, #fffaf5, #f4e6dc 76%) !important;
+    border-color: rgba(91,16,20,.13) !important;
+    box-shadow: 0 34px 90px rgba(61,29,27,.24) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-modal__backdrop {
+    background: rgba(70,52,48,.34) !important;
+    backdrop-filter: blur(14px) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-modal__close {
+    color: #4a171a !important;
+    border-color: rgba(91,16,20,.14) !important;
+    background: rgba(255,255,255,.42) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-native-toast {
+    color: #401416 !important;
+    background: rgba(255,250,245,.98) !important;
+    border-color: rgba(91,16,20,.12) !important;
+  }
+</style>
+
+
+
+<style is:global>
+  /* MAHOON_STAGE19B_F_R3_PLAYER_CONTRAST */
+  html[data-mahoon-theme="dark"] .mahoon-native-player {
+    --audio-accent: #d75a50 !important;
+    --audio-cream: #f5ece6 !important;
+    --audio-muted: #c7b8b1 !important;
+  }
+
+  html[data-mahoon-theme="dark"] .mahoon-native-player__title,
+  html[data-mahoon-theme="dark"] .mahoon-native-modal__title,
+  html[data-mahoon-theme="dark"] .mahoon-native-premium__copy strong {
+    color: #f5ece6 !important;
+  }
+
+  html[data-mahoon-theme="dark"] .mahoon-native-player__description,
+  html[data-mahoon-theme="dark"] .mahoon-native-player__meta,
+  html[data-mahoon-theme="dark"] .mahoon-native-player__kind,
+  html[data-mahoon-theme="dark"] .mahoon-native-player__times,
+  html[data-mahoon-theme="dark"] .mahoon-native-modal__kind,
+  html[data-mahoon-theme="dark"] .mahoon-native-modal__meta {
+    color: #c7b8b1 !important;
+  }
+
+  html[data-mahoon-theme="dark"] .mahoon-native-player__badge,
+  html[data-mahoon-theme="dark"] .mahoon-native-premium__diamond {
+    color: #d75a50 !important;
+  }
+
+  /* The global exact frozen sticky is now authoritative. */
+  .mahoon-native-sticky {
+    display: none !important;
+  }
+</style>
+
+<style is:global>
+  /* MAHOON_STAGE19B_F_R4_R3_NATIVE_DARK_CONTRAST_FINAL */
+
+  html[data-mahoon-theme="dark"] .mahoon-native-player {
+    --audio-accent: #d75a50 !important;
+    --audio-cream: #f5ece6 !important;
+    --audio-muted: #c7b8b1 !important;
+  }
+
+  html[data-mahoon-theme="dark"] .mahoon-native-player__title,
+  html[data-mahoon-theme="dark"] .mahoon-native-modal__title,
+  html[data-mahoon-theme="dark"] .mahoon-native-premium__copy strong {
+    color: #f5ece6 !important;
+  }
+
+  html[data-mahoon-theme="dark"] .mahoon-native-player__description,
+  html[data-mahoon-theme="dark"] .mahoon-native-player__meta,
+  html[data-mahoon-theme="dark"] .mahoon-native-player__kind,
+  html[data-mahoon-theme="dark"] .mahoon-native-player__times,
+  html[data-mahoon-theme="dark"] .mahoon-native-modal__kind,
+  html[data-mahoon-theme="dark"] .mahoon-native-modal__meta {
+    color: #c7b8b1 !important;
+  }
+
+  html[data-mahoon-theme="dark"] .mahoon-native-player__badge,
+  html[data-mahoon-theme="dark"] .mahoon-native-premium__diamond {
+    color: #d75a50 !important;
+  }
+
+  .mahoon-native-sticky {
+    display: none !important;
+  }
+</style>
+
+
+<style is:global>
+  /* MAHOON_STAGE19B_F_R4_R4_NO_INLINE_FULLSCREEN */
+  [data-mahoon-native-player] .mahoon-native-icon-button.js-expand {
+    display: none !important;
+  }
+</style>

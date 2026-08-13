@@ -4,6 +4,7 @@ import "../styles/global.css";
 import { SITE } from "../config";
 
 interface Props {
+  preloadMahoorExtraBold?: boolean;
   schema?: unknown;
   title?: string;
   description?: string;
@@ -94,10 +95,34 @@ const mahoonStructuredData = [
 const mahoonStructuredDataJson = stringifySchema(mahoonStructuredData);
 
 
+// MAHOON_STAGE18C_R4_FONT_PRELOAD
+const __mahoonStage18CR4PreloadExtraBold =
+  Astro.props.preloadMahoorExtraBold === true;
+import MahoonGlobalAudioSystem from "../components/MahoonGlobalAudioSystem.astro";
+import { ClientRouter } from "astro:transitions";
 ---
 
 <html lang="fa" dir="rtl">
   <head>
+<script is:inline>
+  (() => {
+    try {
+      const mode = localStorage.getItem("mahoon-theme-mode-v1") || "auto";
+      const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+      const resolved = mode === "dark" ? "dark" : mode === "light" ? "light" : (dark ? "dark" : "light");
+      document.documentElement.dataset.mahoonThemeMode = mode;
+      document.documentElement.dataset.mahoonTheme = resolved;
+    } catch {
+      document.documentElement.dataset.mahoonThemeMode = "auto";
+      document.documentElement.dataset.mahoonTheme =
+        matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+  })();
+</script>
+  <!-- MAHOON_STAGE18C_R4_FONT_PRELOAD -->
+  {__mahoonStage18CR4PreloadExtraBold && (
+    <link rel="preload" href="/fonts/Mahoor-FD-ExtraBold.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+  )}
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
@@ -124,7 +149,8 @@ const mahoonStructuredDataJson = stringifySchema(mahoonStructuredData);
     <script type="application/ld+json" set:html={mahoonStructuredDataJson} />
 
     <slot name="head" />
-  </head>
+    <ClientRouter />
+</head>
 
   <body>
     <header class="site-header">
@@ -286,5 +312,6 @@ const mahoonStructuredDataJson = stringifySchema(mahoonStructuredData);
   </script>
 
 
+  <MahoonGlobalAudioSystem />
 </body>
 </html>

@@ -8,6 +8,8 @@ import {
   normalizeMahoonTaxonomyToken
 } from "../../lib/taxonomy";
 
+import AudioPostLayout from "../../components/audio/AudioPostLayout.astro";
+
 export const prerender = false;
 
 const slug = Astro.params.slug || "";
@@ -406,6 +408,36 @@ const imageSrc = post ? getMediaSrc(post) : "";
 const audioSrc = post ? getAudioSrc(post) : "";
 const textBlocks = post ? makeTextBlocks(post.text) : [];
 const publicTags = post ? getPublicTags(post.text) : [];
+const isAudioPost =
+  Boolean(post) &&
+  (post?.media_type === "audio" || post?.media_type === "voice");
+
+const normalizeAudioPageText = (
+  value: string | null | undefined
+): string =>
+  String(value || "")
+    .replace(/[\u200c\u200e\u200f\u2066-\u2069]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/[؟?!،,.:؛;…]+$/g, "")
+    .trim();
+
+const audioComparableTitle = normalizeAudioPageText(postTitle);
+const rawAudioDescription = post
+  ? String(post.seo_description || "").trim()
+  : "";
+const audioPageDescription =
+  isAudioPost &&
+  normalizeAudioPageText(rawAudioDescription) === audioComparableTitle
+    ? ""
+    : rawAudioDescription;
+
+const displayTextBlocks =
+  isAudioPost &&
+  textBlocks.length > 0 &&
+  normalizeAudioPageText(String(textBlocks[0] || "")) === audioComparableTitle
+    ? textBlocks.slice(1)
+    : textBlocks;
+
 const relatedPosts = post
   ? relatedCandidates
       .filter((item) => item.id !== post.id && item.slug !== post.slug)
@@ -609,12 +641,13 @@ function getPostHref(item: PublicPost): string {
 
   <main class="client-single" data-slug={slug}>
     <div class="client-single-shell">
-      <article id="postArticle" class="client-single-card">
+      <article id="postArticle" class="client-single-card" data-audio-native={isAudioPost ? "1" : undefined}>
         {
           post ? (
             <div class="client-single-layout">
               <div class="client-single-main">
-                <header class="client-single-hero">
+                {!isAudioPost && (
+                  <header class="client-single-hero">
                   <nav class="client-single-topbar" aria-label="مسیر مطلب">
                     <a href="/">صفحه اصلی</a>
                     <a href="/posts">همه مطالب</a>
@@ -630,38 +663,21 @@ function getPostHref(item: PublicPost): string {
                     {publicMediaLabel && <span>{publicMediaLabel}</span>}
                   </div>
                 </header>
+                )}
 
                 {
                   (post.media_type === "audio" || post.media_type === "voice") ? (
-                    <>
-                      {imageSrc && (
-                        <figure class="client-single-media client-single-audio-cover" data-media-wrap>
-                          <img
-                            src={imageSrc}
-                            alt={postTitle}
-                            width="960"
-                            height="620"
-                            loading="lazy"
-                            decoding="async"
-                            onerror="this.closest('[data-media-wrap]')?.classList.add('is-hidden')"
-                          />
-                        </figure>
-                      )}
-
-                      {audioSrc && (
-                        <div class="client-audio-box">
-                          <div class="client-audio-icon">♪</div>
-                          <div class="client-audio-info">
-                            <strong>{postTitle || "پخش صوتی ماهون"}</strong>
-                            <span>
-                              {formatDuration(post.media_duration)}
-                              {post.media_size ? ` · ${formatFileSize(post.media_size)}` : ""}
-                            </span>
-                          </div>
-                          <audio controls preload="metadata" src={audioSrc}></audio>
-                        </div>
-                      )}
-                    </>
+                    <AudioPostLayout
+                      audioSrc={audioSrc}
+                      imageSrc={imageSrc || metaImage || ""}
+                      title={postTitle || "پخش صوتی ماهون"}
+                      description={audioPageDescription}
+                      dateText={formatDate(post.created_at)}
+                      categoryText={postCategory || publicMediaLabel || "صوتی"}
+                      durationSeconds={Number(post.media_duration || 0)}
+                      fileName={post.media_file_name || ""}
+                      shareUrl={canonicalUrl}
+                    />
                   ) : (post.media_type === "video" || post.media_type === "animation") && mediaUrl ? (
                     <div class="client-single-media client-single-video" data-media-wrap>
                       <div class="client-player-head">
@@ -711,7 +727,7 @@ function getPostHref(item: PublicPost): string {
                   <div class="client-single-text">
                     {
                       textBlocks.length
-                        ? textBlocks.map((block) => <p>{block}</p>)
+                        ? displayTextBlocks.map((block) => <p>{block}</p>)
                         : <p>روایتی تازه از مجله هنری ماهون</p>
                     }
                   </div>

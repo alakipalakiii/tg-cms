@@ -1,0 +1,1439 @@
+---
+import MahoonAudioPlayerNative from "./MahoonAudioPlayerNative.astro";
+
+interface Props {
+  audioSrc: string;
+  imageSrc?: string;
+  title: string;
+  description?: string;
+  dateText?: string;
+  categoryText?: string;
+  durationSeconds?: number;
+  fileName?: string;
+  shareUrl?: string;
+}
+
+const {
+  audioSrc,
+  imageSrc = "",
+  title,
+  description = "",
+  dateText = "",
+  categoryText = "صوتی",
+  durationSeconds = 0,
+  fileName = "",
+  shareUrl = ""
+} = Astro.props;
+---
+
+<section class="mahoon-audio-page" data-mahoon-audio-page>
+  <nav class="mahoon-audio-page__nav" aria-label="مسیر صفحه صوتی">
+    <a href="/">صفحه اصلی</a>
+    <span aria-hidden="true">/</span>
+    <a href="/category/%D8%B5%D9%88%D8%AA%DB%8C">آرشیو صوتی</a>
+  </nav>
+
+  <MahoonAudioPlayerNative
+    audioSrc={audioSrc}
+    imageSrc={imageSrc}
+    title={title}
+    description={description}
+    dateText={dateText}
+    categoryText={categoryText}
+    durationSeconds={durationSeconds}
+    fileName={fileName}
+    shareUrl={shareUrl}
+  />
+</section>
+
+<style>
+  .mahoon-audio-page {
+    width: 100%;
+    margin: 0;
+    font-family: inherit;
+  }
+
+  .mahoon-audio-page__nav {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    margin: 0 0 14px;
+    padding: 0 4px;
+    color: var(--muted, #857873);
+    font-size: 12px;
+  }
+
+  .mahoon-audio-page__nav a {
+    color: var(--mahoon, #4b0d0d);
+    text-decoration: none;
+  }
+
+  .mahoon-audio-page__nav a:hover {
+    text-decoration: underline;
+  }
+</style>
+
+<style is:global>
+  article[data-audio-native="1"] {
+    overflow: visible !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  article[data-audio-native="1"] .client-single-actions {
+    display: none !important;
+  }
+
+  article[data-audio-native="1"] .client-single-text {
+    margin-top: 24px;
+    padding: 28px 30px;
+    border-radius: 22px;
+    background: rgba(255, 252, 247, .84);
+    border: 1px solid rgba(75, 13, 13, .08);
+  }
+
+  article[data-audio-native="1"] .client-single-tags {
+    margin-top: 20px;
+    padding: 20px 24px;
+    border-radius: 20px;
+    background: rgba(255, 252, 247, .72);
+    border: 1px solid rgba(75, 13, 13, .07);
+  }
+
+  @media (max-width: 620px) {
+    article[data-audio-native="1"] .client-single-text {
+      padding: 22px 18px;
+      border-radius: 18px;
+    }
+
+    article[data-audio-native="1"] .client-single-tags {
+      padding: 16px;
+      border-radius: 16px;
+    }
+  }
+</style>
+
+
+<style is:global>
+  /* MAHOON_STAGE19B_F_R1_DEDICATED_AUDIO_SHELL */
+  body:has(article[data-audio-native="1"]) {
+    min-height: 100dvh;
+    background:
+      radial-gradient(circle at 74% 16%, rgba(117,29,34,.08), transparent 26%),
+      linear-gradient(180deg, #fffaf5 0%, #f7eee5 62%, #f2e5da 100%) !important;
+  }
+
+  html[data-mahoon-theme="dark"] body:has(article[data-audio-native="1"]) {
+    background:
+      radial-gradient(circle at 72% 12%, rgba(121,29,36,.18), transparent 28%),
+      radial-gradient(circle at 12% 70%, rgba(77,18,23,.13), transparent 34%),
+      linear-gradient(180deg, #171012 0%, #0d090a 62%, #090708 100%) !important;
+  }
+
+  [data-mahoon-audio-shell="1"] {
+    width: min(1280px, calc(100% - 36px)) !important;
+    max-width: 1280px !important;
+    min-height: 0 !important;
+    margin: 28px auto 66px !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  [data-mahoon-audio-shell="1"] > article[data-audio-native="1"] {
+    order: 1 !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  [data-mahoon-audio-secondary="1"] {
+    order: 2 !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    margin: 30px 0 0 !important;
+    padding: 24px !important;
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    border-radius: 24px !important;
+    background: rgba(255,250,245,.74) !important;
+    border: 1px solid rgba(91,16,20,.08) !important;
+    box-shadow: 0 20px 60px rgba(53,25,22,.08) !important;
+    backdrop-filter: blur(14px);
+  }
+
+  html[data-mahoon-theme="dark"] [data-mahoon-audio-secondary="1"] {
+    background: rgba(31,20,22,.78) !important;
+    border-color: rgba(255,255,255,.08) !important;
+    box-shadow: 0 24px 70px rgba(0,0,0,.28) !important;
+    color: #f5ece6 !important;
+  }
+
+  [data-mahoon-audio-suggestions="1"] {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  [data-mahoon-audio-suggestion-list="1"] {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+    gap: 14px !important;
+    align-items: stretch !important;
+  }
+
+  [data-mahoon-audio-suggestion-list="1"] > * {
+    min-width: 0 !important;
+    width: auto !important;
+    margin: 0 !important;
+  }
+
+  body:has(article[data-audio-native="1"]) .mahoon-audio-page {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  body:has(article[data-audio-native="1"]) .mahoon-audio-page__nav {
+    min-height: 42px;
+    margin: 0 0 14px !important;
+    padding: 0 4px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+  }
+
+  html[data-mahoon-theme="dark"] body:has(article[data-audio-native="1"]) .mahoon-audio-page__nav,
+  html[data-mahoon-theme="dark"] body:has(article[data-audio-native="1"]) .mahoon-audio-page__nav a {
+    color: #e4c8c7 !important;
+  }
+
+  @media (max-width: 900px) {
+    [data-mahoon-audio-shell="1"] {
+      width: min(100% - 24px, 1040px) !important;
+      margin-top: 18px !important;
+    }
+
+    [data-mahoon-audio-secondary="1"] {
+      margin-top: 22px !important;
+      padding: 18px !important;
+      border-radius: 20px !important;
+    }
+
+    [data-mahoon-audio-suggestion-list="1"] {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+  }
+
+  @media (max-width: 620px) {
+    [data-mahoon-audio-shell="1"] {
+      width: calc(100% - 16px) !important;
+      margin: 10px auto 90px !important;
+    }
+
+    [data-mahoon-audio-secondary="1"] {
+      margin-top: 16px !important;
+      padding: 14px !important;
+      border-radius: 18px !important;
+    }
+
+    [data-mahoon-audio-suggestion-list="1"] {
+      grid-template-columns: 1fr !important;
+      gap: 10px !important;
+    }
+
+    body:has(article[data-audio-native="1"]) .mahoon-audio-page__nav {
+      overflow-x: auto;
+      white-space: nowrap;
+      scrollbar-width: none;
+    }
+  }
+
+  @media (min-width: 1800px) {
+    [data-mahoon-audio-shell="1"] {
+      max-width: 1480px !important;
+      width: min(1480px, calc(100% - 72px)) !important;
+      margin-top: 44px !important;
+    }
+
+    [data-mahoon-audio-secondary="1"] {
+      padding: 30px !important;
+    }
+  }
+</style>
+
+<script is:inline>
+  (() => {
+    function initDedicatedAudioShell() {
+      const article = document.querySelector('article[data-audio-native="1"]');
+      if (!article || article.dataset.audioShellBound === "1") return;
+
+      let shell = article.parentElement;
+      let hops = 0;
+
+      while (shell && shell !== document.body && hops < 5) {
+        const directChildren = [...shell.children];
+        const articleChild = directChildren.find(el => el === article || el.contains(article));
+        const secondary = directChildren.filter(el => el !== articleChild);
+
+        if (articleChild && secondary.length > 0) break;
+
+        shell = shell.parentElement;
+        hops += 1;
+      }
+
+      if (!shell || shell === document.body) return;
+
+      article.dataset.audioShellBound = "1";
+      shell.setAttribute("data-mahoon-audio-shell", "1");
+
+      const articleBranch = [...shell.children].find(el => el === article || el.contains(article));
+
+      for (const child of [...shell.children]) {
+        if (child === articleBranch) continue;
+        child.setAttribute("data-mahoon-audio-secondary", "1");
+      }
+
+      const secondaryRoots = [...shell.querySelectorAll('[data-mahoon-audio-secondary="1"]')];
+      const all = secondaryRoots.flatMap(root => [root, ...root.querySelectorAll("*")]);
+
+      const heading = all.find(el =>
+        String(el.textContent || "").replace(/\s+/g, " ").trim() === "مطالب پیشنهادی"
+      ) || all.find(el => String(el.textContent || "").includes("مطالب پیشنهادی"));
+
+      if (heading) {
+        const suggestions =
+          heading.closest('[data-mahoon-audio-secondary="1"]') ||
+          heading.parentElement;
+
+        suggestions?.setAttribute("data-mahoon-audio-suggestions", "1");
+
+        const candidates = suggestions ? [suggestions, ...suggestions.querySelectorAll("*")] : [];
+        let best = null;
+        let bestScore = 0;
+
+        for (const el of candidates) {
+          const children = [...el.children];
+          const score = children.filter(child =>
+            child.matches('a[href*="/post/"]') ||
+            child.querySelector('a[href*="/post/"]')
+          ).length;
+
+          if (score >= 2 && score > bestScore) {
+            best = el;
+            bestScore = score;
+          }
+        }
+
+        if (best) {
+          best.setAttribute("data-mahoon-audio-suggestion-list", "1");
+        }
+      }
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initDedicatedAudioShell, { once: true });
+    } else {
+      initDedicatedAudioShell();
+    }
+
+    document.addEventListener("astro:page-load", initDedicatedAudioShell);
+  })();
+</script>
+
+
+
+<style is:global>
+  /* MAHOON_STAGE19B_F_R2_REAL_DEDICATED_SHELL */
+  [data-mahoon-audio-shell-r2="1"] {
+    width: min(1320px, calc(100% - 36px)) !important;
+    max-width: 1320px !important;
+    min-height: 0 !important;
+    margin: 28px auto 72px !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0 !important;
+    grid-template-columns: none !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  [data-mahoon-audio-primary-r2="1"] {
+    order: 1 !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  [data-mahoon-audio-primary-r2="1"] article[data-audio-native="1"],
+  article[data-audio-native="1"] {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  [data-mahoon-audio-secondary-r2="1"] {
+    order: 2 !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 28px 0 0 !important;
+    padding: 22px !important;
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    border-radius: 24px !important;
+    background: rgba(255,250,245,.78) !important;
+    border: 1px solid rgba(91,16,20,.08) !important;
+    box-shadow: 0 20px 60px rgba(53,25,22,.08) !important;
+    backdrop-filter: blur(14px);
+  }
+
+  html[data-mahoon-theme="dark"] [data-mahoon-audio-secondary-r2="1"] {
+    color: #f5ece6 !important;
+    background: rgba(30,20,22,.82) !important;
+    border-color: rgba(255,255,255,.08) !important;
+    box-shadow: 0 24px 70px rgba(0,0,0,.28) !important;
+  }
+
+  [data-mahoon-suggestion-list-r2="1"] {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+    gap: 14px !important;
+    align-items: stretch !important;
+    width: 100% !important;
+  }
+
+  [data-mahoon-suggestion-list-r2="1"] > * {
+    min-width: 0 !important;
+    width: auto !important;
+    margin: 0 !important;
+  }
+
+  body:has(article[data-audio-native="1"]) {
+    overflow-x: clip;
+  }
+
+  body:has(article[data-audio-native="1"]) .mahoon-audio-page {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  @media (max-width: 900px) {
+    [data-mahoon-audio-shell-r2="1"] {
+      width: calc(100% - 24px) !important;
+      margin-top: 18px !important;
+    }
+
+    [data-mahoon-audio-secondary-r2="1"] {
+      margin-top: 20px !important;
+      padding: 17px !important;
+      border-radius: 20px !important;
+    }
+
+    [data-mahoon-suggestion-list-r2="1"] {
+      grid-template-columns: repeat(2, minmax(0,1fr)) !important;
+    }
+  }
+
+  @media (max-width: 620px) {
+    [data-mahoon-audio-shell-r2="1"] {
+      width: calc(100% - 16px) !important;
+      margin: 10px auto 92px !important;
+    }
+
+    [data-mahoon-audio-secondary-r2="1"] {
+      margin-top: 14px !important;
+      padding: 13px !important;
+      border-radius: 18px !important;
+    }
+
+    [data-mahoon-suggestion-list-r2="1"] {
+      grid-template-columns: 1fr !important;
+      gap: 10px !important;
+    }
+  }
+
+  @media (min-width: 1800px) {
+    [data-mahoon-audio-shell-r2="1"] {
+      width: min(1500px, calc(100% - 72px)) !important;
+      max-width: 1500px !important;
+      margin-top: 42px !important;
+    }
+
+    [data-mahoon-audio-secondary-r2="1"] {
+      padding: 28px !important;
+    }
+  }
+</style>
+
+<script is:inline>
+  (() => {
+    function branchBelow(common, node) {
+      let current = node;
+      while (current && current.parentElement !== common) {
+        current = current.parentElement;
+      }
+      return current && current.parentElement === common ? current : null;
+    }
+
+    function lowestCommonAncestor(a, b) {
+      if (!a || !b) return null;
+      const seen = new Set();
+      let x = a;
+      while (x) {
+        seen.add(x);
+        x = x.parentElement;
+      }
+      x = b;
+      while (x) {
+        if (seen.has(x)) return x;
+        x = x.parentElement;
+      }
+      return null;
+    }
+
+    function findSuggestionContainer(heading) {
+      if (!heading) return null;
+
+      const aside = heading.closest("aside");
+      if (aside) return aside;
+
+      let node = heading;
+      while (node && node !== document.body) {
+        const rect = node.getBoundingClientRect();
+        const text = String(node.textContent || "").replace(/\s+/g, " ").trim();
+        const links = node.querySelectorAll('a[href*="/post/"]').length;
+
+        if (
+          rect.width > 200 &&
+          rect.height > 160 &&
+          text.includes("مطالب پیشنهادی") &&
+          links >= 2
+        ) {
+          return node;
+        }
+
+        node = node.parentElement;
+      }
+
+      return heading.parentElement;
+    }
+
+    function markSuggestionList(container) {
+      if (!container) return;
+
+      const candidates = [container, ...container.querySelectorAll("*")];
+      let best = null;
+      let score = 0;
+
+      for (const el of candidates) {
+        const direct = [...el.children].filter(child =>
+          child.matches('a[href*="/post/"]') ||
+          child.querySelector('a[href*="/post/"]')
+        ).length;
+
+        if (direct >= 2 && direct > score) {
+          best = el;
+          score = direct;
+        }
+      }
+
+      if (best) best.setAttribute("data-mahoon-suggestion-list-r2", "1");
+    }
+
+    function bindDedicatedShell() {
+      const article = document.querySelector('article[data-audio-native="1"]');
+      if (!article || article.dataset.mahoonR2ShellBound === "1") return;
+
+      const candidates = [...document.querySelectorAll("body *")];
+      const heading =
+        candidates.find(el =>
+          String(el.textContent || "").replace(/\s+/g, " ").trim() === "مطالب پیشنهادی"
+        ) ||
+        candidates.find(el =>
+          String(el.textContent || "").includes("مطالب پیشنهادی")
+        );
+
+      const suggestions = findSuggestionContainer(heading);
+      if (!suggestions) return;
+
+      let common = lowestCommonAncestor(article, suggestions);
+
+      while (
+        common &&
+        common !== document.body &&
+        (
+          !branchBelow(common, article) ||
+          !branchBelow(common, suggestions) ||
+          branchBelow(common, article) === branchBelow(common, suggestions)
+        )
+      ) {
+        common = common.parentElement;
+      }
+
+      if (!common || common === document.body) return;
+
+      const primary = branchBelow(common, article);
+      const secondary = branchBelow(common, suggestions);
+
+      if (!primary || !secondary || primary === secondary) return;
+
+      article.dataset.mahoonR2ShellBound = "1";
+      common.setAttribute("data-mahoon-audio-shell-r2", "1");
+      primary.setAttribute("data-mahoon-audio-primary-r2", "1");
+      secondary.setAttribute("data-mahoon-audio-secondary-r2", "1");
+
+      markSuggestionList(suggestions);
+
+      document.documentElement.dataset.mahoonAudioShellR2 = "bound";
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", bindDedicatedShell, { once: true });
+    } else {
+      bindDedicatedShell();
+    }
+
+    window.setTimeout(bindDedicatedShell, 250);
+    window.setTimeout(bindDedicatedShell, 900);
+    document.addEventListener("astro:page-load", bindDedicatedShell);
+  })();
+</script>
+
+
+
+<style is:global>
+  /* MAHOON_STAGE19B_F_R3_AUDIO_IS_THE_PAGE */
+
+  [data-mahoon-r3-audio-shell="1"] {
+    width: min(1320px, calc(100% - 36px)) !important;
+    max-width: 1320px !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 28px auto 70px !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: none !important;
+    grid-template-rows: none !important;
+    gap: 0 !important;
+    background: transparent !important;
+    background-image: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  [data-mahoon-r3-audio-primary="1"],
+  [data-mahoon-r3-audio-flatten="1"] {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    background: transparent !important;
+    background-image: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  [data-mahoon-r3-audio-primary="1"] {
+    order: 1 !important;
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+  }
+
+  article[data-audio-native="1"] {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    background-image: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  article[data-audio-native="1"] > .mahoon-audio-page,
+  article[data-audio-native="1"] .mahoon-audio-page,
+  article[data-audio-native="1"] [data-mahoon-native-player],
+  article[data-audio-native="1"] .mahoon-native-player,
+  article[data-audio-native="1"] .mahoon-native-player__surface {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  body:has(article[data-audio-native="1"]) .mahoon-audio-page__nav {
+    width: auto !important;
+    margin: 0 4px 14px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  [data-mahoon-r3-audio-secondary="1"] {
+    order: 2 !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 30px 0 0 !important;
+    padding: 0 !important;
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    background: transparent !important;
+    background-image: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  [data-mahoon-r3-suggestions="1"] {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 22px !important;
+    border-radius: 24px !important;
+    background: rgba(255,250,245,.78) !important;
+    border: 1px solid rgba(91,16,20,.08) !important;
+    box-shadow: 0 18px 55px rgba(54,24,22,.07) !important;
+  }
+
+  html[data-mahoon-theme="dark"] [data-mahoon-r3-suggestions="1"] {
+    color: #f5ece6 !important;
+    background: #181214 !important;
+    border-color: rgba(255,255,255,.085) !important;
+    box-shadow: 0 20px 62px rgba(0,0,0,.20) !important;
+  }
+
+  [data-mahoon-r3-suggestion-list="1"] {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(220px,1fr)) !important;
+    align-items: stretch !important;
+    gap: 14px !important;
+  }
+
+  [data-mahoon-r3-suggestion-list="1"] > * {
+    min-width: 0 !important;
+    width: auto !important;
+    margin: 0 !important;
+  }
+
+  @media (max-width: 900px) {
+    [data-mahoon-r3-audio-shell="1"] {
+      width: calc(100% - 24px) !important;
+      margin-top: 18px !important;
+    }
+
+    [data-mahoon-r3-suggestion-list="1"] {
+      grid-template-columns: repeat(2,minmax(0,1fr)) !important;
+    }
+  }
+
+  @media (max-width: 620px) {
+    [data-mahoon-r3-audio-shell="1"] {
+      width: calc(100% - 16px) !important;
+      margin: 10px auto 92px !important;
+    }
+
+    [data-mahoon-r3-suggestions="1"] {
+      padding: 13px !important;
+      border-radius: 18px !important;
+    }
+
+    [data-mahoon-r3-suggestion-list="1"] {
+      grid-template-columns: 1fr !important;
+      gap: 10px !important;
+    }
+  }
+
+  @media (min-width: 1800px) {
+    [data-mahoon-r3-audio-shell="1"] {
+      width: min(1500px, calc(100% - 72px)) !important;
+      max-width: 1500px !important;
+      margin-top: 42px !important;
+    }
+  }
+</style>
+
+<script is:inline>
+  (() => {
+    /* MAHOON_STAGE19B_F_R3_STRUCTURAL_SHELL_BINDER */
+
+    function branchBelow(common, node) {
+      let x = node;
+      while (x && x.parentElement !== common) x = x.parentElement;
+      return x && x.parentElement === common ? x : null;
+    }
+
+    function lca(a, b) {
+      if (!a || !b) return null;
+      const seen = new Set();
+      let x = a;
+      while (x) {
+        seen.add(x);
+        x = x.parentElement;
+      }
+      x = b;
+      while (x) {
+        if (seen.has(x)) return x;
+        x = x.parentElement;
+      }
+      return null;
+    }
+
+    function findSuggestedHeading() {
+      const all = [...document.querySelectorAll("body *")];
+      return (
+        all.find(el =>
+          String(el.textContent || "").replace(/\s+/g, " ").trim() === "مطالب پیشنهادی"
+        ) ||
+        all.find(el =>
+          String(el.textContent || "").includes("مطالب پیشنهادی")
+        ) ||
+        null
+      );
+    }
+
+    function findSuggestionBox(heading) {
+      if (!heading) return null;
+      const aside = heading.closest("aside");
+      if (aside) return aside;
+
+      let node = heading;
+      while (node && node !== document.body) {
+        const rect = node.getBoundingClientRect();
+        const text = String(node.textContent || "").replace(/\s+/g, " ").trim();
+        const postLinks = node.querySelectorAll('a[href*="/post/"]').length;
+        if (
+          rect.width > 180 &&
+          rect.height > 150 &&
+          text.includes("مطالب پیشنهادی") &&
+          postLinks >= 2
+        ) {
+          return node;
+        }
+        node = node.parentElement;
+      }
+      return heading.parentElement;
+    }
+
+    function markSuggestionList(box) {
+      if (!box) return;
+      const candidates = [box, ...box.querySelectorAll("*")];
+      let best = null;
+      let score = 0;
+
+      for (const el of candidates) {
+        const direct = [...el.children].filter(child =>
+          child.matches('a[href*="/post/"]') ||
+          child.querySelector('a[href*="/post/"]')
+        ).length;
+
+        if (direct >= 2 && direct > score) {
+          best = el;
+          score = direct;
+        }
+      }
+
+      if (best) best.setAttribute("data-mahoon-r3-suggestion-list", "1");
+    }
+
+    function flattenPath(article, primary, common) {
+      let x = article;
+      while (x && x !== common) {
+        x.setAttribute("data-mahoon-r3-audio-flatten", "1");
+        if (x === primary) break;
+        x = x.parentElement;
+      }
+    }
+
+    function enforce() {
+      const article = document.querySelector('article[data-audio-native="1"]');
+      if (!article) return;
+
+      const heading = findSuggestedHeading();
+      const suggestionBox = findSuggestionBox(heading);
+
+      if (!suggestionBox) {
+        article.setAttribute("data-mahoon-r3-audio-flatten", "1");
+        return;
+      }
+
+      let common = lca(article, suggestionBox);
+      while (common && common !== document.body) {
+        const p = branchBelow(common, article);
+        const s = branchBelow(common, suggestionBox);
+        if (p && s && p !== s) break;
+        common = common.parentElement;
+      }
+
+      if (!common || common === document.body) return;
+
+      const primary = branchBelow(common, article);
+      const secondary = branchBelow(common, suggestionBox);
+      if (!primary || !secondary || primary === secondary) return;
+
+      common.setAttribute("data-mahoon-r3-audio-shell", "1");
+      primary.setAttribute("data-mahoon-r3-audio-primary", "1");
+      secondary.setAttribute("data-mahoon-r3-audio-secondary", "1");
+      suggestionBox.setAttribute("data-mahoon-r3-suggestions", "1");
+      markSuggestionList(suggestionBox);
+      flattenPath(article, primary, common);
+
+      /*
+        Physically place the secondary editorial branch after the audio branch.
+        This avoids relying on the old desktop Grid source order.
+      */
+      if (primary.nextElementSibling !== secondary) {
+        primary.after(secondary);
+      }
+
+      for (const [el, props] of [
+        [common, {
+          display: "flex",
+          flexDirection: "column",
+          width: "min(1320px, calc(100% - 36px))",
+          maxWidth: "1320px",
+          minHeight: "0",
+          height: "auto",
+          padding: "0",
+          background: "transparent",
+          border: "0",
+          boxShadow: "none",
+          overflow: "visible"
+        }],
+        [primary, {
+          width: "100%",
+          maxWidth: "none",
+          minHeight: "0",
+          height: "auto",
+          margin: "0",
+          padding: "0",
+          position: "static",
+          background: "transparent",
+          border: "0",
+          boxShadow: "none"
+        }],
+        [secondary, {
+          width: "100%",
+          maxWidth: "none",
+          minHeight: "0",
+          height: "auto",
+          marginTop: "30px",
+          padding: "0",
+          position: "static",
+          background: "transparent",
+          border: "0",
+          boxShadow: "none"
+        }]
+      ]) {
+        if (!el) continue;
+        for (const [name, value] of Object.entries(props)) {
+          el.style.setProperty(
+            name.replace(/[A-Z]/g, c => "-" + c.toLowerCase()),
+            value,
+            "important"
+          );
+        }
+      }
+
+      let ancestor = article;
+      while (ancestor && ancestor !== common) {
+        ancestor.style.setProperty("min-height", "0", "important");
+        ancestor.style.setProperty("height", "auto", "important");
+        ancestor.style.setProperty("background", "transparent", "important");
+        ancestor.style.setProperty("border", "0", "important");
+        ancestor.style.setProperty("box-shadow", "none", "important");
+        if (ancestor !== article.querySelector(".mahoon-audio-page__nav")) {
+          ancestor.style.setProperty("max-width", "none", "important");
+        }
+        if (ancestor === primary) break;
+        ancestor = ancestor.parentElement;
+      }
+
+      document.documentElement.dataset.mahoonAudioShellR3 = "bound";
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", enforce, { once: true });
+    } else {
+      enforce();
+    }
+
+    setTimeout(enforce, 120);
+    setTimeout(enforce, 550);
+    setTimeout(enforce, 1200);
+    document.addEventListener("astro:page-load", enforce);
+  })();
+</script>
+
+<style is:global>
+  /* MAHOON_STAGE19B_F_R4_R3_AUDIO_EXPERIENCE_STAGE */
+
+  .mahoon-r4-audio-experience {
+    width: min(1320px, calc(100% - 36px));
+    max-width: 1320px;
+    margin: 22px auto 34px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    direction: rtl;
+  }
+
+  .mahoon-r4-audio-nav {
+    width: 100%;
+    margin: 0 0 14px;
+    padding: 0 4px;
+  }
+
+  .mahoon-r4-audio-nav:empty {
+    display: none;
+  }
+
+  .mahoon-r4-audio-stage {
+    width: 100%;
+    min-width: 0;
+    position: relative;
+  }
+
+  .mahoon-r4-audio-stage > [data-mahoon-native-player],
+  .mahoon-r4-audio-stage .mahoon-native-player,
+  .mahoon-r4-audio-stage .mahoon-native-player__surface {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .mahoon-r4-audio-extras {
+    width: 100%;
+    margin-top: 10px;
+    display: grid;
+    gap: 14px;
+  }
+
+  .mahoon-r4-audio-extras:empty {
+    display: none;
+  }
+
+  .mahoon-r4-audio-extras > * {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+  }
+
+  .mahoon-r4-audio-suggestions {
+    width: 100%;
+    margin-top: 22px;
+    padding: 22px;
+    border-radius: 24px;
+    background: rgba(255,250,245,.76);
+    border: 1px solid rgba(91,16,20,.08);
+    box-shadow: 0 18px 56px rgba(53,25,22,.07);
+  }
+
+  html[data-mahoon-theme="dark"] .mahoon-r4-audio-suggestions {
+    color: #f5ece6;
+    background: #181214;
+    border-color: rgba(255,255,255,.085);
+    box-shadow: 0 20px 64px rgba(0,0,0,.22);
+  }
+
+
+  /* R4-R3: Suggested Posts must visually belong to LIGHT/DARK site theme. */
+  html[data-mahoon-theme="light"] .mahoon-r4-audio-suggestions {
+    color: #4b1719 !important;
+    background: rgba(255,250,245,.90) !important;
+    border-color: rgba(91,16,20,.10) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-r4-audio-suggestions
+  :where(h1,h2,h3,h4,h5,h6,strong) {
+    color: #4b1719 !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-r4-audio-suggestions
+  [data-mahoon-r4-suggestion-list="1"] > * {
+    color: #4b1719 !important;
+    background: #fffaf5 !important;
+    border-color: rgba(91,16,20,.11) !important;
+    box-shadow: 0 10px 28px rgba(64,26,22,.06) !important;
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-r4-audio-suggestions
+  [data-mahoon-r4-suggestion-list="1"] > * :where(a,strong,h1,h2,h3,h4,h5,h6) {
+    color: #4b1719 !important;
+  }
+
+  html[data-mahoon-theme="dark"] .mahoon-r4-audio-suggestions
+  :where(h1,h2,h3,h4,h5,h6,strong) {
+    color: #f5ece6 !important;
+  }
+
+  html[data-mahoon-theme="dark"] .mahoon-r4-audio-suggestions
+  [data-mahoon-r4-suggestion-list="1"] > * {
+    color: #f5ece6 !important;
+    background: #181214 !important;
+    border-color: rgba(255,255,255,.09) !important;
+    box-shadow: none !important;
+  }
+
+  html[data-mahoon-theme="dark"] .mahoon-r4-audio-suggestions
+  [data-mahoon-r4-suggestion-list="1"] > * :where(a,strong,h1,h2,h3,h4,h5,h6) {
+    color: #f5ece6 !important;
+  }
+
+  .mahoon-r4-audio-suggestions [data-mahoon-r4-suggestion-list="1"] {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+    align-items: stretch !important;
+    gap: 14px !important;
+  }
+
+  .mahoon-r4-audio-suggestions [data-mahoon-r4-suggestion-list="1"] > * {
+    min-width: 0 !important;
+    width: auto !important;
+    margin: 0 !important;
+  }
+
+  .mahoon-r4-old-audio-shell-hidden {
+    display: none !important;
+  }
+
+  body:has(.mahoon-r4-audio-experience) {
+    overflow-x: clip;
+  }
+
+  @media (max-width: 900px) {
+    .mahoon-r4-audio-experience {
+      width: calc(100% - 24px);
+      margin-top: 18px;
+    }
+
+    .mahoon-r4-audio-suggestions [data-mahoon-r4-suggestion-list="1"] {
+      grid-template-columns: repeat(2, minmax(0,1fr)) !important;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .mahoon-r4-audio-experience {
+      width: calc(100% - 16px);
+      margin: 10px auto 86px;
+    }
+
+    .mahoon-r4-audio-nav {
+      margin-bottom: 9px;
+      padding-inline: 2px;
+    }
+
+    .mahoon-r4-audio-suggestions {
+      margin-top: 14px;
+      padding: 13px;
+      border-radius: 18px;
+    }
+
+    .mahoon-r4-audio-suggestions [data-mahoon-r4-suggestion-list="1"] {
+      grid-template-columns: 1fr !important;
+      gap: 10px !important;
+    }
+  }
+
+  @media (min-width: 1800px) {
+    .mahoon-r4-audio-experience {
+      width: min(1500px, calc(100% - 72px));
+      max-width: 1500px;
+      margin-top: 42px;
+    }
+  }
+</style>
+
+<script is:inline>
+  (() => {
+    /* MAHOON_STAGE19B_F_R4_R3_AUDIO_DOM_TRANSPLANT */
+
+    function lca(a, b) {
+      if (!a || !b) return null;
+      const seen = new Set();
+      let x = a;
+      while (x) { seen.add(x); x = x.parentElement; }
+      x = b;
+      while (x) {
+        if (seen.has(x)) return x;
+        x = x.parentElement;
+      }
+      return null;
+    }
+
+    function branchBelow(common, node) {
+      let x = node;
+      while (x && x.parentElement !== common) x = x.parentElement;
+      return x && x.parentElement === common ? x : null;
+    }
+
+    function findSuggestedHeading() {
+      const nodes = [...document.querySelectorAll("body *")];
+      return (
+        nodes.find(el =>
+          String(el.textContent || "").replace(/\s+/g, " ").trim() === "مطالب پیشنهادی"
+        ) ||
+        nodes.find(el => String(el.textContent || "").includes("مطالب پیشنهادی")) ||
+        null
+      );
+    }
+
+    function findSuggestionBox(heading) {
+      if (!heading) return null;
+      const aside = heading.closest("aside");
+      if (aside) return aside;
+
+      let x = heading;
+      while (x && x !== document.body) {
+        const rect = x.getBoundingClientRect();
+        const text = String(x.textContent || "").replace(/\s+/g, " ").trim();
+        const links = x.querySelectorAll('a[href*="/post/"]').length;
+        if (
+          rect.width > 170 &&
+          rect.height > 140 &&
+          text.includes("مطالب پیشنهادی") &&
+          links >= 2
+        ) {
+          return x;
+        }
+        x = x.parentElement;
+      }
+      return heading.parentElement;
+    }
+
+    function markSuggestionList(box) {
+      if (!box) return;
+      const candidates = [box, ...box.querySelectorAll("*")];
+      let best = null;
+      let bestScore = 0;
+
+      for (const el of candidates) {
+        const direct = [...el.children].filter(child =>
+          child.matches('a[href*="/post/"]') ||
+          child.querySelector('a[href*="/post/"]')
+        ).length;
+
+        if (direct >= 2 && direct > bestScore) {
+          best = el;
+          bestScore = direct;
+        }
+      }
+
+      if (best) best.setAttribute("data-mahoon-r4-suggestion-list", "1");
+    }
+
+    function useful(node) {
+      if (!(node instanceof HTMLElement)) return false;
+      if (node.matches("script,style,link")) return false;
+      if (node.matches(".mahoon-audio-page__nav,[data-mahoon-native-player]")) return false;
+      if (node.querySelector("[data-mahoon-native-player]")) return false;
+
+      const text = String(node.textContent || "").replace(/\s+/g, " ").trim();
+      return Boolean(text || node.querySelector("img,video,figure,a[href]"));
+    }
+
+    function transplant() {
+      const article = document.querySelector('article[data-audio-native="1"]');
+      const player = article?.querySelector("[data-mahoon-native-player]");
+      if (!article || !player) return;
+
+      if (document.querySelector(".mahoon-r4-audio-experience")) return;
+
+      const main = article.closest("main") || document.querySelector("main") || document.body;
+      const audioPage = article.querySelector(".mahoon-audio-page") || article;
+      const nav =
+        article.querySelector(".mahoon-audio-page__nav") ||
+        document.querySelector("body .mahoon-audio-page__nav");
+
+      const heading = findSuggestedHeading();
+      const suggestions = findSuggestionBox(heading);
+
+      let oldRoot =
+        document.querySelector('[data-mahoon-r3-audio-shell="1"]') ||
+        document.querySelector('[data-mahoon-audio-shell-r2="1"]') ||
+        (suggestions ? lca(article, suggestions) : null);
+
+      if (!oldRoot || oldRoot === document.body || oldRoot === main) {
+        oldRoot = null;
+      }
+
+      const shell = document.createElement("section");
+      shell.className = "mahoon-r4-audio-experience";
+      shell.setAttribute("data-mahoon-r4-audio-experience", "1");
+
+      const navSlot = document.createElement("div");
+      navSlot.className = "mahoon-r4-audio-nav";
+
+      const stage = document.createElement("div");
+      stage.className = "mahoon-r4-audio-stage";
+
+      const extras = document.createElement("div");
+      extras.className = "mahoon-r4-audio-extras";
+
+      const suggestionSlot = document.createElement("section");
+      suggestionSlot.className = "mahoon-r4-audio-suggestions";
+
+      const anchor = oldRoot || (() => {
+        let x = article;
+        while (x.parentElement && x.parentElement !== main) x = x.parentElement;
+        return x;
+      })();
+
+      if (anchor?.parentElement) {
+        anchor.parentElement.insertBefore(shell, anchor);
+      } else {
+        main.prepend(shell);
+      }
+
+      shell.append(navSlot, stage, extras);
+
+      if (nav) navSlot.append(nav);
+      stage.append(player);
+
+
+      /*
+        R4-R3: remove the generic post-media action that survived the transplant
+        as the floating "بازکردن رسانه" button.
+      */
+      const cleanupRoot = oldRoot || article.parentElement || article;
+      for (const el of [...cleanupRoot.querySelectorAll("a,button")]) {
+        const txt = String(el.textContent || "").replace(/\s+/g, " ").trim();
+        if (txt === "بازکردن رسانه") {
+          const wrap =
+            el.closest(".client-single-actions") ||
+            el.closest("[data-media-actions]") ||
+            el.parentElement;
+          if (wrap && wrap !== cleanupRoot && wrap.children.length <= 3) wrap.remove();
+          else el.remove();
+        }
+      }
+
+      const possibleExtras = [
+        ...article.querySelectorAll(
+          ".client-single-text,.client-single-tags,.post-tags,.mahoon-audio-page__body"
+        )
+      ];
+
+      for (const el of possibleExtras) {
+        if (useful(el) && !extras.contains(el)) extras.append(el);
+      }
+
+      if (suggestions) {
+        markSuggestionList(suggestions);
+        suggestionSlot.append(suggestions);
+        shell.append(suggestionSlot);
+
+        suggestions.style.setProperty("width", "100%", "important");
+        suggestions.style.setProperty("max-width", "none", "important");
+        suggestions.style.setProperty("margin", "0", "important");
+        suggestions.style.setProperty("position", "static", "important");
+      }
+
+      /*
+        Hide the old generic post/grid scaffolding only after the real audio/nav/
+        suggestions nodes have been moved into the dedicated experience.
+      */
+      if (oldRoot && oldRoot !== shell && !oldRoot.contains(shell)) {
+        oldRoot.classList.add("mahoon-r4-old-audio-shell-hidden");
+      } else {
+        let articleBranch = article;
+        while (articleBranch.parentElement && articleBranch.parentElement !== main) {
+          articleBranch = articleBranch.parentElement;
+        }
+        if (articleBranch && articleBranch !== shell && !articleBranch.contains(shell)) {
+          articleBranch.classList.add("mahoon-r4-old-audio-shell-hidden");
+        }
+
+        if (suggestions) {
+          let suggestionBranch = suggestions;
+          while (suggestionBranch.parentElement &&
+                 suggestionBranch.parentElement !== shell &&
+                 suggestionBranch.parentElement !== main) {
+            suggestionBranch = suggestionBranch.parentElement;
+          }
+          if (
+            suggestionBranch &&
+            suggestionBranch !== shell &&
+            !shell.contains(suggestionBranch)
+          ) {
+            suggestionBranch.classList.add("mahoon-r4-old-audio-shell-hidden");
+          }
+        }
+      }
+
+      article.style.setProperty("display", "none", "important");
+
+      document.documentElement.dataset.mahoonAudioShellR4 = "transplanted";
+
+      if (window.MahoonTheme?.refresh) {
+        window.MahoonTheme.refresh();
+      }
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", transplant, { once: true });
+    } else {
+      transplant();
+    }
+
+    setTimeout(transplant, 120);
+    setTimeout(transplant, 600);
+    setTimeout(transplant, 1400);
+    document.addEventListener("astro:page-load", transplant);
+  })();
+</script>
+
