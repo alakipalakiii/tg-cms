@@ -500,11 +500,11 @@ export function renderHomeFeaturedHtml(options: {
   let media = "";
 
   if (image) {
-    media = '<a class="m-featured__media" href="' + escapeAttr(href) + '"><img src="' + escapeAttr(image) + '" alt="' + escapeAttr(title) + '" loading="lazy" decoding="async"></a>';
+    media = '<a class="m-featured__media" href="' + escapeAttr(href) + '"><img src="' + escapeAttr(image) + '" alt="' + escapeAttr(title) + '" loading="eager" fetchpriority="high" decoding="async"></a>';
   } else if (isAudioPost(post)) {
-    media = '<a class="m-featured__media m-featured__media--icon" href="' + escapeAttr(href) + '">' + audioIcon() + '</a>';
+    media = '<a class="m-featured__media m-featured__media--icon" href="' + escapeAttr(href) + '" aria-label="' + escapeAttr(title) + '">' + audioIcon() + '</a>';
   } else if (isVideoPost(post)) {
-    media = '<a class="m-featured__media m-featured__media--icon" href="' + escapeAttr(href) + '">' + videoIcon() + '</a>';
+    media = '<a class="m-featured__media m-featured__media--icon" href="' + escapeAttr(href) + '" aria-label="' + escapeAttr(title) + '">' + videoIcon() + '</a>';
   }
 
   return '<article class="m-featured ' + (!media ? "m-featured--text" : "") + '">' +
@@ -573,9 +573,9 @@ function renderHomeCardHtml(post: HomePost, apiBase: string, forceTextOnly = fal
   if (image) {
     media = '<a class="m-card__media" href="' + escapeAttr(href) + '"><img src="' + escapeAttr(image) + '" alt="' + escapeAttr(title) + '" loading="lazy" decoding="async"></a>';
   } else if (!forceTextOnly && isAudioPost(post)) {
-    media = '<a class="m-card__media m-card__media--icon" href="' + escapeAttr(href) + '">' + audioIcon() + '</a>';
+    media = '<a class="m-card__media m-card__media--icon" href="' + escapeAttr(href) + '" aria-label="' + escapeAttr(title) + '">' + audioIcon() + '</a>';
   } else if (!forceTextOnly && isVideoPost(post)) {
-    media = '<a class="m-card__media m-card__media--icon" href="' + escapeAttr(href) + '">' + videoIcon() + '</a>';
+    media = '<a class="m-card__media m-card__media--icon" href="' + escapeAttr(href) + '" aria-label="' + escapeAttr(title) + '">' + videoIcon() + '</a>';
   }
 
   return '<article class="m-card ' + (!media ? "m-card--no-media" : "") + '" data-post-href="' + escapeAttr(href) + '">' +
