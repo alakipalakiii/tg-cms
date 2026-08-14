@@ -2878,3 +2878,66 @@ n.dataset.mahoonR5OwnerBound="1";
   }
 </style>
 
+
+
+
+
+
+
+
+<style is:global>
+  /* MAHOON_UI_HOTFIX_R3_R1_EXACT_INACTIVE_GLOBAL_DOCK */
+  .mahoon-frozen-global-scope #sticky:not(.show),
+  body:not(.mahoon-r5-r3-dock-visible) .mahoon-frozen-global-scope #sticky {
+    display: none !important;
+  }
+</style>
+
+
+<style is:global>
+  /* MAHOON_UI_HOTFIX_R5_EXACT_R4_TOAST_OWNER */
+  .mahoon-frozen-global-scope .mahoon-r4-toast[data-mahoon-empty-r4-toast="true"] {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+</style>
+
+<script is:inline>
+  /* MAHOON_UI_HOTFIX_R5_EXACT_R4_TOAST_OWNER */
+  (() => {
+    let observer;
+
+    function syncR4Toast() {
+      const toast = document.querySelector(".mahoon-frozen-global-scope .mahoon-r4-toast");
+      if (!(toast instanceof HTMLElement)) return;
+
+      const hasContent = Boolean(String(toast.textContent || "").trim());
+
+      if (hasContent) {
+        toast.removeAttribute("data-mahoon-empty-r4-toast");
+      } else {
+        toast.setAttribute("data-mahoon-empty-r4-toast", "true");
+      }
+
+      if (!observer) {
+        observer = new MutationObserver(() => syncR4Toast());
+        observer.observe(toast, {
+          subtree: true,
+          childList: true,
+          characterData: true
+        });
+      }
+    }
+
+    const schedule = () => requestAnimationFrame(syncR4Toast);
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", schedule, { once: true });
+    } else {
+      schedule();
+    }
+
+    document.addEventListener("astro:page-load", schedule);
+  })();
+</script>

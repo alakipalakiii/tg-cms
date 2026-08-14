@@ -313,5 +313,81 @@ import { ClientRouter } from "astro:transitions";
 
 
   <MahoonGlobalAudioSystem />
+
+
+<style is:global>
+  /* MAHOON_UI_HOTFIX_R3_R1_EXACT_MOBILE_DARK_MENU */
+  @media (max-width: 900px) {
+    html[data-mahoon-theme="dark"] .site-menu-toggle {
+      color: #fff7f2 !important;
+      background: rgba(255,255,255,.10) !important;
+      border-color: rgba(255,247,242,.38) !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+    }
+
+    html[data-mahoon-theme="dark"] .site-menu-toggle > span {
+      background: #fff7f2 !important;
+      opacity: 1 !important;
+    }
+
+    html[data-mahoon-theme="dark"] .site-menu-toggle :where(svg,path,line,polyline) {
+      color: #fff7f2 !important;
+      stroke: #fff7f2 !important;
+    }
+
+    html[data-mahoon-theme="light"] .site-menu-toggle {
+      opacity: 1 !important;
+      visibility: visible !important;
+    }
+
+    html[data-mahoon-theme] .site-menu-toggle,
+    html[data-mahoon-theme] .site-menu-toggle > span {
+      transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease, opacity 140ms ease !important;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html[data-mahoon-theme] .site-menu-toggle,
+    html[data-mahoon-theme] .site-menu-toggle > span {
+      transition: none !important;
+    }
+  }
+</style>
+
+
+
+<style is:global>
+  /* MAHOON_UI_HOTFIX_R4_R2_ZERO_RESIDUAL_TOAST_ARTIFACT
+     Native player proof:
+       const toast = root.querySelector(".js-toast");
+       toast.classList.add/remove("is-visible")
+     Frozen global proof:
+       toast.classList.add/remove("show")
+
+     At rest, visibility:hidden guarantees zero viewport residue even when the
+     original transition hides via transform only.
+  */
+  .mahoon-native-player .js-toast:not(.is-visible) {
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  .mahoon-native-player .js-toast.is-visible {
+    visibility: visible !important;
+  }
+
+  .mahoon-frozen-global-scope #toast:not(.show),
+  .mahoon-frozen-global-scope .toast:not(.show) {
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  .mahoon-frozen-global-scope #toast.show,
+  .mahoon-frozen-global-scope .toast.show {
+    visibility: visible !important;
+  }
+</style>
+
 </body>
 </html>

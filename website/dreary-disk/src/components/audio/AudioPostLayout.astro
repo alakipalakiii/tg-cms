@@ -2,6 +2,8 @@
 import MahoonAudioPlayerNative from "./MahoonAudioPlayerNative.astro";
 
 interface Props {
+  descriptionTitle?: string;
+  descriptionText?: string;
   audioSrc: string;
   imageSrc?: string;
   title: string;
@@ -24,7 +26,37 @@ const {
   fileName = "",
   shareUrl = ""
 } = Astro.props;
+
+// MAHOON_UI_HOTFIX_R2_R1_AUDIO_DESCRIPTION_BOX
+const __mahoonAudioDescriptionTitle = String(Astro.props.descriptionTitle || "").trim();
+const __mahoonAudioDescriptionText = String(Astro.props.descriptionText || "").trim();
+const __mahoonAudioDescriptionClean = __mahoonAudioDescriptionText
+  .split(/\r?\n/)
+  .map((line) => line.trim())
+  .filter(Boolean)
+  .filter((line, index) => !(index === 0 && __mahoonAudioDescriptionTitle && line === __mahoonAudioDescriptionTitle))
+  .filter((line) => !line.split(/\s+/).filter(Boolean).every((token) => token.startsWith("#")))
+  .join("\n");
+
+
 ---
+
+
+  <!-- MAHOON_UI_HOTFIX_R2_R1_AUDIO_DESCRIPTION_BOX -->
+  {(__mahoonAudioDescriptionTitle || __mahoonAudioDescriptionClean) && (
+    <section class="mahoon-audio-description-box" aria-labelledby="mahoon-audio-description-heading">
+      {__mahoonAudioDescriptionTitle && (
+        <h2 id="mahoon-audio-description-heading" class="mahoon-audio-description-title">
+          {__mahoonAudioDescriptionTitle}
+        </h2>
+      )}
+      {__mahoonAudioDescriptionClean && (
+        <div class="mahoon-audio-description-copy">
+          {__mahoonAudioDescriptionClean.split(/\r?\n/).map((paragraph) => <p>{paragraph}</p>)}
+        </div>
+      )}
+    </section>
+  )}
 
 <section class="mahoon-audio-page" data-mahoon-audio-page>
   <nav class="mahoon-audio-page__nav" aria-label="مسیر صفحه صوتی">
@@ -1437,3 +1469,119 @@ const {
   })();
 </script>
 
+
+
+<style is:global>
+  /* MAHOON_UI_HOTFIX_R3_R1_AUDIO_DESCRIPTION_REAL_PLACEMENT */
+  .mahoon-audio-description-box {
+    width: min(100%, 1120px);
+    margin: 22px auto 28px;
+    padding: clamp(20px,3vw,32px);
+    border: 1px solid rgba(91,31,27,.11);
+    border-radius: 24px;
+    background: rgba(255,250,246,.88);
+    box-shadow: 0 16px 44px rgba(68,22,18,.07);
+    text-align: right;
+  }
+
+  .mahoon-audio-description-title {
+    margin: 0 0 12px;
+    font: inherit;
+    font-size: clamp(1.2rem,2.2vw,1.65rem);
+    font-weight: 800;
+    line-height: 1.7;
+    color: inherit;
+  }
+
+  .mahoon-audio-description-copy {
+    display: grid;
+    gap: 10px;
+    font-size: clamp(.96rem,1.6vw,1.06rem);
+    line-height: 2.05;
+    color: rgba(75,42,38,.80);
+  }
+
+  .mahoon-audio-description-copy p {
+    margin: 0;
+    white-space: pre-line;
+  }
+
+  html[data-mahoon-theme="dark"] .mahoon-audio-description-box {
+    background: rgba(25,19,18,.94);
+    border-color: rgba(255,247,242,.14);
+    box-shadow: 0 18px 52px rgba(0,0,0,.28);
+    color: #fff7f2;
+  }
+
+  html[data-mahoon-theme="dark"] .mahoon-audio-description-copy {
+    color: rgba(255,247,242,.79);
+  }
+
+  html[data-mahoon-theme="light"] .mahoon-audio-description-box {
+    color: #3f1518;
+  }
+
+  @media (max-width:720px) {
+    .mahoon-audio-description-box {
+      margin: 16px auto 22px;
+      padding: 18px;
+      border-radius: 20px;
+    }
+  }
+</style>
+
+
+<script is:inline>
+  /* MAHOON_UI_HOTFIX_R3_R1_AUDIO_DESCRIPTION_TRANSPLANT */
+  (() => {
+    let scheduled = false;
+
+    function placeDescription() {
+      scheduled = false;
+
+      const experience = document.querySelector(".mahoon-r4-audio-experience");
+      const stage = experience?.querySelector(".mahoon-r4-audio-stage");
+      const box = document.querySelector(".mahoon-audio-description-box");
+
+      if (!(experience instanceof HTMLElement) ||
+          !(stage instanceof HTMLElement) ||
+          !(box instanceof HTMLElement)) {
+        return;
+      }
+
+      /*
+        The R4 audio layout physically transplants the approved native player
+        into .mahoon-r4-audio-stage and hides the old article/suggestion shell.
+        R2 rendered the description inside that old branch. Move the SAME node
+        directly after the real player stage, which makes it the visual bridge
+        between player and suggestions.
+      */
+      if (box.parentElement !== experience || stage.nextElementSibling !== box) {
+        stage.insertAdjacentElement("afterend", box);
+      }
+
+      box.classList.remove("mahoon-r4-old-audio-shell-hidden");
+      box.removeAttribute("hidden");
+      box.dataset.mahoonDescriptionPlaced = "1";
+    }
+
+    function schedule() {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(placeDescription);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", schedule, { once: true });
+    } else {
+      schedule();
+    }
+
+    document.addEventListener("astro:page-load", schedule);
+
+    new MutationObserver(schedule).observe(document.documentElement, {
+      subtree: true,
+      childList: true
+    });
+  })();
+</script>

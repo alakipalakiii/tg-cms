@@ -667,7 +667,8 @@ function getPostHref(item: PublicPost): string {
 
                 {
                   (post.media_type === "audio" || post.media_type === "voice") ? (
-                    <AudioPostLayout
+                    <!-- MAHOON_UI_HOTFIX_R2_R1_AUDIO_DESCRIPTION_WIRING -->
+  <AudioPostLayout
                       audioSrc={audioSrc}
                       imageSrc={imageSrc || metaImage || ""}
                       title={postTitle || "پخش صوتی ماهون"}
@@ -677,7 +678,10 @@ function getPostHref(item: PublicPost): string {
                       durationSeconds={Number(post.media_duration || 0)}
                       fileName={post.media_file_name || ""}
                       shareUrl={canonicalUrl}
-                    />
+                    
+    descriptionTitle={postTitle || "پخش صوتی ماهون"}
+    descriptionText={(post?.seo_description || parsed.cleanText || post?.text || "")}
+    />
                   ) : (post.media_type === "video" || post.media_type === "animation") && mediaUrl ? (
                     <div class="client-single-media client-single-video" data-media-wrap>
                       <div class="client-player-head">
