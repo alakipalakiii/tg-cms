@@ -1292,7 +1292,7 @@ ${postSummaryText(post, env)}`,
     await env.DB.prepare(
       `
       UPDATE posts
-      SET is_published = 1, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
+      SET is_published = 0, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
       `
     ).bind(post.id).run();
@@ -4001,7 +4001,7 @@ export default {
             `
             UPDATE posts
             SET
-              is_published = 1,
+              is_published = 0,
               deleted_at = NULL,
               updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
