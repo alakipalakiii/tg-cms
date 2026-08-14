@@ -4057,7 +4057,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
         const confirmed = await confirmAction({
           title: "بازگردانی مطلب",
-          message: `پست حذف‌شده با کد ثابت #${id} بازگردانی شود؟ این عملیات پست را دوباره منتشر می‌کند و ID ثابت تغییر نمی‌کند.`,
+          message: `پست حذف‌شده با کد ثبت #${id} بازیابی شود؟ این عملیات پست را به پیش‌نویس خصوصی برمی‌گرداند و آن را منتشر نمی‌کند.`,
           confirmText: "بازگردانی"
         });
 
@@ -4071,7 +4071,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             body: JSON.stringify({})
           });
 
-          showMessage(editorMessage, `پست #${id} با موفقیت بازگردانی شد.`, "ok");
+          showMessage(editorMessage, `پست #${id} به‌صورت پیش‌نویس خصوصی بازیابی شد.`, "ok");
           await loadDeletedPosts();
           await loadPosts();
         } catch (error) {
