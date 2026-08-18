@@ -680,7 +680,7 @@ function getPostHref(item: PublicPost): string {
                       shareUrl={canonicalUrl}
                     
     descriptionTitle={postTitle || "پخش صوتی ماهون"}
-    descriptionText={(post?.seo_description || parsed.cleanText || post?.text || "")}
+    descriptionText={(post?.seo_description || cleanPublicText(post?.text) || post?.text || "")}
     />
                   ) : (post.media_type === "video" || post.media_type === "animation") && mediaUrl ? (
                     <div class="client-single-media client-single-video" data-media-wrap>
