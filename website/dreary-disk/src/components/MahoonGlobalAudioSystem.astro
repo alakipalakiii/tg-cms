@@ -2431,6 +2431,110 @@
       window.dispatchEvent(
         new CustomEvent("mahoon:audio-state",{detail:state})
       );
+      syncMediaSession(state);
+    }
+
+    function syncMediaSession(nextState=ownerState()) {
+      if (!("mediaSession" in navigator)) return;
+      const g=gAudio();
+      const state=nextState||{};
+
+      try {
+        const artwork=state.image ? [{src:String(state.image)}] : [];
+        navigator.mediaSession.metadata=new MediaMetadata({
+          title:String(state.title||"پخش صوتی ماهون"),
+          artist:"مجله هنری ماهون",
+          album:String(state.category||"صوتی"),
+          artwork
+        });
+      } catch {}
+
+      try {
+        navigator.mediaSession.playbackState=
+          g && !g.paused ? "playing" : "paused";
+      } catch {}
+
+      try {
+        const duration=Number(
+          g && Number.isFinite(g.duration) && g.duration>0
+            ? g.duration
+            : state.duration||0
+        );
+        const position=Number(g?.currentTime||state.currentTime||0);
+        const rate=Number(g?.playbackRate||state.rate||1);
+        if (
+          duration>0 &&
+          Number.isFinite(position) &&
+          position>=0 &&
+          position<=duration
+        ) {
+          navigator.mediaSession.setPositionState({
+            duration,
+            playbackRate:Number.isFinite(rate)&&rate>0 ? rate : 1,
+            position:Math.min(duration,position)
+          });
+        }
+      } catch {}
+    }
+
+    function installMediaSessionHandlers() {
+      if (!("mediaSession" in navigator)) return;
+      if (window.__MAHOON_MEDIA_SESSION_HANDLERS_V1__) return;
+      window.__MAHOON_MEDIA_SESSION_HANDLERS_V1__=true;
+
+      const setHandler=(name,handler)=>{
+        try { navigator.mediaSession.setActionHandler(name,handler); }
+        catch {}
+      };
+
+      setHandler("play",async()=>{
+        const g=gAudio();
+        if (!g) return;
+        try { await g.play(); } catch {}
+        publish();
+      });
+
+      setHandler("pause",()=>{
+        const g=gAudio();
+        if (!g) return;
+        try { g.pause(); } catch {}
+        publish();
+      });
+
+      setHandler("stop",()=>{
+        const g=gAudio();
+        if (!g) return;
+        try {
+          g.pause();
+          g.currentTime=0;
+        } catch {}
+        publish();
+      });
+
+      setHandler("seekbackward",(detail)=>{
+        const g=gAudio();
+        if (!g) return;
+        setTime(g,Math.max(0,Number(g.currentTime||0)-Number(detail?.seekOffset||10)));
+        publish();
+      });
+
+      setHandler("seekforward",(detail)=>{
+        const g=gAudio();
+        if (!g) return;
+        const duration=Number.isFinite(g.duration)&&g.duration>0 ? g.duration : Infinity;
+        setTime(g,Math.min(duration,Number(g.currentTime||0)+Number(detail?.seekOffset||10)));
+        publish();
+      });
+
+      setHandler("seekto",(detail)=>{
+        const g=gAudio();
+        const target=Number(detail?.seekTime);
+        if (!g || !Number.isFinite(target)) return;
+        setTime(g,target);
+        publish();
+      });
+
+      syncMediaSession();
     }
 
     function setTime(audio,time) {
@@ -2594,6 +2698,17 @@ n.dataset.mahoonR5OwnerBound="1";
 
       n.addEventListener("pause",()=>{
         if (suppressNativePause || navigating) return;
+        /*
+          MAHOON_BACKGROUND_PLAYBACK_V1
+          The inline native audio is a MUTED UI clock only.
+          A browser may suspend/pause that muted clock when the tab/app becomes
+          hidden or the device is locked. That automatic UI-clock pause must
+          NEVER pause the audible persistent global owner.
+        */
+        if (document.hidden) {
+          publish({backgroundPreserved:true});
+          return;
+        }
         const g=gAudio();
         if (!g) return;
         if (!sameSrc(g.currentSrc||g.src,n.currentSrc||n.src)) return;
@@ -2770,6 +2885,24 @@ n.dataset.mahoonR5OwnerBound="1";
       There is NO native->global navigation handoff anymore.
       The global owner has already been playing audibly since first Play.
     */
+    document.addEventListener("visibilitychange",()=>{
+      if (document.hidden) {
+        /*
+          Keep the persistent audible owner untouched in background.
+          Only its UI clock may be suspended by the browser.
+        */
+        publish({backgroundPreserved:true});
+        return;
+      }
+
+      requestAnimationFrame(()=>{
+        bindGlobal();
+        bindNative();
+        syncNativeFromOwner();
+        publish({backgroundPreserved:false});
+      });
+    });
+
     document.addEventListener("astro:before-preparation",()=>{
       navigating=true;
       publish();
@@ -2805,6 +2938,7 @@ n.dataset.mahoonR5OwnerBound="1";
     });
 
     function boot() {
+      installMediaSessionHandlers();
       bindGlobal();
       bootPage();
 
