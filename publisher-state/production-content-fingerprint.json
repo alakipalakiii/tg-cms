@@ -1,0 +1,8 @@
+{
+  "contract": "PUBLISHED_CONTENT_DELTA_CONTRACT_V2",
+  "fingerprint": "87a4a1f4518de3f5e04835912a78463259295c937ca73f67dd84fa4c25106389",
+  "post_count": 820,
+  "source": "approved read-only posts-full-public-v1 export",
+  "state_origin": "existing approved production content",
+  "published": true
+}

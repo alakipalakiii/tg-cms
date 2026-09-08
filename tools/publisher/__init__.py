@@ -1,0 +1,1 @@
+"""Shared MAHOON publisher primitives."""

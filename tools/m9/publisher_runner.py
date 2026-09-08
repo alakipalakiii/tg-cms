@@ -1,40 +1,55 @@
-"""Minimal, non-secret publisher control-plane proof for the M9 release.
+"""Single entry point for the MAHOON publisher modes.
 
-This runner deliberately fails closed when a content change is detected. A
-production publishing implementation must be reviewed together with the
-static builder and uploader; it must never silently publish a partial build.
+The network/build/upload adapters are deliberately fail-closed until every
+candidate artifact is produced by this same runner.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sys
-import urllib.parse
 import urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from publisher.core import fingerprint
 
 API = os.environ.get("MAHOON_PUBLIC_CONTENT_API", "https://api.mahoonartmagazine.ir/posts-full-public-v1?limit=2000")
+STATE = Path(os.environ.get("MAHOON_PUBLISHER_STATE", "publisher-state/production-content-fingerprint.json"))
 
 
-def main() -> int:
-    mode = os.environ.get("PUBLISHER_MODE", "proof")
+def export_content() -> tuple[dict, str]:
     request = urllib.request.Request(API, headers={"Accept": "application/json", "User-Agent": "MAHOON-M9-PUBLISHER/1.0"})
     with urllib.request.urlopen(request, timeout=30) as response:
         payload = json.loads(response.read().decode("utf-8"))
-    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-    expected = os.environ.get("PUBLISHER_EXPECTED_FINGERPRINT", "")
-    print(json.dumps({"mode": mode, "source": urllib.parse.urlsplit(API).hostname, "fingerprint": fingerprint, "items": len(payload.get("posts", payload if isinstance(payload, list) else []))}, ensure_ascii=False))
-    if mode == "proof":
-        return 0
-    if mode != "publish":
-        print("publisher mode is invalid", file=sys.stderr)
+    posts = payload.get("posts", payload if isinstance(payload, list) else [])
+    stable = [{key: value for key, value in post.items() if key not in {"view_count", "last_viewed_at"}}
+              for post in sorted(posts, key=lambda item: int(item.get("id", 0)))]
+    exported = {"contract": "PUBLISHED_CONTENT_DELTA_CONTRACT_V2", "count": len(stable), "posts": stable}
+    return exported, fingerprint(exported)
+
+
+def main() -> int:
+    mode = os.environ.get("PUBLISHER_MODE", "CHECK_ONLY").upper()
+    if mode not in {"CHECK_ONLY", "PROOF_ZERO_PERCENT", "PUBLISH"}:
+        print("PUBLISHER_MODE_INVALID", file=sys.stderr)
         return 2
-    if not expected or fingerprint != expected:
-        print("publisher is fail-closed: reviewed source fingerprint is missing or changed", file=sys.stderr)
-        return 3
-    print("publisher is fail-closed: no reviewed static artifact is attached to this release", file=sys.stderr)
-    return 4
+    exported, digest = export_content()
+    previous = json.loads(STATE.read_text(encoding="utf-8")).get("fingerprint") if STATE.exists() else None
+    unchanged = previous == digest
+    print(json.dumps({"mode": mode, "count": exported["count"], "fingerprint": digest,
+                      "unchanged": unchanged, "state_present": STATE.exists()}, ensure_ascii=False))
+    if mode == "CHECK_ONLY":
+        return 0 if unchanged else 3
+    source = os.environ.get("MAHOON_STATIC_SOURCE", "")
+    if not source or not Path(source).is_dir():
+        print("PUBLISHER_FULL_PATH_BLOCKED: runner-owned static source/build adapter is not configured", file=sys.stderr)
+        return 10
+    if not unchanged and not os.environ.get("MAHOON_REVIEWED_DELTA", ""):
+        print("PUBLISHER_DELTA_BLOCKED: changed content requires a reviewed delta", file=sys.stderr)
+        return 11
+    print("PUBLISHER_FULL_PATH_BLOCKED: build/upload/validation adapters are not enabled", file=sys.stderr)
+    return 12
 
 
 if __name__ == "__main__":
