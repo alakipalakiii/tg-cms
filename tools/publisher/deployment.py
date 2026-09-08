@@ -5,7 +5,7 @@ import json
 import os
 
 ACCOUNT = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
-WORKER = "mahoon-art-magazine"
+WORKER = os.environ.get("MAHOON_WORKER", "mahoon-art-magazine")
 TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "")
 
 
