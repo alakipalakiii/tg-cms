@@ -1,0 +1,15 @@
+{
+  "REIMPLEMENTED_PROVEN_COMPONENTS": 0,
+  "components": {
+    "CONTENT_EXPORT": {"IMPLEMENTATION_SOURCE": "tools/m9/final_snapshot_v3.py", "PROVEN_STAGE": "M9-FINAL", "REUSE_METHOD": "stable export contract adapted into tools/m9/publisher_runner.py"},
+    "STATIC_BUILD": {"IMPLEMENTATION_SOURCE": "artifacts/mahoon-static-publisher/m9-final/production-static-candidate", "PROVEN_STAGE": "M9C/M9-FINAL", "REUSE_METHOD": "text-only approved source contract in publisher-base"},
+    "CLOUDFLARE_MANIFEST": {"IMPLEMENTATION_SOURCE": "tools/m9c/direct_api_uploader.py:manifest_data", "PROVEN_STAGE": "M9C", "REUSE_METHOD": "extracted into tools/publisher/cloudflare_direct_api.py"},
+    "UPLOAD_SESSION": {"IMPLEMENTATION_SOURCE": "tools/m9c/direct_api_uploader.py:session", "PROVEN_STAGE": "M9C", "REUSE_METHOD": "same Direct API call"},
+    "BUCKET_UPLOAD": {"IMPLEMENTATION_SOURCE": "tools/m9c/direct_api_uploader.py:do_upload", "PROVEN_STAGE": "M9C", "REUSE_METHOD": "bounded sequential upload with resume state"},
+    "VERSION_CREATE": {"IMPLEMENTATION_SOURCE": "tools/m9c/direct_api_uploader.py:create_version", "PROVEN_STAGE": "M9C", "REUSE_METHOD": "same multipart Worker version creation"},
+    "VERSION_OVERRIDE_VALIDATION": {"IMPLEMENTATION_SOURCE": "tools/m9/production_override_crawl.py", "PROVEN_STAGE": "M9C-R4/M9-FINAL", "REUSE_METHOD": "parameterized candidate_override_crawl.py"},
+    "MEDIA_VALIDATION": {"IMPLEMENTATION_SOURCE": "tools/m9/production_override_media.py", "PROVEN_STAGE": "M9-FINAL", "REUSE_METHOD": "persisted metadata plus on-demand SHA recovery"},
+    "ZERO_PERCENT_DEPLOYMENT": {"IMPLEMENTATION_SOURCE": "Cloudflare Workers deployment API used in M9C", "PROVEN_STAGE": "M9C/M9-FINAL", "REUSE_METHOD": "tools/publisher/deployment.py"},
+    "ROLLBACK": {"IMPLEMENTATION_SOURCE": "M9C non-production rollback proof", "PROVEN_STAGE": "M9C", "REUSE_METHOD": "tools/publisher/rollback.py; integration proof pending"}
+  }
+}
