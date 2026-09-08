@@ -152,6 +152,8 @@ function extractMediaFromMessage(source) {
   }
 
   if (source.audio) {
+    const audioCover = source.audio.thumbnail || source.audio.thumb || null;
+
     return {
       media_type: "audio",
       media_file_id: source.audio.file_id || null,
@@ -162,10 +164,10 @@ function extractMediaFromMessage(source) {
       media_width: null,
       media_height: null,
       media_size: source.audio.file_size || null,
-      photo_file_id: null,
-      photo_unique_id: null,
-      photo_width: null,
-      photo_height: null
+      photo_file_id: audioCover?.file_id || null,
+      photo_unique_id: audioCover?.file_unique_id || null,
+      photo_width: audioCover?.width || null,
+      photo_height: audioCover?.height || null
     };
   }
 
@@ -240,6 +242,17 @@ function extractMediaFromMessage(source) {
   };
 }
 
+
+function telegramUnixToSqlDate(value) {
+  const seconds = Number(value || 0);
+  if (!seconds) return null;
+
+  const date = new Date(seconds * 1000);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date.toISOString().slice(0, 19).replace("T", " ");
+}
+
 function extractTelegramPost(update) {
   const source = getTelegramSource(update);
 
@@ -278,26 +291,70 @@ function extractTelegramPost(update) {
     chat_username: source.chat?.username || "",
     text,
     created_at_unix: source.date || Math.floor(Date.now() / 1000),
+    created_at: telegramUnixToSqlDate(source.date),
     is_edited: Boolean(update.edited_channel_post || update.edited_message),
     ...media
   };
 }
 
+
+/* mahoon-public-category-filter-api */
+function normalizePublicTag(tag) {
+  return String(tag || "")
+    .replace(/^#/, "")
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/\u200c/g, "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function getPublicHashTags(text) {
+  return Array.from(String(text || "").matchAll(/(^|\s)#([^\s#]+)/gu))
+    .map((match) => match[2])
+    .filter(Boolean);
+}
+
+function hasRequiredCategoryHashTag(text) {
+  const categoryTags = new Set(
+    mahoonScaleAllCategoryTagsV1().map(normalizePublicTag)
+  );
+
+  return getPublicHashTags(text)
+    .map(normalizePublicTag)
+    .some((tag) => categoryTags.has(tag));
+}
+
 function postWithMediaUrl(post, origin) {
   if (!post) return null;
 
-  const fallbackFileId = post.media_file_id || post.photo_file_id || null;
   const resolvedMediaType = post.media_type || (post.photo_file_id ? "photo" : null);
-  const mediaUrl = fallbackFileId
-    ? `${origin}/media/${encodeURIComponent(fallbackFileId)}`
+  const isAudioLike = resolvedMediaType === "audio" || resolvedMediaType === "voice";
+
+  const mediaFileId =
+    post.media_file_id ||
+    (!isAudioLike ? post.photo_file_id : null) ||
+    null;
+
+  const photoFileId = post.photo_file_id || null;
+
+  const mediaUrl = mediaFileId
+    ? `${origin}/media/${encodeURIComponent(mediaFileId)}`
+    : null;
+
+  const thumbnailUrl = photoFileId
+    ? `${origin}/media/${encodeURIComponent(photoFileId)}`
     : null;
 
   return {
     ...post,
     media_type: resolvedMediaType,
-    media_file_id: fallbackFileId,
+    media_file_id: mediaFileId,
     media_url: mediaUrl,
-    photo_url: resolvedMediaType === "photo" && mediaUrl ? mediaUrl : null
+    photo_url: resolvedMediaType === "photo" && thumbnailUrl ? thumbnailUrl : null,
+    thumbnail_url: thumbnailUrl
   };
 }
 
@@ -457,6 +514,20 @@ const SITE_SETTING_KEYS = [
   "home_hero_line_one",
   "home_hero_line_two",
   "home_latest_title",
+  "home_ad_right_enabled",
+  "home_ad_right_button",
+  "home_ad_right_position",
+  "home_ad_right_image",
+  "home_ad_left_enabled",
+  "home_ad_left_button",
+  "home_ad_left_position",
+  "home_ad_left_image",
+  "home_ad_right_title",
+  "home_ad_right_text",
+  "home_ad_right_url",
+  "home_ad_left_title",
+  "home_ad_left_text",
+  "home_ad_left_url",
   "about_lead",
   "about_body",
   "contact_lead",
@@ -687,7 +758,7 @@ ${link || "-"}
 async function getLastPost(env) {
   return await env.DB.prepare(
     `
-    SELECT 
+    SELECT
       id,
       text,
       slug,
@@ -715,7 +786,7 @@ async function getLastPost(env) {
       last_viewed_at
     FROM posts
     WHERE deleted_at IS NULL
-    ORDER BY id DESC
+    ORDER BY created_at DESC, id DESC
     LIMIT 1
     `
   ).first();
@@ -728,7 +799,7 @@ async function getPostById(env, id) {
 
   return await env.DB.prepare(
     `
-    SELECT 
+    SELECT
       id,
       text,
       slug,
@@ -764,7 +835,7 @@ async function getPostById(env, id) {
 async function getDeletedPosts(env) {
   const { results } = await env.DB.prepare(
     `
-    SELECT 
+    SELECT
       id,
       text,
       slug,
@@ -1160,7 +1231,7 @@ ${postSummaryText(post, env)}
     await env.DB.prepare(
       `
       UPDATE posts
-      SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      SET is_published = 0, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
       `
     ).bind(post.id).run();
@@ -1221,7 +1292,7 @@ ${postSummaryText(post, env)}`,
     await env.DB.prepare(
       `
       UPDATE posts
-      SET is_published = 1, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
+      SET is_published = 0, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
       `
     ).bind(post.id).run();
@@ -1278,6 +1349,8 @@ ${postSummaryText(fresh, env)}`,
       SELECT id
       FROM posts
       WHERE slug = ?
+      AND slug IS NOT NULL
+      AND slug != ''
       AND id != ?
       LIMIT 1
       `
@@ -1343,6 +1416,7 @@ ${postSummaryText(fresh, env)}`,
       WHERE id = ?
       `
     ).bind(newText, postId).run();
+    await mahoonScaleSyncPostTagProjectionV1(env, postId, newText);
 
     const fresh = await getPostById(env, postId);
     await sendTelegramMessage(chatId, `متن پست ویرایش شد.\n\n${postSummaryText(fresh, env)}`, env, replyId);
@@ -1375,6 +1449,8 @@ async function ensureUniqueSlug(env, slug, currentId = null) {
       SELECT id
       FROM posts
       WHERE slug = ?
+      AND slug IS NOT NULL
+      AND slug != ''
       AND id != ?
       LIMIT 1
       `
@@ -1385,6 +1461,8 @@ async function ensureUniqueSlug(env, slug, currentId = null) {
       SELECT id
       FROM posts
       WHERE slug = ?
+      AND slug IS NOT NULL
+      AND slug != ''
       LIMIT 1
       `
     ).bind(slug).first();
@@ -1457,9 +1535,1816 @@ ${postSummaryText(savedPost, env)}`;
   );
 }
 
+
+/* mahoon-analytics-api-v2 */
+function mahoonAnalyticsCorsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Token",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
+  };
+}
+
+function mahoonAnalyticsJson(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...mahoonAnalyticsCorsHeaders(),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
+function mahoonAnalyticsCleanText(value, maxLength = 500) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function mahoonAnalyticsCleanPath(value) {
+  const source = String(value || "/").trim();
+  if (!source || !source.startsWith("/")) return "/";
+  return source.slice(0, 400);
+}
+
+function mahoonAnalyticsHost(value) {
+  try {
+    const host = new URL(String(value || "")).hostname || "";
+    return host.replace(/^www\./i, "").slice(0, 160);
+  } catch {
+    return "";
+  }
+}
+
+function mahoonAnalyticsDevice(userAgent) {
+  const ua = String(userAgent || "").toLowerCase();
+
+  if (/bot|crawl|spider|slurp|facebookexternalhit|telegrambot|whatsapp|preview/.test(ua)) {
+    return "bot";
+  }
+
+  if (/tablet|ipad/.test(ua)) return "tablet";
+  if (/mobile|android|iphone|ipod/.test(ua)) return "mobile";
+
+  return "desktop";
+}
+
+function mahoonAnalyticsPostSlug(pathname) {
+  const match = String(pathname || "").match(/^\/post\/(.+)$/);
+  if (!match) return "";
+
+  try {
+    return decodeURIComponent(match[1]).slice(0, 500);
+  } catch {
+    return match[1].slice(0, 500);
+  }
+}
+
+function mahoonAnalyticsTag(pathname) {
+  const match = String(pathname || "").match(/^\/tag\/(.+)$/);
+  if (!match) return "";
+
+  try {
+    return decodeURIComponent(match[1]).slice(0, 300);
+  } catch {
+    return match[1].slice(0, 300);
+  }
+}
+
+function mahoonAnalyticsAdminToken(request) {
+  const direct = request.headers.get("X-Admin-Token") || "";
+  const authorization = request.headers.get("Authorization") || "";
+  const bearer = authorization.toLowerCase().startsWith("bearer ")
+    ? authorization.slice(7).trim()
+    : "";
+
+  return direct || bearer;
+}
+
+function mahoonAnalyticsIsAdmin(request, env) {
+  const expected = String(env.ADMIN_TOKEN || "").trim();
+  const received = String(mahoonAnalyticsAdminToken(request) || "").trim();
+
+  return Boolean(expected && received && expected === received);
+}
+
+async function mahoonTrackAnalytics(request, env) {
+  if (!env.DB) {
+    return mahoonAnalyticsJson({ ok: false, error: "DB binding is missing" }, 500);
+  }
+
+  let body: Record<string, any> = {};
+
+  try {
+    body = await request.json();
+  } catch {
+    body = {};
+  }
+
+  const eventType = mahoonAnalyticsCleanText(body.event_type || "page_view", 40) || "page_view";
+  const pathname = mahoonAnalyticsCleanPath(body.path || "/");
+  const url = mahoonAnalyticsCleanText(body.url || "", 900);
+  const title = mahoonAnalyticsCleanText(body.title || "", 240);
+  const referrer = mahoonAnalyticsCleanText(body.referrer || "", 900);
+  const referrerHost = mahoonAnalyticsHost(referrer);
+  const userAgent = mahoonAnalyticsCleanText(request.headers.get("User-Agent") || "", 700);
+  const device = mahoonAnalyticsDevice(userAgent);
+
+  if (device === "bot") {
+    return mahoonAnalyticsJson({ ok: true, skipped: true });
+  }
+
+  if (pathname.startsWith("/admin")) {
+    return mahoonAnalyticsJson({ ok: true, skipped: true });
+  }
+
+  const cf = request.cf || {};
+
+  await env.DB.prepare(
+    [
+      "INSERT INTO analytics_events",
+      "(event_type, path, url, title, referrer, referrer_host, visitor_id, session_id, post_slug, tag, device, country, city, user_agent, screen_width, screen_height, language)",
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ].join(" ")
+  )
+    .bind(
+      eventType,
+      pathname,
+      url,
+      title,
+      referrer,
+      referrerHost,
+      mahoonAnalyticsCleanText(body.visitor_id || "", 120),
+      mahoonAnalyticsCleanText(body.session_id || "", 120),
+      mahoonAnalyticsPostSlug(pathname),
+      mahoonAnalyticsTag(pathname),
+      device,
+      mahoonAnalyticsCleanText(cf.country || "", 80),
+      mahoonAnalyticsCleanText(cf.city || "", 160),
+      userAgent,
+      Number(body.screen_width || 0) || null,
+      Number(body.screen_height || 0) || null,
+      mahoonAnalyticsCleanText(body.language || "", 40)
+    )
+    .run();
+
+  return mahoonAnalyticsJson({ ok: true });
+}
+
+async function mahoonGetAnalytics(request, env) {
+  if (!mahoonAnalyticsIsAdmin(request, env)) {
+    return mahoonAnalyticsJson({ ok: false, error: "Unauthorized" }, 401);
+  }
+
+  if (!env.DB) {
+    return mahoonAnalyticsJson({ ok: false, error: "DB binding is missing" }, 500);
+  }
+
+  const url = new URL(request.url);
+    // mahoon-ios-media-top-priority-v1
+    if (
+      (request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS") &&
+      (url.pathname === "/media" || url.pathname.startsWith("/media/"))
+    ) {
+      return handleMahooonIosCompatibleMedia(request, env, url);
+    }
+    // end-mahoon-ios-media-top-priority-v1
+    // mahoon-ios-media-range-v2-route
+    if (url.pathname === "/media" || url.pathname.startsWith("/media/")) {
+      return handleMahooonIosCompatibleMedia(request, env, url);
+    }
+    // end-mahoon-ios-media-range-v2-route
+
+    // mahoon-analytics-report-route-v3
+    if ((url.pathname === "/analytics/report" || url.pathname === "/analytics/admin") && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonAnalyticsCorsHeaders() });
+    }
+
+    if ((url.pathname === "/analytics/report" || url.pathname === "/analytics/admin") && request.method === "GET") {
+      return mahoonGetAnalytics(request, env);
+    }
+
+
+    // mahoon-analytics-routes-v2
+    if ((url.pathname === "/analytics/track" || url.pathname === "/admin/analytics") && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonAnalyticsCorsHeaders() });
+    }
+
+    if (url.pathname === "/analytics/track" && request.method === "POST") {
+      return mahoonTrackAnalytics(request, env);
+    }
+
+    if (url.pathname === "/admin/analytics" && request.method === "GET") {
+      return mahoonGetAnalytics(request, env);
+    }
+
+  const rawDays = Number(url.searchParams.get("days") || "30");
+  const days = Math.max(1, Math.min(365, Number.isFinite(rawDays) ? rawDays : 30));
+  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 19).replace("T", " ");
+
+  const totals = await env.DB.prepare(
+    [
+      "SELECT",
+      "COUNT(*) AS pageviews,",
+      "COUNT(DISTINCT NULLIF(visitor_id, '')) AS unique_visitors,",
+      "COUNT(DISTINCT NULLIF(session_id, '')) AS sessions",
+      "FROM analytics_events",
+      "WHERE created_at >= ?"
+    ].join(" ")
+  ).bind(since).first();
+
+  const today = await env.DB.prepare(
+    "SELECT COUNT(*) AS pageviews FROM analytics_events WHERE date(created_at) = date('now')"
+  ).first();
+
+  const yesterday = await env.DB.prepare(
+    "SELECT COUNT(*) AS pageviews FROM analytics_events WHERE date(created_at) = date('now', '-1 day')"
+  ).first();
+
+  const topPages = await env.DB.prepare(
+    [
+      "SELECT path, COALESCE(NULLIF(title, ''), path) AS title,",
+      "COUNT(*) AS views,",
+      "COUNT(DISTINCT NULLIF(visitor_id, '')) AS visitors",
+      "FROM analytics_events",
+      "WHERE created_at >= ?",
+      "GROUP BY path, title",
+      "ORDER BY views DESC",
+      "LIMIT 20"
+    ].join(" ")
+  ).bind(since).all();
+
+  const byDay = await env.DB.prepare(
+    [
+      "SELECT date(created_at) AS day,",
+      "COUNT(*) AS views,",
+      "COUNT(DISTINCT NULLIF(visitor_id, '')) AS visitors",
+      "FROM analytics_events",
+      "WHERE created_at >= ?",
+      "GROUP BY day",
+      "ORDER BY day ASC"
+    ].join(" ")
+  ).bind(since).all();
+
+  const referrers = await env.DB.prepare(
+    [
+      "SELECT COALESCE(NULLIF(referrer_host, ''), 'Direct') AS source,",
+      "COUNT(*) AS views",
+      "FROM analytics_events",
+      "WHERE created_at >= ?",
+      "GROUP BY source",
+      "ORDER BY views DESC",
+      "LIMIT 15"
+    ].join(" ")
+  ).bind(since).all();
+
+  const devices = await env.DB.prepare(
+    [
+      "SELECT COALESCE(NULLIF(device, ''), 'unknown') AS device,",
+      "COUNT(*) AS views",
+      "FROM analytics_events",
+      "WHERE created_at >= ?",
+      "GROUP BY device",
+      "ORDER BY views DESC"
+    ].join(" ")
+  ).bind(since).all();
+
+  const countries = await env.DB.prepare(
+    [
+      "SELECT COALESCE(NULLIF(country, ''), 'unknown') AS country,",
+      "COUNT(*) AS views",
+      "FROM analytics_events",
+      "WHERE created_at >= ?",
+      "GROUP BY country",
+      "ORDER BY views DESC",
+      "LIMIT 15"
+    ].join(" ")
+  ).bind(since).all();
+
+  const recent = await env.DB.prepare(
+    [
+      "SELECT path, title, device, country, referrer_host, created_at",
+      "FROM analytics_events",
+      "WHERE created_at >= ?",
+      "ORDER BY datetime(created_at) DESC, id DESC",
+      "LIMIT 25"
+    ].join(" ")
+  ).bind(since).all();
+
+  return mahoonAnalyticsJson({
+    ok: true,
+    days,
+    since,
+    totals: {
+      pageviews: Number(totals?.pageviews || 0),
+      unique_visitors: Number(totals?.unique_visitors || 0),
+      sessions: Number(totals?.sessions || 0),
+      today: Number(today?.pageviews || 0),
+      yesterday: Number(yesterday?.pageviews || 0)
+    },
+    topPages: topPages.results || [],
+    byDay: byDay.results || [],
+    referrers: referrers.results || [],
+    devices: devices.results || [],
+    countries: countries.results || [],
+    recent: recent.results || []
+  });
+}
+
+
+/* mahoon-analytics-v5 */
+function mahoonAnalyticsCorsHeadersV5() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Token",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
+  };
+}
+
+function mahoonAnalyticsJsonV5(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...mahoonAnalyticsCorsHeadersV5(),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
+function mahoonAnalyticsTextV5(value, maxLength = 500) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function mahoonAnalyticsPathV5(value) {
+  const source = String(value || "/").trim();
+  if (!source || !source.startsWith("/")) return "/";
+  return source.slice(0, 400);
+}
+
+function mahoonAnalyticsHostV5(value) {
+  try {
+    const host = new URL(String(value || "")).hostname || "";
+    return host.replace(/^www\./i, "").slice(0, 160);
+  } catch {
+    return "";
+  }
+}
+
+function mahoonAnalyticsDeviceV5(userAgent) {
+  const ua = String(userAgent || "").toLowerCase();
+
+  if (/bot|crawl|spider|slurp|facebookexternalhit|telegrambot|whatsapp|preview/.test(ua)) {
+    return "bot";
+  }
+
+  if (/tablet|ipad/.test(ua)) return "tablet";
+  if (/mobile|android|iphone|ipod/.test(ua)) return "mobile";
+
+  return "desktop";
+}
+
+function mahoonAnalyticsPostSlugV5(pathname) {
+  const match = String(pathname || "").match(/^\/post\/(.+)$/);
+  if (!match) return "";
+
+  try {
+    return decodeURIComponent(match[1]).slice(0, 500);
+  } catch {
+    return match[1].slice(0, 500);
+  }
+}
+
+function mahoonAnalyticsTagV5(pathname) {
+  const match = String(pathname || "").match(/^\/tag\/(.+)$/);
+  if (!match) return "";
+
+  try {
+    return decodeURIComponent(match[1]).slice(0, 300);
+  } catch {
+    return match[1].slice(0, 300);
+  }
+}
+
+function mahoonAnalyticsAdminTokenV5(request) {
+  const direct = request.headers.get("X-Admin-Token") || "";
+  const authorization = request.headers.get("Authorization") || "";
+  const bearer = authorization.toLowerCase().startsWith("bearer ")
+    ? authorization.slice(7).trim()
+    : "";
+
+  return direct || bearer;
+}
+
+function mahoonAnalyticsIsAdminV5(request, env) {
+  const expected = String(env.ADMIN_TOKEN || "").trim();
+  const received = String(mahoonAnalyticsAdminTokenV5(request) || "").trim();
+
+  return Boolean(expected && received && expected === received);
+}
+
+async function mahoonAnalyticsBodyV5(request) {
+  const raw = await request.text();
+
+  if (!raw) return {};
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+async function mahoonTrackAnalyticsV5(request, env) {
+  try {
+    if (!env.DB) {
+      return mahoonAnalyticsJsonV5({ ok: false, error: "DB binding is missing", version: "v5" }, 500);
+    }
+
+    const body = await mahoonAnalyticsBodyV5(request);
+
+    const pathname = mahoonAnalyticsPathV5(body.path || "/");
+    const userAgent = mahoonAnalyticsTextV5(request.headers.get("User-Agent") || "", 700);
+    const device = mahoonAnalyticsDeviceV5(userAgent);
+
+    if (device === "bot") {
+      return mahoonAnalyticsJsonV5({ ok: true, saved: false, skipped: true, reason: "bot", version: "v5" });
+    }
+
+    if (pathname.startsWith("/admin")) {
+      return mahoonAnalyticsJsonV5({ ok: true, saved: false, skipped: true, reason: "admin", version: "v5" });
+    }
+
+    const referrer = mahoonAnalyticsTextV5(body.referrer || "", 900);
+    const cf = request.cf || {};
+
+    await env.DB.prepare(
+      [
+        "INSERT INTO analytics_events",
+        "(event_type, path, url, title, referrer, referrer_host, visitor_id, session_id, post_slug, tag, device, country, city, user_agent, screen_width, screen_height, language)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ].join(" ")
+    )
+      .bind(
+        mahoonAnalyticsTextV5(body.event_type || "page_view", 40) || "page_view",
+        pathname,
+        mahoonAnalyticsTextV5(body.url || "", 900),
+        mahoonAnalyticsTextV5(body.title || "", 240),
+        referrer,
+        mahoonAnalyticsHostV5(referrer),
+        mahoonAnalyticsTextV5(body.visitor_id || "", 120),
+        mahoonAnalyticsTextV5(body.session_id || "", 120),
+        mahoonAnalyticsPostSlugV5(pathname),
+        mahoonAnalyticsTagV5(pathname),
+        device,
+        mahoonAnalyticsTextV5(cf.country || "", 80),
+        mahoonAnalyticsTextV5(cf.city || "", 160),
+        userAgent,
+        Number(body.screen_width || 0) || null,
+        Number(body.screen_height || 0) || null,
+        mahoonAnalyticsTextV5(body.language || "", 40)
+      )
+      .run();
+
+    return mahoonAnalyticsJsonV5({ ok: true, saved: true, version: "v5", path: pathname });
+  } catch (error) {
+    return mahoonAnalyticsJsonV5({
+      ok: false,
+      error: String(error?.message || error),
+      version: "v5"
+    }, 500);
+  }
+}
+
+async function mahoonGetAnalyticsV5(request, env) {
+  try {
+    if (!mahoonAnalyticsIsAdminV5(request, env)) {
+      return mahoonAnalyticsJsonV5({ ok: false, error: "Unauthorized", version: "v5" }, 401);
+    }
+
+    if (!env.DB) {
+      return mahoonAnalyticsJsonV5({ ok: false, error: "DB binding is missing", version: "v5" }, 500);
+    }
+
+    const url = new URL(request.url);
+    const rawDays = Number(url.searchParams.get("days") || "30");
+    const days = Math.max(1, Math.min(365, Number.isFinite(rawDays) ? rawDays : 30));
+    const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 19).replace("T", " ");
+
+    const totals = await env.DB.prepare(
+      [
+        "SELECT",
+        "COUNT(*) AS pageviews,",
+        "COUNT(DISTINCT NULLIF(visitor_id, '')) AS unique_visitors,",
+        "COUNT(DISTINCT NULLIF(session_id, '')) AS sessions",
+        "FROM analytics_events",
+        "WHERE created_at >= ?"
+      ].join(" ")
+    ).bind(since).first();
+
+    const today = await env.DB.prepare(
+      "SELECT COUNT(*) AS pageviews FROM analytics_events WHERE date(created_at) = date('now')"
+    ).first();
+
+    const yesterday = await env.DB.prepare(
+      "SELECT COUNT(*) AS pageviews FROM analytics_events WHERE date(created_at) = date('now', '-1 day')"
+    ).first();
+
+    const topPages = await env.DB.prepare(
+      [
+        "SELECT path, COALESCE(NULLIF(title, ''), path) AS title,",
+        "COUNT(*) AS views,",
+        "COUNT(DISTINCT NULLIF(visitor_id, '')) AS visitors",
+        "FROM analytics_events",
+        "WHERE created_at >= ?",
+        "GROUP BY path, title",
+        "ORDER BY views DESC",
+        "LIMIT 20"
+      ].join(" ")
+    ).bind(since).all();
+
+    const byDay = await env.DB.prepare(
+      [
+        "SELECT date(created_at) AS day,",
+        "COUNT(*) AS views,",
+        "COUNT(DISTINCT NULLIF(visitor_id, '')) AS visitors",
+        "FROM analytics_events",
+        "WHERE created_at >= ?",
+        "GROUP BY day",
+        "ORDER BY day ASC"
+      ].join(" ")
+    ).bind(since).all();
+
+    const referrers = await env.DB.prepare(
+      [
+        "SELECT COALESCE(NULLIF(referrer_host, ''), 'Direct') AS source,",
+        "COUNT(*) AS views",
+        "FROM analytics_events",
+        "WHERE created_at >= ?",
+        "GROUP BY source",
+        "ORDER BY views DESC",
+        "LIMIT 15"
+      ].join(" ")
+    ).bind(since).all();
+
+    const devices = await env.DB.prepare(
+      [
+        "SELECT COALESCE(NULLIF(device, ''), 'unknown') AS device,",
+        "COUNT(*) AS views",
+        "FROM analytics_events",
+        "WHERE created_at >= ?",
+        "GROUP BY device",
+        "ORDER BY views DESC"
+      ].join(" ")
+    ).bind(since).all();
+
+    const countries = await env.DB.prepare(
+      [
+        "SELECT COALESCE(NULLIF(country, ''), 'unknown') AS country,",
+        "COUNT(*) AS views",
+        "FROM analytics_events",
+        "WHERE created_at >= ?",
+        "GROUP BY country",
+        "ORDER BY views DESC",
+        "LIMIT 15"
+      ].join(" ")
+    ).bind(since).all();
+
+    const recent = await env.DB.prepare(
+      [
+        "SELECT path, title, device, country, referrer_host, created_at",
+        "FROM analytics_events",
+        "WHERE created_at >= ?",
+        "ORDER BY datetime(created_at) DESC, id DESC",
+        "LIMIT 25"
+      ].join(" ")
+    ).bind(since).all();
+
+    return mahoonAnalyticsJsonV5({
+      ok: true,
+      version: "v5",
+      days,
+      since,
+      totals: {
+        pageviews: Number(totals?.pageviews || 0),
+        unique_visitors: Number(totals?.unique_visitors || 0),
+        sessions: Number(totals?.sessions || 0),
+        today: Number(today?.pageviews || 0),
+        yesterday: Number(yesterday?.pageviews || 0)
+      },
+      topPages: topPages.results || [],
+      byDay: byDay.results || [],
+      referrers: referrers.results || [],
+      devices: devices.results || [],
+      countries: countries.results || [],
+      recent: recent.results || []
+    });
+  } catch (error) {
+    return mahoonAnalyticsJsonV5({
+      ok: false,
+      error: String(error?.message || error),
+      version: "v5"
+    }, 500);
+  }
+}
+
+
+/* mahoon-telegram-webhook-refresh-v1 */
+function mahoonTelegramWebhookCorsV1() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Token",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
+  };
+}
+
+function mahoonTelegramWebhookJsonV1(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...mahoonTelegramWebhookCorsV1(),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
+function mahoonTelegramWebhookAdminTokenV1(request) {
+  const direct = request.headers.get("X-Admin-Token") || "";
+  const authorization = request.headers.get("Authorization") || "";
+  const bearer = authorization.toLowerCase().startsWith("bearer ")
+    ? authorization.slice(7).trim()
+    : "";
+
+  return direct || bearer;
+}
+
+function mahoonTelegramWebhookIsAdminV1(request, env) {
+  const expected = String(env.ADMIN_TOKEN || "").trim();
+  const received = String(mahoonTelegramWebhookAdminTokenV1(request) || "").trim();
+
+  return Boolean(expected && received && expected === received);
+}
+
+async function mahoonTelegramBotApiV1(env, method, payload = null) {
+  const token = String(env.BOT_TOKEN || "").trim();
+
+  if (!token) {
+    throw new Error("BOT_TOKEN is missing");
+  }
+
+  const response = await fetch("https://api.telegram.org/bot" + token + "/" + method, {
+    method: payload ? "POST" : "GET",
+    headers: payload ? { "Content-Type": "application/json" } : {},
+    body: payload ? JSON.stringify(payload) : undefined
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.description || "Telegram API request failed");
+  }
+
+  return data;
+}
+
+function mahoonTelegramPublicWebhookUrlV1(request, currentUrl) {
+  const publicOrigin = new URL(request.url).origin;
+
+  try {
+    const current = new URL(String(currentUrl || ""));
+    return publicOrigin + current.pathname + current.search;
+  } catch {
+    return publicOrigin + "/telegram";
+  }
+}
+
+async function mahoonTelegramWebhookInfoV1(request, env) {
+  if (!mahoonTelegramWebhookIsAdminV1(request, env)) {
+    return mahoonTelegramWebhookJsonV1({ ok: false, error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const info = await mahoonTelegramBotApiV1(env, "getWebhookInfo");
+
+    return mahoonTelegramWebhookJsonV1({
+      ok: true,
+      webhook: info.result || null
+    });
+  } catch (error) {
+    return mahoonTelegramWebhookJsonV1({
+      ok: false,
+      error: String(error?.message || error)
+    }, 500);
+  }
+}
+
+async function mahoonTelegramWebhookRefreshV1(request, env) {
+  if (!mahoonTelegramWebhookIsAdminV1(request, env)) {
+    return mahoonTelegramWebhookJsonV1({ ok: false, error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const before = await mahoonTelegramBotApiV1(env, "getWebhookInfo");
+    const currentUrl = before?.result?.url || "";
+    const nextUrl = mahoonTelegramPublicWebhookUrlV1(request, currentUrl);
+
+    const allowedUpdates = [
+      "message",
+      "edited_message",
+      "channel_post",
+      "edited_channel_post"
+    ];
+
+    const setResult = await mahoonTelegramBotApiV1(env, "setWebhook", {
+      url: nextUrl,
+      allowed_updates: allowedUpdates,
+      drop_pending_updates: false
+    });
+
+    const after = await mahoonTelegramBotApiV1(env, "getWebhookInfo");
+
+    return mahoonTelegramWebhookJsonV1({
+      ok: true,
+      refreshed: true,
+      webhook_url: nextUrl,
+      allowed_updates: allowedUpdates,
+      telegram_set_result: setResult.result,
+      before: before.result || null,
+      after: after.result || null
+    });
+  } catch (error) {
+    return mahoonTelegramWebhookJsonV1({
+      ok: false,
+      error: String(error?.message || error)
+    }, 500);
+  }
+}
+
+
+/* mahoon-public-posts-full-v1 */
+function mahoonPublicPostsFullCorsV1() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Token",
+    "Access-Control-Allow-Methods": "GET, OPTIONS"
+  };
+}
+
+function mahoonPublicPostsFullJsonV1(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...mahoonPublicPostsFullCorsV1(),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
+async function mahoonPublicPostsFullV1(request, env) {
+  try {
+    if (!env.DB) {
+      return mahoonPublicPostsFullJsonV1({
+        ok: false,
+        error: "DB binding is missing"
+      }, 500);
+    }
+
+    const url = new URL(request.url);
+    const rawLimit = Number(url.searchParams.get("limit") || "500");
+    const safeLimit = Number.isFinite(rawLimit) ? rawLimit : 500;
+    const limit = Math.max(1, Math.min(safeLimit, 1000));
+
+    const result = await env.DB.prepare(
+      `SELECT *
+       FROM posts
+       WHERE (is_published = 1 OR is_published IS NULL)
+         AND (deleted_at IS NULL OR deleted_at = '')
+       ORDER BY created_at DESC, id DESC
+       LIMIT ?`
+    ).bind(limit).all();
+
+    const posts = Array.isArray(result?.results) ? result.results : [];
+
+    return mahoonPublicPostsFullJsonV1({
+      ok: true,
+      posts,
+      count: posts.length,
+      limit
+    });
+  } catch (error) {
+    return mahoonPublicPostsFullJsonV1({
+      ok: false,
+      error: String(error?.message || error)
+    }, 500);
+  }
+}
+
+
+/* mahoon-scale-v1 */
+const MAHOON_SCALE_AUDIO_BOOK_TAGS_V1 = [
+  "کتاب_گویا",
+  "کتاب‌گویا",
+  "کتابگویا",
+  "کتاب_صوتی",
+  "کتاب‌صوتی",
+  "کتابصوتی"
+];
+
+const MAHOON_SCALE_CATEGORY_DEFS_V1 = [
+  {
+    title: "کتاب",
+    aliases: ["کتاب"],
+    tags: ["کتاب", ...MAHOON_SCALE_AUDIO_BOOK_TAGS_V1]
+  },
+  {
+    title: "دیالوگ ها",
+    aliases: ["دیالوگ ها", "دیالوگ‌ها", "دیالوگ_ها", "دیالوگها", "دیالوگ"],
+    tags: ["دیالوگ", "دیالوگ‌ها", "دیالوگ_ها", "دیالوگها"]
+  },
+  {
+    title: "صوتی",
+    aliases: ["صوتی", "صدا", "موسیقی"],
+    tags: ["صوتی", "صدا", "موسیقی", ...MAHOON_SCALE_AUDIO_BOOK_TAGS_V1]
+  },
+  {
+    title: "شعر و متن",
+    aliases: ["شعر و متن", "متن", "متن‌ها", "متن_ها", "متنها", "شعر", "اشعار", "شعرها", "شعر_ها"],
+    tags: ["متن", "متن‌ها", "متن_ها", "متنها", "شعر", "اشعار", "شعرها", "شعر_ها"]
+  },
+  {
+    title: "نقاشی",
+    aliases: ["نقاشی"],
+    tags: ["نقاشی"]
+  }
+];
+
+function mahoonScaleCorsV1() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Token",
+    "Access-Control-Allow-Methods": "GET, OPTIONS"
+  };
+}
+
+function mahoonScaleJsonV1(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...mahoonScaleCorsV1(),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "public, max-age=45, stale-while-revalidate=120"
+    }
+  });
+}
+
+function mahoonScaleAdminJsonV1(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...mahoonScaleCorsV1(),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
+function mahoonScaleNormalizeV1(value) {
+  return String(value || "")
+    .replace(/^#/, "")
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/\u200c/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function mahoonScaleCategoryByTitleV1(value) {
+  const normalized = mahoonScaleNormalizeV1(value);
+
+  return MAHOON_SCALE_CATEGORY_DEFS_V1.find((category) =>
+    category.aliases.some(
+      (alias) => mahoonScaleNormalizeV1(alias) === normalized
+    )
+  ) || null;
+}
+
+function mahoonScaleAllCategoryTagsV1() {
+  return MAHOON_SCALE_CATEGORY_DEFS_V1.flatMap((category) => category.tags);
+}
+
+function mahoonScaleEscapeLikeV1(value) {
+  return String(value || "")
+    .replace(/!/g, "!!")
+    .replace(/%/g, "!%")
+    .replace(/_/g, "!_");
+}
+
+function mahoonScaleNormalizeSearchTextV2(value) {
+  return String(value || "")
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/[\u200c\u200f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function mahoonScaleNormalizeSearchQueryV2(value) {
+  return Array.from(
+    mahoonScaleNormalizeSearchTextV2(value)
+  ).slice(0, 120).join("");
+}
+
+function mahoonScaleIsUsefulSearchQueryV2(value) {
+  return /[\p{L}\p{N}]/u.test(String(value || ""));
+}
+
+function mahoonScaleTagConditionV1(tags) {
+  const safeTags = Array.from(new Set((tags || []).filter(Boolean)));
+
+  if (!safeTags.length) {
+    return {
+      sql: "1 = 0",
+      params: []
+    };
+  }
+
+  const paddedText =
+    "(' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ')";
+
+  return {
+    sql: "(" + safeTags
+      .map(() => paddedText + " LIKE ? ESCAPE '!'")
+      .join(" OR ") + ")",
+    params: safeTags.map(
+      (tag) => "% #" + mahoonScaleEscapeLikeV1(tag) + " %"
+    )
+  };
+}
+
+function mahoonScalePublicBaseWhereV1() {
+  const categoryCondition = mahoonScaleTagConditionV1(mahoonScaleAllCategoryTagsV1());
+
+  return {
+    sql: [
+      "slug IS NOT NULL",
+      "slug != ''",
+      "(deleted_at IS NULL OR deleted_at = '')",
+      "(is_published = 1 OR is_published IS NULL)",
+      categoryCondition.sql
+    ].join(" AND "),
+    params: categoryCondition.params
+  };
+}
+
+function mahoonScaleBuildPublicWhereV1(url) {
+  const base = mahoonScalePublicBaseWhereV1();
+  const clauses = [base.sql];
+  const params: Array<string | number> = [...base.params];
+
+  const categoryValue = String(url.searchParams.get("category") || "").trim();
+  const tagValue = String(url.searchParams.get("tag") || "").replace(/^#/, "").trim();
+  const rawQ = String(url.searchParams.get("q") || "");
+  const q = mahoonScaleNormalizeSearchQueryV2(rawQ);
+  const qRequested = rawQ.trim() !== "";
+  const qUseful = mahoonScaleIsUsefulSearchQueryV2(q);
+
+  if (categoryValue) {
+    const category = mahoonScaleCategoryByTitleV1(categoryValue);
+
+    if (category) {
+      const condition = mahoonScaleTagConditionV1(category.tags);
+      clauses.push(condition.sql);
+      params.push(...condition.params);
+    } else {
+      clauses.push("1 = 0");
+    }
+  }
+
+  if (tagValue) {
+    const tagCondition = mahoonScaleTagConditionV1(
+      mahoonScaleTagCandidateVariantsV1(tagValue)
+    );
+    clauses.push(tagCondition.sql);
+    params.push(...tagCondition.params);
+  }
+
+  if (qRequested && !qUseful) {
+    clauses.push("1 = 0");
+  } else if (q) {
+    const maybeId = /^[0-9]+$/.test(q) ? Number(q) : NaN;
+
+    clauses.push("(" + [
+      "INSTR(LOWER(COALESCE(text, '')), ?) > 0",
+      "INSTR(LOWER(COALESCE(slug, '')), ?) > 0",
+      "INSTR(LOWER(COALESCE(seo_title, '')), ?) > 0",
+      "INSTR(LOWER(COALESCE(seo_description, '')), ?) > 0",
+      "INSTR(LOWER(COALESCE(media_file_name, '')), ?) > 0",
+      Number.isFinite(maybeId) && maybeId > 0 ? "id = ?" : "1 = 0"
+    ].join(" OR ") + ")");
+
+    params.push(q, q, q, q, q);
+
+    if (Number.isFinite(maybeId) && maybeId > 0) {
+      params.push(maybeId);
+    }
+  }
+
+  return {
+    sql: clauses.join(" AND "),
+    params
+  };
+}
+
+function mahoonScalePublicColumnsV1() {
+  return [
+    "id",
+    "text",
+    "slug",
+    "created_at",
+    "updated_at",
+    "is_published",
+    "media_type",
+    "media_file_id",
+    "media_unique_id",
+    "media_mime_type",
+    "media_file_name",
+    "media_duration",
+    "media_width",
+    "media_height",
+    "media_size",
+    "photo_file_id",
+    "photo_unique_id",
+    "photo_width",
+    "photo_height",
+    "seo_title",
+    "seo_description",
+    "COALESCE(view_count, 0) AS view_count",
+    "last_viewed_at"
+  ].join(", ");
+}
+
+async function mahoonScalePublicStatsObjectV1(env) {
+  const base = mahoonScalePublicBaseWhereV1();
+
+    const statsRow = (await env.DB.prepare(
+    `WITH flags AS ( SELECT id, CASE WHEN (slug IS NOT NULL AND slug != '' AND (deleted_at IS NULL OR deleted_at = '') AND (is_published = 1 OR is_published IS NULL) AND ((' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابگویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابصوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ‌ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #صدا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #موسیقی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن‌ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متنها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعر %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #اشعار %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعرها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعر!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #نقاشی %' ESCAPE '!')) THEN 1 ELSE 0 END AS visible_flag, CASE WHEN ((deleted_at IS NULL OR deleted_at = '') AND COALESCE(is_published, 1) = 1) THEN 1 ELSE 0 END AS published_flag, CASE WHEN ((deleted_at IS NULL OR deleted_at = '')) THEN 1 ELSE 0 END AS total_flag, CASE WHEN ((deleted_at IS NOT NULL AND deleted_at != '')) THEN 1 ELSE 0 END AS deleted_flag, CASE WHEN ((slug IS NOT NULL AND slug != '' AND (deleted_at IS NULL OR deleted_at = '') AND (is_published = 1 OR is_published IS NULL) AND ((' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابگویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابصوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ‌ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #صدا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #موسیقی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن‌ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متنها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعر %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #اشعار %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعرها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعر!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #نقاشی %' ESCAPE '!')) AND COALESCE(media_type, '') = '' AND COALESCE(media_file_id, '') = '' AND COALESCE(photo_file_id, '') = '') THEN 1 ELSE 0 END AS text_flag, CASE WHEN (((' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابگویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابصوتی %' ESCAPE '!')) THEN 1 ELSE 0 END AS category_0_flag, CASE WHEN (((' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ‌ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگ!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #دیالوگها %' ESCAPE '!')) THEN 1 ELSE 0 END AS category_1_flag, CASE WHEN (((' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #صدا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #موسیقی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌گویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابگویا %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب!_صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتاب‌صوتی %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #کتابصوتی %' ESCAPE '!')) THEN 1 ELSE 0 END AS category_2_flag, CASE WHEN (((' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن‌ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متن!_ها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #متنها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعر %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #اشعار %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعرها %' ESCAPE '!' OR (' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #شعر!_ها %' ESCAPE '!')) THEN 1 ELSE 0 END AS category_3_flag, CASE WHEN (((' ' || replace(replace(replace(COALESCE(text, ''), char(13), ' '), char(10), ' '), char(9), ' ') || ' ') LIKE '% #نقاشی %' ESCAPE '!')) THEN 1 ELSE 0 END AS category_4_flag FROM posts ) SELECT COALESCE(SUM(visible_flag), 0) AS visible_posts, MAX(CASE WHEN visible_flag = 1 THEN id ELSE NULL END) AS latest_id, COALESCE(SUM(published_flag), 0) AS published_posts, COALESCE(SUM(total_flag), 0) AS total_posts, COALESCE(SUM(deleted_flag), 0) AS deleted_posts, COALESCE(SUM(text_flag), 0) AS text_posts, COALESCE(SUM(CASE WHEN visible_flag = 1 AND category_0_flag = 1 THEN 1 ELSE 0 END), 0) AS category_0, COALESCE(SUM(CASE WHEN visible_flag = 1 AND category_1_flag = 1 THEN 1 ELSE 0 END), 0) AS category_1, COALESCE(SUM(CASE WHEN visible_flag = 1 AND category_2_flag = 1 THEN 1 ELSE 0 END), 0) AS category_2, COALESCE(SUM(CASE WHEN visible_flag = 1 AND category_3_flag = 1 THEN 1 ELSE 0 END), 0) AS category_3, COALESCE(SUM(CASE WHEN visible_flag = 1 AND category_4_flag = 1 THEN 1 ELSE 0 END), 0) AS category_4 FROM flags`
+  ).first()) as Record<string, number | null> | null;
+
+  
+
+  
+
+  
+
+  
+
+    const categoryConditions = MAHOON_SCALE_CATEGORY_DEFS_V1.map((category, index) => ({
+    category,
+    alias: "category_" + index,
+    condition: mahoonScaleTagConditionV1(category.tags)
+  }));
+
+  const categorySelects = categoryConditions.map(({ alias, condition }) =>
+    `COALESCE(SUM(CASE WHEN ${condition.sql} THEN 1 ELSE 0 END), 0) AS ${alias}`
+  );
+
+  const categoryParams = categoryConditions.flatMap(({ condition }) =>
+    condition.params
+  );
+
+  
+
+  const categoryValues =
+    (statsRow || {}) as Record<string, unknown>;
+
+  const categoryCounts = categoryConditions.map(({ category, alias }) => ({
+    title: category.title,
+    count: Number(categoryValues[alias] || 0)
+  }));
+
+  const categoryMap = Object.fromEntries(
+    categoryCounts.map(({ title, count }) => [title, count])
+  );
+
+  return {
+    visible_posts: Number(statsRow?.visible_posts || 0),
+    published_posts: Number(statsRow?.published_posts || 0),
+    total_posts: Number(statsRow?.total_posts || 0),
+    deleted_posts: Number(statsRow?.deleted_posts || 0),
+    text_posts: Number(statsRow?.text_posts || 0),
+    latest_id: Number(statsRow?.latest_id || 0),
+    active_categories: categoryCounts.filter((item) => item.count > 0).length,
+    category_counts: categoryCounts,
+    category_map: categoryMap
+  };
+}
+
+
+
+// mahoon-public-tag-posts-v1
+function mahoonScaleNormalizeExactTagV1(value) {
+  return String(value || "")
+    .replace(/^#/, "")
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/[\u200c\u200f]/g, "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function mahoonScaleExtractExactTagsV1(value) {
+  return Array.from(String(value || "").matchAll(/(^|\s)#([^\s#]+)/gu))
+    .map((match) => mahoonScaleNormalizeExactTagV1(match[2]))
+    .filter(Boolean);
+}
+
+function mahoonScaleTagCandidateVariantsV1(value) {
+  const raw = String(value || "")
+    .replace(/^#/, "")
+    .trim();
+  const spaced = raw
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return Array.from(new Set([
+    raw,
+    spaced,
+    spaced.replace(/ /g, "_"),
+    spaced.replace(/ /g, "\u200c"),
+    raw.replace(/[\u200c\u200f]/g, ""),
+    spaced.replace(/[\u200c\u200f]/g, "")
+  ].map((item) => String(item || "").trim()).filter(Boolean)));
+}
+
+function mahoonScaleTagSearchTextV1(post) {
+  return mahoonScaleNormalizeSearchTextV2([
+    post?.id,
+    post?.text,
+    post?.slug,
+    post?.seo_title,
+    post?.seo_description,
+    post?.media_file_name
+  ].join(" "));
+}
+
+async function mahoonScaleSyncPostTagProjectionV1(env, postId, text) {
+  const id = Number(postId);
+
+  if (!env.DB || !Number.isInteger(id) || id <= 0) {
+    return;
+  }
+
+  const tags = [
+    ...new Set(
+      Array.from(
+        mahoonScaleExtractExactTagsV1(text || "")
+      ).map(String)
+    ),
+  ];
+
+  const statements = [
+    env.DB.prepare(
+      "DELETE FROM mahoon_post_tags_v1 WHERE post_id = ?"
+    ).bind(id),
+    ...tags.map((tag) =>
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO mahoon_post_tags_v1(post_id, tag_norm) VALUES (?, ?)"
+      ).bind(id, tag)
+    ),
+  ];
+
+  await env.DB.batch(statements);
+}
+
+async function mahoonScalePublicTagPostsV1(request, env, origin) {
+  try {
+    if (!env.DB) {
+      return mahoonScaleJsonV1({ ok: false, error: "DB binding is missing" }, 500);
+    }
+
+    const url = new URL(request.url);
+    const tag = String(url.searchParams.get("tag") || "").replace(/^#/, "").trim();
+    const normalizedTag = mahoonScaleNormalizeExactTagV1(tag);
+
+    if (!normalizedTag) {
+      return mahoonScaleJsonV1({ ok: false, error: "Tag is required" }, 400);
+    }
+
+    const rawLimit = Number(url.searchParams.get("limit") || "20");
+    const rawOffset = Number(url.searchParams.get("offset") || "0");
+    const limit = Math.max(1, Math.min(Number.isFinite(rawLimit) ? rawLimit : 20, 120));
+    const offset = Math.max(0, Number.isFinite(rawOffset) ? rawOffset : 0);
+    const q = mahoonScaleNormalizeExactTagV1(url.searchParams.get("q") || "");
+    const base = mahoonScalePublicBaseWhereV1();
+    const variants = mahoonScaleTagCandidateVariantsV1(tag);
+    const candidateSql = variants.map(() => "p.text LIKE ?").join(" OR ");
+    const candidateParams = variants.map((variant) => "%#" + variant + "%");
+
+    const result = await env.DB.prepare(
+      [
+        "SELECT " + mahoonScalePublicColumnsV1(),
+        "FROM mahoon_post_tags_v1 AS t",
+        "JOIN posts AS p ON p.id = t.post_id",
+        "WHERE t.tag_norm = ?",
+        "AND " + base.sql,
+        "AND (" + candidateSql + ")",
+        "ORDER BY created_at DESC, id DESC"
+      ].join(" ")
+    ).bind(normalizedTag, ...base.params, ...candidateParams).all();
+
+    const candidates = Array.isArray(result?.results) ? result.results : [];
+    const exact = candidates.filter((post) => {
+      const tags = mahoonScaleExtractExactTagsV1(post?.text);
+      if (!tags.includes(normalizedTag)) return false;
+      if (!q) return true;
+      return mahoonScaleTagSearchTextV1(post).includes(q);
+    });
+    const total = exact.length;
+    const page = exact.slice(offset, offset + limit);
+    const nextOffset = offset + page.length;
+
+    return mahoonScaleJsonV1({
+      ok: true,
+      mode: "tag",
+      tag,
+      posts: page.map((post) => postWithMediaUrl(post, origin)),
+      total,
+      limit,
+      offset,
+      next_offset: nextOffset,
+      has_more: nextOffset < total
+    });
+  } catch (error) {
+    return mahoonScaleJsonV1({ ok: false, error: String(error?.message || error) }, 500);
+  }
+}
+// end-mahoon-public-tag-posts-v1
+
+async function mahoonScalePublicHomeV1(request, env, origin) {
+  try {
+    if (!env.DB) {
+      return mahoonScaleJsonV1({ ok: false, error: "DB binding is missing" }, 500);
+    }
+
+    const url = new URL(request.url);
+    const rawLimit = Number(url.searchParams.get("limit") || "80");
+    const limit = Math.max(1, Math.min(Number.isFinite(rawLimit) ? rawLimit : 80, 120));
+    const base = mahoonScalePublicBaseWhereV1();
+
+    const stats = await mahoonScalePublicStatsObjectV1(env);
+
+    const result = await env.DB.prepare(
+      [
+        "SELECT " + mahoonScalePublicColumnsV1(),
+        "FROM posts INDEXED BY idx_posts_public_created_id",
+        "WHERE " + base.sql,
+        "ORDER BY created_at DESC, id DESC",
+        "LIMIT ?"
+      ].join(" ")
+    ).bind(...base.params, limit).all();
+
+    const posts = Array.isArray(result?.results) ? result.results : [];
+
+    return mahoonScaleJsonV1({
+      ok: true,
+      mode: "home",
+      stats,
+      posts: posts.map((post) => postWithMediaUrl(post, origin))
+    });
+  } catch (error) {
+    return mahoonScaleJsonV1({ ok: false, error: String(error?.message || error) }, 500);
+  }
+}
+
+async function mahoonScalePublicPostsV1(request, env, origin) {
+  try {
+    if (!env.DB) {
+      return mahoonScaleJsonV1({ ok: false, error: "DB binding is missing" }, 500);
+    }
+
+    const url = new URL(request.url);
+    const rawLimit = Number(url.searchParams.get("limit") || "20");
+    const rawOffset = Number(url.searchParams.get("offset") || "0");
+    const limit = Math.max(1, Math.min(Number.isFinite(rawLimit) ? rawLimit : 20, 120));
+    const offset = Math.max(0, Number.isFinite(rawOffset) ? rawOffset : 0);
+    const where = mahoonScaleBuildPublicWhereV1(url);
+
+    const envelopeRow = await env.DB.prepare(
+      [
+        "WITH filtered AS MATERIALIZED (",
+        "SELECT " + mahoonScalePublicColumnsV1(),
+        "FROM posts",
+        "WHERE " + where.sql,
+        "), page AS MATERIALIZED (",
+        "SELECT \"id\", \"text\", \"slug\", \"created_at\", \"updated_at\", \"is_published\", \"media_type\", \"media_file_id\", \"media_unique_id\", \"media_mime_type\", \"media_file_name\", \"media_duration\", \"media_width\", \"media_height\", \"media_size\", \"photo_file_id\", \"photo_unique_id\", \"photo_width\", \"photo_height\", \"seo_title\", \"seo_description\", \"view_count\", \"last_viewed_at\"",
+        "FROM filtered",
+        "ORDER BY created_at DESC, id DESC",
+        "LIMIT ? OFFSET ?",
+        ")",
+        "SELECT",
+        "json_object('total', (SELECT COUNT(*) FROM filtered), 'posts', json(COALESCE((SELECT json_group_array(json_object('id', ordered_page.\"id\", 'text', ordered_page.\"text\", 'slug', ordered_page.\"slug\", 'created_at', ordered_page.\"created_at\", 'updated_at', ordered_page.\"updated_at\", 'is_published', ordered_page.\"is_published\", 'media_type', ordered_page.\"media_type\", 'media_file_id', ordered_page.\"media_file_id\", 'media_unique_id', ordered_page.\"media_unique_id\", 'media_mime_type', ordered_page.\"media_mime_type\", 'media_file_name', ordered_page.\"media_file_name\", 'media_duration', ordered_page.\"media_duration\", 'media_width', ordered_page.\"media_width\", 'media_height', ordered_page.\"media_height\", 'media_size', ordered_page.\"media_size\", 'photo_file_id', ordered_page.\"photo_file_id\", 'photo_unique_id', ordered_page.\"photo_unique_id\", 'photo_width', ordered_page.\"photo_width\", 'photo_height', ordered_page.\"photo_height\", 'seo_title', ordered_page.\"seo_title\", 'seo_description', ordered_page.\"seo_description\", 'view_count', ordered_page.\"view_count\", 'last_viewed_at', ordered_page.\"last_viewed_at\")) FROM (SELECT * FROM page ORDER BY created_at DESC, id DESC) AS ordered_page), json('[]')))) AS payload",
+      ].join(" ")
+    ).bind(...where.params, limit, offset).first();
+
+    const rawEnvelope =
+      envelopeRow && typeof envelopeRow === "object"
+        ? Object.values(envelopeRow as Record<string, unknown>)[0]
+        : null;
+
+    const envelope =
+      rawEnvelope && typeof rawEnvelope === "object" && !Array.isArray(rawEnvelope)
+        ? rawEnvelope as { total?: unknown; posts?: unknown }
+        : typeof rawEnvelope === "string"
+          ? JSON.parse(rawEnvelope) as { total?: unknown; posts?: unknown }
+          : null;
+
+    if (!envelope) {
+      throw new Error("Public posts single-scan envelope is missing.");
+    }
+
+    const total = Number(envelope.total || 0);
+    const posts = Array.isArray(envelope.posts) ? envelope.posts : [];
+
+    if (!Number.isFinite(total) || total < 0) {
+      throw new Error("Public posts single-scan total is invalid.");
+    }
+
+    return mahoonScaleJsonV1({
+      ok: true,
+      mode: "archive",
+      posts: posts.map((post) => postWithMediaUrl(post, origin)),
+      total,
+      limit,
+      offset,
+      next_offset: offset + posts.length,
+      has_more: offset + posts.length < total
+    });
+  } catch (error) {
+    return mahoonScaleJsonV1({ ok: false, error: String(error?.message || error) }, 500);
+  }
+}
+
+async function mahoonScaleAdminStatsV1(request, env) {
+  try {
+    const token = String(request.headers.get("X-Admin-Token") || request.headers.get("Authorization") || "")
+      .replace(/^Bearer\s+/i, "")
+      .trim();
+
+    if (!env.ADMIN_TOKEN || token !== String(env.ADMIN_TOKEN).trim()) {
+      return mahoonScaleAdminJsonV1({ ok: false, error: "Unauthorized" }, 401);
+    }
+
+    if (!env.DB) {
+      return mahoonScaleAdminJsonV1({ ok: false, error: "DB binding is missing" }, 500);
+    }
+
+    const row = await env.DB.prepare(
+      [
+        "SELECT",
+        "COUNT(CASE WHEN (deleted_at IS NULL OR deleted_at = '') THEN 1 END) AS total_posts,",
+        "COUNT(CASE WHEN (deleted_at IS NULL OR deleted_at = '') AND COALESCE(is_published, 1) = 1 THEN 1 END) AS published_posts,",
+        "COUNT(CASE WHEN (deleted_at IS NULL OR deleted_at = '') AND COALESCE(is_published, 1) != 1 THEN 1 END) AS draft_posts,",
+        "COUNT(CASE WHEN deleted_at IS NOT NULL AND deleted_at != '' THEN 1 END) AS deleted_posts,",
+        "COUNT(CASE WHEN (deleted_at IS NULL OR deleted_at = '') AND (COALESCE(media_file_id, '') != '' OR COALESCE(photo_file_id, '') != '') THEN 1 END) AS media_posts,",
+        "COUNT(CASE WHEN (deleted_at IS NULL OR deleted_at = '') AND COALESCE(media_file_id, '') = '' AND COALESCE(photo_file_id, '') = '' THEN 1 END) AS text_posts,",
+        "MAX(CASE WHEN (deleted_at IS NULL OR deleted_at = '') THEN id END) AS latest_id",
+        "FROM posts"
+      ].join(" ")
+    ).first();
+
+    return mahoonScaleAdminJsonV1({
+      ok: true,
+      stats: {
+        total_posts: Number(row?.total_posts || 0),
+        published_posts: Number(row?.published_posts || 0),
+        draft_posts: Number(row?.draft_posts || 0),
+        deleted_posts: Number(row?.deleted_posts || 0),
+        media_posts: Number(row?.media_posts || 0),
+        text_posts: Number(row?.text_posts || 0),
+        latest_id: Number(row?.latest_id || 0)
+      }
+    });
+  } catch (error) {
+    return mahoonScaleAdminJsonV1({ ok: false, error: String(error?.message || error) }, 500);
+  }
+}
+/* end-mahoon-scale-v1 */
+
+
+// mahoon-ios-media-range-v2-helper
+function mahoonGuessMimeFromTelegramPath(filePath) {
+  const lower = String(filePath || "").toLowerCase();
+
+  if (lower.endsWith(".mp3")) return "audio/mpeg";
+  if (lower.endsWith(".m4a")) return "audio/mp4";
+  if (lower.endsWith(".aac")) return "audio/aac";
+  if (lower.endsWith(".wav")) return "audio/wav";
+  if (lower.endsWith(".ogg") || lower.endsWith(".oga") || lower.endsWith(".opus")) return "audio/ogg";
+
+  if (lower.endsWith(".mp4") || lower.endsWith(".m4v")) return "video/mp4";
+  if (lower.endsWith(".mov")) return "video/quicktime";
+  if (lower.endsWith(".webm")) return "video/webm";
+
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".gif")) return "image/gif";
+
+  return "application/octet-stream";
+}
+
+function mahoonEncodeTelegramPath(filePath) {
+  return String(filePath || "")
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
+function mahoonMediaHeaders() {
+  const headers = new Headers();
+
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Range, If-Range, Content-Type, Accept");
+  headers.set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Length, Content-Range, Content-Type, ETag, Last-Modified");
+  headers.set("Accept-Ranges", "bytes");
+
+  return headers;
+}
+
+function mahoonCopyHeader(toHeaders, fromHeaders, name) {
+  const value = fromHeaders.get(name);
+
+  if (value) {
+    toHeaders.set(name, value);
+  }
+}
+
+function mahoonParseRange(rangeHeader, totalSize) {
+  const source = String(rangeHeader || "").trim();
+
+  if (!source || !source.toLowerCase().startsWith("bytes=")) return null;
+  if (!Number.isFinite(totalSize) || totalSize <= 0) return null;
+
+  const rangeText = source.replace(/^bytes=/i, "").split(",")[0].trim();
+  const parts = rangeText.split("-");
+
+  if (parts.length !== 2) return null;
+
+  const startText = parts[0].trim();
+  const endText = parts[1].trim();
+
+  let start = 0;
+  let end = totalSize - 1;
+
+  if (!startText && endText) {
+    const suffix = Number(endText);
+    if (!Number.isFinite(suffix) || suffix <= 0) return null;
+
+    start = Math.max(totalSize - suffix, 0);
+    end = totalSize - 1;
+  } else {
+    start = Number(startText);
+    end = endText ? Number(endText) : totalSize - 1;
+
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  }
+
+  start = Math.max(0, Math.floor(start));
+  end = Math.min(totalSize - 1, Math.floor(end));
+
+  if (start > end || start >= totalSize) return null;
+
+  return { start, end };
+}
+
+function mahoonRange416(totalSize, contentType) {
+  const headers = mahoonMediaHeaders();
+
+  headers.set("Content-Type", contentType || "application/octet-stream");
+  headers.set("Content-Range", "bytes */" + String(Math.max(0, totalSize || 0)));
+
+  return new Response(null, {
+    status: 416,
+    headers
+  });
+}
+
+async function handleMahooonIosCompatibleMedia(request, env, url) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: mahoonMediaHeaders()
+    });
+  }
+
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("Method Not Allowed", {
+      status: 405,
+      headers: mahoonMediaHeaders()
+    });
+  }
+
+  const fromPath = url.pathname.startsWith("/media/")
+    ? url.pathname.slice("/media/".length)
+    : "";
+
+  const fileId = decodeURIComponent(fromPath || url.searchParams.get("file_id") || "").trim();
+
+  if (!fileId) {
+    return new Response("Missing media file id", {
+      status: 400,
+      headers: mahoonMediaHeaders()
+    });
+  }
+
+  const botToken = String(env.BOT_TOKEN || "").trim();
+
+  if (!botToken) {
+    return new Response("BOT_TOKEN is not configured", {
+      status: 500,
+      headers: mahoonMediaHeaders()
+    });
+  }
+
+  const telegramInfoUrl = "https://api.telegram.org/bot" + botToken + "/getFile?file_id=" + encodeURIComponent(fileId);
+  const infoRes = await fetch(telegramInfoUrl, {
+    headers: {
+      Accept: "application/json"
+    }
+  });
+
+  const info = await infoRes.json().catch(() => null);
+  const filePath = String(info && info.result && info.result.file_path ? info.result.file_path : "").trim();
+  const fileSize = Number(info && info.result && info.result.file_size ? info.result.file_size : 0);
+
+  if (!infoRes.ok || !info || !info.ok || !filePath) {
+    const headers = mahoonMediaHeaders();
+    headers.set("Content-Type", "text/plain; charset=utf-8");
+
+    return new Response("Telegram file was not found", {
+      status: 404,
+      headers
+    });
+  }
+
+  // mahoon-ios-head-response-v1
+  if (request.method === "HEAD") {
+    const guessedHeadType = mahoonGuessMimeFromTelegramPath(filePath);
+    const headContentType = String(fileId || "").startsWith("BAAC")
+      ? "video/mp4"
+      : String(fileId || "").startsWith("CQAC")
+        ? "audio/mpeg"
+        : guessedHeadType;
+
+    const headers = mahoonMediaHeaders();
+
+    headers.set("Content-Type", headContentType);
+    headers.set("Content-Disposition", "inline");
+    headers.set("Cache-Control", "public, max-age=31536000, immutable");
+
+    if (fileSize > 0) {
+      const rangeHeaderForHead = request.headers.get("Range");
+      const headRange = mahoonParseRange(rangeHeaderForHead, fileSize);
+
+      if (rangeHeaderForHead && !headRange) {
+        return mahoonRange416(fileSize, headContentType);
+      }
+
+      if (headRange) {
+        headers.set("Content-Range", "bytes " + headRange.start + "-" + headRange.end + "/" + fileSize);
+        headers.set("Content-Length", String(headRange.end - headRange.start + 1));
+
+        return new Response(null, {
+          status: 206,
+          headers
+        });
+      }
+
+      headers.set("Content-Length", String(fileSize));
+    }
+
+    return new Response(null, {
+      status: 200,
+      headers
+    });
+  }
+  // end-mahoon-ios-head-response-v1
+
+  const fileUrl = "https://api.telegram.org/file/bot" + botToken + "/" + mahoonEncodeTelegramPath(filePath);
+  const rangeHeader = request.headers.get("Range");
+  const ifRangeHeader = request.headers.get("If-Range");
+
+  const upstreamHeaders = new Headers();
+
+  if (rangeHeader) upstreamHeaders.set("Range", rangeHeader);
+  if (ifRangeHeader) upstreamHeaders.set("If-Range", ifRangeHeader);
+
+  const upstream = await fetch(fileUrl, {
+    method: request.method === "HEAD" ? "HEAD" : "GET",
+    headers: upstreamHeaders
+  });
+
+  const guessedType = mahoonGuessMimeFromTelegramPath(filePath);
+  const iosFallbackType = String(fileId || "").startsWith("BAAC")
+    ? "video/mp4"
+    : String(fileId || "").startsWith("CQAC")
+      ? "audio/mpeg"
+      : guessedType;
+  const upstreamType = upstream.headers.get("Content-Type") || "";
+  const contentType = !upstreamType || /application\/octet-stream/i.test(upstreamType)
+    ? iosFallbackType
+    : upstreamType;
+
+  const headers = mahoonMediaHeaders();
+
+  headers.set("Content-Type", contentType);
+  headers.set("Content-Disposition", "inline");
+  headers.set("Cache-Control", "public, max-age=31536000, immutable");
+
+  mahoonCopyHeader(headers, upstream.headers, "Content-Length");
+  mahoonCopyHeader(headers, upstream.headers, "Content-Range");
+  mahoonCopyHeader(headers, upstream.headers, "ETag");
+  mahoonCopyHeader(headers, upstream.headers, "Last-Modified");
+
+  if (!headers.has("Content-Length") && fileSize > 0 && upstream.status !== 206) {
+    headers.set("Content-Length", String(fileSize));
+  }
+
+  if (upstream.status === 206) {
+    return new Response(request.method === "HEAD" ? null : upstream.body, {
+      status: 206,
+      headers
+    });
+  }
+
+  if (!upstream.ok) {
+    headers.set("Content-Type", "text/plain; charset=utf-8");
+
+    return new Response("Telegram media fetch failed", {
+      status: upstream.status || 502,
+      headers
+    });
+  }
+
+  if (rangeHeader && request.method === "HEAD") {
+    const totalSize = fileSize || Number(upstream.headers.get("Content-Length") || 0);
+    const range = mahoonParseRange(rangeHeader, totalSize);
+
+    if (!range) {
+      return mahoonRange416(totalSize, contentType);
+    }
+
+    headers.set("Content-Range", "bytes " + range.start + "-" + range.end + "/" + totalSize);
+    headers.set("Content-Length", String(range.end - range.start + 1));
+
+    return new Response(null, {
+      status: 206,
+      headers
+    });
+  }
+
+  if (rangeHeader && request.method === "GET") {
+    const buffer = await upstream.arrayBuffer();
+    const totalSize = buffer.byteLength || fileSize || 0;
+    const range = mahoonParseRange(rangeHeader, totalSize);
+
+    if (!range) {
+      return mahoonRange416(totalSize, contentType);
+    }
+
+    const chunk = buffer.slice(range.start, range.end + 1);
+
+    headers.set("Content-Range", "bytes " + range.start + "-" + range.end + "/" + totalSize);
+    headers.set("Content-Length", String(chunk.byteLength));
+
+    return new Response(chunk, {
+      status: 206,
+      headers
+    });
+  }
+
+  return new Response(request.method === "HEAD" ? null : upstream.body, {
+    status: 200,
+    headers
+  });
+}
+// end-mahoon-ios-media-range-v2-helper
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+
+    // mahoon-scale-routes-v1
+    if (url.pathname === "/public/home-v1" && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonScaleCorsV1() });
+    }
+
+    if (url.pathname === "/public/posts-v1" && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonScaleCorsV1() });
+    }
+
+    if (url.pathname === "/public/tag-posts-v1" && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonScaleCorsV1() });
+    }
+
+    if (url.pathname === "/public/stats-v1" && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonScaleCorsV1() });
+    }
+
+    if (url.pathname === "/admin/stats-v1" && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonScaleCorsV1() });
+    }
+
+    if (url.pathname === "/public/home-v1" && request.method === "GET") {
+      return mahoonScalePublicHomeV1(request, env, url.origin);
+    }
+
+    if (url.pathname === "/public/posts-v1" && request.method === "GET") {
+      return mahoonScalePublicPostsV1(request, env, url.origin);
+    }
+
+    if (url.pathname === "/public/tag-posts-v1" && request.method === "GET") {
+      return mahoonScalePublicTagPostsV1(request, env, url.origin);
+    }
+
+    if (url.pathname === "/public/stats-v1" && request.method === "GET") {
+      return mahoonScaleJsonV1({ ok: true, stats: await mahoonScalePublicStatsObjectV1(env) });
+    }
+
+    if (url.pathname === "/admin/stats-v1" && request.method === "GET") {
+      return mahoonScaleAdminStatsV1(request, env);
+    }
+
+    // mahoon-public-posts-full-routes-v1
+    if (url.pathname === "/posts-full-public-v1" && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonPublicPostsFullCorsV1() });
+    }
+
+    if (url.pathname === "/posts-full-public-v1" && request.method === "GET") {
+      return mahoonPublicPostsFullV1(request, env);
+    }
+
+    // mahoon-telegram-webhook-routes-v1
+    if ((url.pathname === "/admin/telegram/webhook-info" || url.pathname === "/admin/telegram/webhook-refresh") && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonTelegramWebhookCorsV1() });
+    }
+
+    if (url.pathname === "/admin/telegram/webhook-info" && request.method === "GET") {
+      return mahoonTelegramWebhookInfoV1(request, env);
+    }
+
+    if (url.pathname === "/admin/telegram/webhook-refresh" && request.method === "POST") {
+      return mahoonTelegramWebhookRefreshV1(request, env);
+    }
+
+    // mahoon-analytics-route-v5
+    if (url.pathname === "/analytics/ping-v5" && request.method === "GET") {
+      return mahoonAnalyticsJsonV5({ ok: true, service: "mahoon-analytics", version: "v5" });
+    }
+
+    if ((url.pathname === "/analytics/collect" || url.pathname === "/analytics/report-v5") && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonAnalyticsCorsHeadersV5() });
+    }
+
+    if (url.pathname === "/analytics/collect" && request.method === "POST") {
+      return mahoonTrackAnalyticsV5(request, env);
+    }
+
+    if (url.pathname === "/analytics/report-v5" && request.method === "GET") {
+      return mahoonGetAnalyticsV5(request, env);
+    }
+
+    // mahoon-analytics-report-route-v4
+    if (url.pathname === "/analytics/ping" && request.method === "GET") {
+      return mahoonAnalyticsJson({ ok: true, service: "mahoon-analytics", version: "v4" });
+    }
+
+    if ((url.pathname === "/analytics/track" || url.pathname === "/analytics/report" || url.pathname === "/analytics/admin") && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: mahoonAnalyticsCorsHeaders() });
+    }
+
+    if (url.pathname === "/analytics/track" && request.method === "POST") {
+      return mahoonTrackAnalytics(request, env);
+    }
+
+    if ((url.pathname === "/analytics/report" || url.pathname === "/analytics/admin") && request.method === "GET") {
+      return mahoonGetAnalytics(request, env);
+    }
+
     const origin = url.origin;
 
     if (request.method === "OPTIONS") {
@@ -1555,11 +3440,62 @@ export default {
           });
         }
 
+        // mahoon-admin-posts-api-pagination-v1
         if (request.method === "GET" && url.pathname === "/admin/posts/deleted") {
-          const requestedLimit = Number(normalizeDigits(url.searchParams.get("limit") || "100"));
-          const limit = Number.isInteger(requestedLimit) && requestedLimit > 0
-            ? Math.min(requestedLimit, 200)
-            : 100;
+          const paginationRequested = [
+            "limit",
+            "offset"
+          ].some((key) =>
+            url.searchParams.has(key)
+          );
+
+          const defaultLimit =
+            paginationRequested ? 20 : 100;
+
+          const maxLimit =
+            paginationRequested ? 100 : 200;
+
+          const requestedLimit = Number(
+            normalizeDigits(
+              url.searchParams.get("limit") ||
+              String(defaultLimit)
+            )
+          );
+
+          const requestedOffset = Number(
+            normalizeDigits(
+              url.searchParams.get("offset") ||
+              "0"
+            )
+          );
+
+          const limit =
+            Number.isInteger(requestedLimit) &&
+            requestedLimit > 0
+              ? Math.min(
+                  requestedLimit,
+                  maxLimit
+                )
+              : defaultLimit;
+
+          const offset =
+            Number.isInteger(requestedOffset) &&
+            requestedOffset >= 0
+              ? requestedOffset
+              : 0;
+
+          const totalRow = await env.DB.prepare(
+            `
+            SELECT COUNT(*) AS total
+            FROM posts
+            WHERE deleted_at IS NOT NULL
+            AND deleted_at != ''
+            `
+          ).first();
+
+          const total = Number(
+            totalRow?.total || 0
+          );
 
           const { results } = await env.DB.prepare(
             `
@@ -1594,21 +3530,227 @@ export default {
               last_viewed_at
             FROM posts
             WHERE deleted_at IS NOT NULL
-            ORDER BY deleted_at DESC, id DESC
-            LIMIT ?
+            AND deleted_at != ''
+            ORDER BY datetime(deleted_at) DESC, id DESC
+            LIMIT ? OFFSET ?
             `
-          ).bind(limit).all();
+          ).bind(
+            limit,
+            offset
+          ).all();
+
+          const posts = Array.isArray(results)
+            ? results
+            : [];
 
           return json({
             ok: true,
-            posts: (results || []).map(post => postWithMediaUrl(post, origin))
+            mode: paginationRequested
+              ? "paged"
+              : "legacy",
+            posts: posts.map((post) =>
+              postWithMediaUrl(post, origin)
+            ),
+            total,
+            limit,
+            offset,
+            next_offset:
+              offset + posts.length,
+            has_more:
+              offset + posts.length < total
           });
         }
 
         if (request.method === "GET" && url.pathname === "/admin/posts") {
+          const paginationRequested = [
+            "limit",
+            "offset",
+            "q",
+            "status",
+            "media",
+            "sort"
+          ].some((key) =>
+            url.searchParams.has(key)
+          );
+
+          const defaultLimit =
+            paginationRequested ? 20 : 500;
+
+          const maxLimit =
+            paginationRequested ? 100 : 500;
+
+          const requestedLimit = Number(
+            normalizeDigits(
+              url.searchParams.get("limit") ||
+              String(defaultLimit)
+            )
+          );
+
+          const requestedOffset = Number(
+            normalizeDigits(
+              url.searchParams.get("offset") ||
+              "0"
+            )
+          );
+
+          const limit =
+            Number.isInteger(requestedLimit) &&
+            requestedLimit > 0
+              ? Math.min(
+                  requestedLimit,
+                  maxLimit
+                )
+              : defaultLimit;
+
+          const offset =
+            Number.isInteger(requestedOffset) &&
+            requestedOffset >= 0
+              ? requestedOffset
+              : 0;
+
+          const query = cleanText(
+            url.searchParams.get("q") || ""
+          ).slice(0, 200);
+
+          const status = cleanText(
+            url.searchParams.get("status") ||
+            "all"
+          ).toLowerCase();
+
+          const media = cleanText(
+            url.searchParams.get("media") ||
+            "all"
+          ).toLowerCase();
+
+          const sort = cleanText(
+            url.searchParams.get("sort") ||
+            "newest"
+          ).toLowerCase();
+
+          const whereParts = [
+            "(deleted_at IS NULL OR deleted_at = '')"
+          ];
+
+          const whereParams = [];
+
+          if (query) {
+            const searchValue =
+              "%" + query + "%";
+
+            whereParts.push(
+              [
+                "(",
+                "CAST(id AS TEXT) LIKE ?",
+                "OR COALESCE(slug, '') LIKE ?",
+                "OR COALESCE(text, '') LIKE ?",
+                "OR COALESCE(seo_title, '') LIKE ?",
+                "OR COALESCE(seo_description, '') LIKE ?",
+                "OR COALESCE(admin_note, '') LIKE ?",
+                ")"
+              ].join(" ")
+            );
+
+            whereParams.push(
+              searchValue,
+              searchValue,
+              searchValue,
+              searchValue,
+              searchValue,
+              searchValue
+            );
+          }
+
+          if (status === "published") {
+            whereParts.push(
+              "COALESCE(is_published, 1) = 1"
+            );
+          } else if (status === "draft") {
+            whereParts.push(
+              "COALESCE(is_published, 1) != 1"
+            );
+          }
+
+          if (media === "media") {
+            whereParts.push(
+              [
+                "(",
+                "COALESCE(media_file_id, '') != ''",
+                "OR COALESCE(photo_file_id, '') != ''",
+                ")"
+              ].join(" ")
+            );
+          } else if (media === "photo") {
+            whereParts.push(
+              [
+                "(",
+                "COALESCE(media_type, '') = 'photo'",
+                "OR COALESCE(photo_file_id, '') != ''",
+                ")"
+              ].join(" ")
+            );
+          } else if (media === "video") {
+            whereParts.push(
+              "COALESCE(media_type, '') IN ('video', 'animation')"
+            );
+          } else if (media === "audio") {
+            whereParts.push(
+              "COALESCE(media_type, '') IN ('audio', 'voice')"
+            );
+          } else if (media === "text") {
+            whereParts.push(
+              [
+                "COALESCE(media_file_id, '') = ''",
+                "AND COALESCE(photo_file_id, '') = ''"
+              ].join(" ")
+            );
+          }
+
+          let orderSql =
+            "created_at DESC, id DESC";
+
+          if (sort === "oldest") {
+            orderSql =
+              "created_at ASC, id ASC";
+          } else if (sort === "id") {
+            orderSql = "id DESC";
+          } else if (sort === "title") {
+            orderSql = [
+              "COALESCE(",
+              "NULLIF(seo_title, ''),",
+              "NULLIF(slug, ''),",
+              "text,",
+              "''",
+              ") COLLATE NOCASE ASC,",
+              "id DESC"
+            ].join(" ");
+          }
+
+          const whereSql =
+            whereParts.join(" AND ");
+
+          const totalStatement =
+            env.DB.prepare(
+              `
+              SELECT COUNT(*) AS total
+              FROM posts
+              WHERE ${whereSql}
+              `
+            );
+
+          const totalRow =
+            whereParams.length > 0
+              ? await totalStatement
+                  .bind(...whereParams)
+                  .first()
+              : await totalStatement.first();
+
+          const total = Number(
+            totalRow?.total || 0
+          );
+
           const { results } = await env.DB.prepare(
             `
-            SELECT 
+            SELECT
               id,
               text,
               slug,
@@ -1638,15 +3780,41 @@ export default {
               COALESCE(view_count, 0) AS view_count,
               last_viewed_at
             FROM posts
-            WHERE deleted_at IS NULL
-            ORDER BY id DESC
-            LIMIT 500
+            WHERE ${whereSql}
+            ORDER BY ${orderSql}
+            LIMIT ? OFFSET ?
             `
+          ).bind(
+            ...whereParams,
+            limit,
+            offset
           ).all();
+
+          const posts = Array.isArray(results)
+            ? results
+            : [];
 
           return json({
             ok: true,
-            posts: (results || []).map(post => postWithMediaUrl(post, origin))
+            mode: paginationRequested
+              ? "paged"
+              : "legacy",
+            posts: posts.map((post) =>
+              postWithMediaUrl(post, origin)
+            ),
+            total,
+            limit,
+            offset,
+            next_offset:
+              offset + posts.length,
+            has_more:
+              offset + posts.length < total,
+            filters: {
+              q: query,
+              status,
+              media,
+              sort
+            }
           });
         }
 
@@ -1693,7 +3861,7 @@ export default {
             await env.DB.prepare(
               `
               UPDATE posts
-              SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+              SET is_published = 0, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
               WHERE id IN (${placeholders})
               AND deleted_at IS NULL
               `
@@ -1785,6 +3953,14 @@ export default {
             media.photo_width,
             media.photo_height
           ).run();
+          const mahoonProjectionAdminCreatedId = Number(result.meta?.last_row_id || 0);
+          if (mahoonProjectionAdminCreatedId > 0) {
+            await mahoonScaleSyncPostTagProjectionV1(
+              env,
+              mahoonProjectionAdminCreatedId,
+              text
+            );
+          }
 
           return json({
             ok: true,
@@ -1825,7 +4001,7 @@ export default {
             `
             UPDATE posts
             SET
-              is_published = 1,
+              is_published = 0,
               deleted_at = NULL,
               updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
@@ -1931,7 +4107,7 @@ export default {
           await env.DB.prepare(
             `
             UPDATE posts
-            SET 
+            SET
               text = ?,
               slug = ?,
               is_published = ?,
@@ -1976,6 +4152,7 @@ export default {
             media.photo_height,
             id
           ).run();
+          await mahoonScaleSyncPostTagProjectionV1(env, id, text);
 
           return json({
             ok: true,
@@ -1998,7 +4175,8 @@ export default {
           await env.DB.prepare(
             `
             UPDATE posts
-            SET 
+            SET
+              is_published = 0,
               deleted_at = CURRENT_TIMESTAMP,
               updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
@@ -2018,7 +4196,10 @@ export default {
         }, 404);
       }
 
-      if (request.method === "GET" && url.pathname.startsWith("/media/")) {
+      if ((request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS") && (url.pathname === "/media" || url.pathname.startsWith("/media/"))) {
+      // mahoon-force-ios-media-route-v1
+      return handleMahooonIosCompatibleMedia(request, env, url);
+      // end-mahoon-force-ios-media-route-v1
         const fileId = decodeURIComponent(url.pathname.replace("/media/", ""));
 
         if (!fileId) {
@@ -2138,6 +4319,8 @@ export default {
             seo_description
           FROM posts
           WHERE slug = ?
+          AND slug IS NOT NULL
+          AND slug != ''
           AND deleted_at IS NULL
           AND is_published = 1
           LIMIT 1
@@ -2169,7 +4352,7 @@ export default {
 
         const post = await env.DB.prepare(
           `
-          SELECT 
+          SELECT
             id,
             text,
             slug,
@@ -2193,6 +4376,8 @@ export default {
             last_viewed_at
           FROM posts
           WHERE slug = ?
+          AND slug IS NOT NULL
+          AND slug != ''
           AND deleted_at IS NULL
           AND COALESCE(is_published, 1) = 1
           LIMIT 1
@@ -2203,7 +4388,7 @@ export default {
           await env.DB.prepare(
             `
             UPDATE posts
-            SET 
+            SET
               view_count = COALESCE(view_count, 0) + 1,
               last_viewed_at = CURRENT_TIMESTAMP
             WHERE id = ?
@@ -2228,7 +4413,7 @@ export default {
 
         const post = await env.DB.prepare(
           `
-          SELECT 
+          SELECT
             id,
             text,
             slug,
@@ -2262,7 +4447,7 @@ export default {
           await env.DB.prepare(
             `
             UPDATE posts
-            SET 
+            SET
               view_count = COALESCE(view_count, 0) + 1,
               last_viewed_at = CURRENT_TIMESTAMP
             WHERE id = ?
@@ -2278,7 +4463,7 @@ export default {
       if (request.method === "GET" && url.pathname === "/") {
         const { results } = await env.DB.prepare(
           `
-          SELECT 
+          SELECT
             id,
             text,
             slug,
@@ -2303,12 +4488,17 @@ export default {
           WHERE slug IS NOT NULL
           AND deleted_at IS NULL
           AND COALESCE(is_published, 1) = 1
-          ORDER BY id DESC
-          LIMIT 100
+          ORDER BY created_at DESC, id DESC
+          LIMIT 250
           `
         ).all();
 
-        return json((results || []).map(post => postWithMediaUrl(post, origin)));
+        const publicPosts = (results || [])
+          .filter((post) => hasRequiredCategoryHashTag(post.text))
+          .slice(0, 100)
+          .map(post => postWithMediaUrl(post, origin));
+
+        return json(publicPosts);
       }
 
       if (request.method === "POST") {
@@ -2353,7 +4543,7 @@ export default {
             await env.DB.prepare(
               `
               UPDATE posts
-              SET 
+              SET
                 text = ?,
                 media_type = ?,
                 media_file_id = ?,
@@ -2388,6 +4578,18 @@ export default {
               telegramPost.photo_height,
               existing.id
             ).run();
+            await mahoonScaleSyncPostTagProjectionV1(env, existing.id, telegramPost.text);
+
+            /* mahoon-update-original-telegram-date */
+            if (telegramPost.created_at) {
+              await env.DB.prepare(
+                `
+                UPDATE posts
+                SET created_at = ?
+                WHERE id = ?
+                `
+              ).bind(telegramPost.created_at, existing.id).run();
+            }
 
             const fresh = await getPostById(env, existing.id);
 
@@ -2453,8 +4655,27 @@ export default {
           telegramPost.photo_width,
           telegramPost.photo_height
         ).run();
+        const mahoonProjectionTelegramCreatedId = Number(result.meta?.last_row_id || 0);
+        if (mahoonProjectionTelegramCreatedId > 0) {
+          await mahoonScaleSyncPostTagProjectionV1(
+            env,
+            mahoonProjectionTelegramCreatedId,
+            telegramPost.text
+          );
+        }
 
         const insertedId = result.meta?.last_row_id || null;
+
+        /* mahoon-insert-original-telegram-date */
+        if (insertedId && telegramPost.created_at) {
+          await env.DB.prepare(
+            `
+            UPDATE posts
+            SET created_at = ?
+            WHERE id = ?
+            `
+          ).bind(telegramPost.created_at, insertedId).run();
+        }
         const savedPost = insertedId ? await getPostById(env, insertedId) : null;
 
         await sendSavedPostConfirmation(

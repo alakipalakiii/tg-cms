@@ -1,4 +1,6 @@
 {
+  "preview_urls": false,
+  "workers_dev": false,
 	"name": "mahoon-art-magazine",
 	"main": "@astrojs/cloudflare/entrypoints/server",
 	"compatibility_date": "2026-06-30",

@@ -1,10 +1,10 @@
-﻿---
+---
 export const prerender = false;
 
 import "../styles/global.css";
 import { SITE } from "../config";
 
-const WORKER_URL = "https://tg-cms-api.morentoofficial.workers.dev";
+const WORKER_URL = "https://api.mahoonartmagazine.ir";
 const SITE_NAME = SITE.name;
 const TELEGRAM_URL = SITE.telegramUrl;
 const LOGO_URL = "/sources/mahoon-logo.jpg";
@@ -1959,6 +1959,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                 <a href="#seo" data-section-link="seo"><span>⌁</span>سئو</a>
                 <a href="#site-copy" data-section-link="site-copy"><span>✎</span>متن‌های سایت</a>
                 <a href="#deleted" data-section-link="deleted"><span>×</span>حذف‌شده‌ها</a>
+                <a href="#analytics" data-section-link="analytics"><span>◌</span>آمار بازدید</a>
                 <a href="#export" data-section-link="export"><span>⇩</span>خروجی</a>
                 <a href="#settings" data-section-link="settings"><span>⚙</span>تنظیمات محلی</a>
               </nav>
@@ -2080,7 +2081,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                   <strong id="selectedCount">۰ پست انتخاب شده</strong>
 
                   <div class="actions">
-                    <button class="admin-btn btn btn-line" id="selectAllBtn" type="button">انتخاب همه</button>
+                    <button class="admin-btn btn btn-line" id="selectAllBtn" type="button">انتخاب همه این صفحه</button>
                     <button class="admin-btn btn btn-green" id="bulkPublishBtn" type="button">انتشار</button>
                     <button class="admin-btn btn btn-gold" id="bulkUnpublishBtn" type="button">عدم انتشار</button>
                     <button class="admin-btn btn btn-danger" id="bulkDeleteBtn" type="button">حذف</button>
@@ -2218,11 +2219,12 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             </aside>
           </section>
 
-              <section class="panel admin-section" id="deletedPanel" data-section="deleted" data-admin-section="deleted" hidden>
+                            <section class="panel admin-section" id="deletedPanel" data-section="deleted" data-admin-section="deleted" hidden>
                 <div class="panel-head">
                   <h2>حذف‌شده‌ها</h2>
                   <span class="badge red">بازگردانی امن</span>
                 </div>
+
                 <div class="panel-body">
                   <div class="posts-list" id="deletedPostsList">
                     <div class="id-note deleted-note">
@@ -2232,34 +2234,43 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
                     <div class="empty">برای دیدن پست‌های حذف‌شده، بخش حذف‌شده‌ها را باز کن.</div>
                   </div>
+
+                  <div class="pagination" id="deletedPostsPagination" aria-label="صفحه‌بندی مطالب حذف‌شده"></div>
                 </div>
               </section>
 
               <div class="admin-sections">
-                <section class="panel admin-section" id="mediaPanel" data-section="media" data-admin-section="media" hidden>
+                                <section class="panel admin-section" id="mediaPanel" data-section="media" data-admin-section="media" hidden>
                   <div class="panel-head">
                     <h2>رسانه‌ها</h2>
                     <span class="badge blue" id="mediaPanelCount">0 مورد</span>
                   </div>
+
                   <div class="panel-body">
                     <div class="section-list" id="mediaLibrary">
                       <div class="empty">مطلب دارای رسانه پیدا نشد.</div>
                     </div>
+
+                    <div class="pagination" id="mediaPagination" aria-label="صفحه‌بندی رسانه‌ها"></div>
                   </div>
                 </section>
 
-                <section class="panel admin-section" id="seoPanel" data-section="seo" data-admin-section="seo" hidden>
+                                <section class="panel admin-section" id="seoPanel" data-section="seo" data-admin-section="seo" hidden>
                   <div class="panel-head">
                     <h2>سئو</h2>
+
                     <div class="actions">
                       <span class="badge" id="seoPanelCount">0 مورد نیازمند بررسی</span>
-                      <button class="admin-btn btn btn-primary" id="completeSeoBtn" type="button">تکمیل سئوی خالی‌ها</button>
+                      <button class="admin-btn btn btn-primary" id="completeSeoBtn" type="button">تکمیل سئوی خالی‌های این صفحه</button>
                     </div>
                   </div>
+
                   <div class="panel-body">
                     <div class="section-list" id="seoChecklist">
                       <div class="empty">داده‌ای برای بررسی SEO وجود ندارد.</div>
                     </div>
+
+                    <div class="pagination" id="seoPagination" aria-label="صفحه‌بندی بررسی سئو"></div>
                   </div>
                 </section>
 
@@ -2298,6 +2309,136 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                         <label for="homeLatestTitleInput">عنوان بخش تازه‌ترین روایت</label>
                         <input class="admin-input input" id="homeLatestTitleInput" type="text" />
                       </div>
+                    <div class="field field-wide">
+                      <div class="api-card">
+                        <strong>تبلیغات صفحه اصلی</strong>
+                        <span>این بخش، دو باکس تبلیغاتی بالای دسته‌بندی‌ها را کنترل می‌کند. اگر لینک را خالی بگذاری، دکمه تبلیغ به حالت «جایگاه قابل مدیریت» نمایش داده می‌شود.</span>
+                      </div>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdRightTitleInput">عنوان تبلیغ راست</label>
+                      <input class="admin-input input" id="homeAdRightTitleInput" type="text" placeholder="مثلاً: معرفی نمایشگاه" />
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdLeftTitleInput">عنوان تبلیغ چپ</label>
+                      <input class="admin-input input" id="homeAdLeftTitleInput" type="text" placeholder="مثلاً: همکاری فرهنگی" />
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdRightTextInput">متن تبلیغ راست</label>
+                      <textarea class="admin-input input" id="homeAdRightTextInput" placeholder="متن کوتاه تبلیغ راست"></textarea>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdLeftTextInput">متن تبلیغ چپ</label>
+                      <textarea class="admin-input input" id="homeAdLeftTextInput" placeholder="متن کوتاه تبلیغ چپ"></textarea>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdRightUrlInput">لینک تبلیغ راست</label>
+                      <input class="admin-input input" id="homeAdRightUrlInput" type="url" dir="ltr" placeholder="https://..." />
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdLeftUrlInput">لینک تبلیغ چپ</label>
+                      <input class="admin-input input" id="homeAdLeftUrlInput" type="url" dir="ltr" placeholder="https://..." />
+                    </div>
+                    <div class="field field-wide">
+                      <div class="api-card">
+                        <strong>تنظیمات پیشرفته تبلیغات</strong>
+                        <span>برای هر باکس می‌توانی روشن/خاموش، متن دکمه، جایگاه نمایش و تصویر جداگانه تعریف کنی.</span>
+                      </div>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdRightEnabledInput">نمایش تبلیغ راست</label>
+                      <label class="check-row">
+                        <input id="homeAdRightEnabledInput" type="checkbox" />
+                        <span>فعال باشد</span>
+                      </label>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdLeftEnabledInput">نمایش تبلیغ چپ</label>
+                      <label class="check-row">
+                        <input id="homeAdLeftEnabledInput" type="checkbox" />
+                        <span>فعال باشد</span>
+                      </label>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdRightButtonInput">نام دکمه تبلیغ راست</label>
+                      <input class="admin-input input" id="homeAdRightButtonInput" type="text" placeholder="مثلاً: مشاهده" />
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdLeftButtonInput">نام دکمه تبلیغ چپ</label>
+                      <input class="admin-input input" id="homeAdLeftButtonInput" type="text" placeholder="مثلاً: مشاهده" />
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdRightPositionInput">جایگاه تبلیغ راست</label>
+                      <select class="admin-input input" id="homeAdRightPositionInput">
+                        <option value="after_latest">زیر تازه‌ترین مطلب</option>
+                        <option value="after_all_posts">بعد از همه مطالب</option>
+                        <option value="before_categories">بالای دسته‌بندی‌ها</option>
+                        <option value="after_category_1">بعد از کتاب</option>
+                        <option value="after_category_2">بعد از دیالوگ‌ها</option>
+                        <option value="after_category_3">بعد از صوتی</option>
+                        <option value="after_category_4">بعد از شعر و متن</option>
+                        <option value="after_category_5">بعد از نقاشی</option>
+                        <option value="after_categories">زیر همه دسته‌بندی‌ها</option>
+                      </select>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdLeftPositionInput">جایگاه تبلیغ چپ</label>
+                      <select class="admin-input input" id="homeAdLeftPositionInput">
+                        <option value="after_latest">زیر تازه‌ترین مطلب</option>
+                        <option value="after_all_posts">بعد از همه مطالب</option>
+                        <option value="before_categories">بالای دسته‌بندی‌ها</option>
+                        <option value="after_category_1">بعد از کتاب</option>
+                        <option value="after_category_2">بعد از دیالوگ‌ها</option>
+                        <option value="after_category_3">بعد از صوتی</option>
+                        <option value="after_category_4">بعد از شعر و متن</option>
+                        <option value="after_category_5">بعد از نقاشی</option>
+                        <option value="after_categories">زیر همه دسته‌بندی‌ها</option>
+                      </select>
+                    </div>
+
+                    <div class="field">
+
+                    <!-- mahoon-ad-image-size-help-v1 -->
+                    <div class="field field-wide">
+                      <div class="api-card">
+                        <strong>راهنمای کوتاه عکس تبلیغ</strong>
+                        <span>بهترین ابعاد: 1600×900 پیکسل با نسبت 16:9. سایز سبک‌تر: 1200×675 پیکسل. متن مهم را نزدیک لبه‌ها نگذار؛ ممکن است عکس کمی کراپ شود.</span>
+                      </div>
+                    </div>
+                    <!-- end-mahoon-ad-image-size-help-v1 -->
+
+                      <label for="homeAdRightImageInput">عکس تبلیغ راست</label>
+                      <input class="admin-input input" id="homeAdRightImageInput" type="url" dir="ltr" placeholder="https://... یا آپلود کن" />
+                      <small class="admin-help">پیشنهاد: 1600×900px یا 1200×675px، فرمت JPG/WebP، حجم بهتر زیر 1MB.</small>
+                      <input class="admin-input input" type="file" accept="image/*" data-site-ad-file="home_ad_right_image" />
+                      <div class="tool-panel">
+                        <button class="admin-btn btn btn-line" type="button" data-site-ad-upload="home_ad_right_image">آپلود عکس راست</button>
+                        <button class="admin-btn btn btn-danger" type="button" data-site-ad-clear="home_ad_right_image">حذف عکس راست</button>
+                      </div>
+                    </div>
+
+                    <div class="field">
+                      <label for="homeAdLeftImageInput">عکس تبلیغ چپ</label>
+                      <input class="admin-input input" id="homeAdLeftImageInput" type="url" dir="ltr" placeholder="https://... یا آپلود کن" />
+                      <small class="admin-help">پیشنهاد: 1600×900px یا 1200×675px، نسبت 16:9، با حاشیه امن از اطراف.</small>
+                      <input class="admin-input input" type="file" accept="image/*" data-site-ad-file="home_ad_left_image" />
+                      <div class="tool-panel">
+                        <button class="admin-btn btn btn-line" type="button" data-site-ad-upload="home_ad_left_image">آپلود عکس چپ</button>
+                        <button class="admin-btn btn btn-danger" type="button" data-site-ad-clear="home_ad_left_image">حذف عکس چپ</button>
+                      </div>
+                    </div>
                       <div class="field">
                         <label for="telegramUrlInput">لینک کانال تلگرام</label>
                         <input class="admin-input input" id="telegramUrlInput" type="url" dir="ltr" />
@@ -2334,6 +2475,109 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                         <label for="footerCopyrightInput">متن حقوق footer</label>
                         <input class="admin-input input" id="footerCopyrightInput" type="text" />
                       </div>
+                    </div>
+                  </div>
+                </section>
+
+
+                <section class="panel admin-section" id="analyticsPanel" data-section="analytics" data-admin-section="analytics" hidden>
+                  <div class="panel-head">
+                    <div>
+                      <h2>آمار بازدید</h2>
+                      <p class="admin-help analytics-help">نمای تحلیلی بازدید سایت، کاربران یکتا، نشست‌ها، منابع ورودی، صفحات پربازدید و آخرین بازدیدهای ثبت‌شده.</p>
+                    </div>
+                    <div class="actions">
+                      <select class="admin-select select analytics-range-select" id="analyticsRangeSelect">
+                        <option value="7">۷ روز اخیر</option>
+                        <option value="30" selected>۳۰ روز اخیر</option>
+                        <option value="90">۹۰ روز اخیر</option>
+                        <option value="365">۳۶۵ روز اخیر</option>
+                      </select>
+                      <button class="admin-btn btn btn-primary" id="analyticsRefreshBtn" type="button">بروزرسانی آمار</button>
+                    </div>
+                  </div>
+
+                  <div class="panel-body analytics-panel-body">
+                    <div class="message analytics-message show ok" id="analyticsStatus">برای دریافت آمار، بروزرسانی آمار را بزن.</div>
+
+                    <div class="analytics-kpi-grid">
+                      <article class="analytics-kpi-card">
+                        <span>کل بازدید</span>
+                        <strong id="analyticsPageviews">۰</strong>
+                      </article>
+                      <article class="analytics-kpi-card">
+                        <span>کاربران یکتا</span>
+                        <strong id="analyticsVisitors">۰</strong>
+                      </article>
+                      <article class="analytics-kpi-card">
+                        <span>نشست‌ها</span>
+                        <strong id="analyticsSessions">۰</strong>
+                      </article>
+                      <article class="analytics-kpi-card">
+                        <span>بازدید امروز</span>
+                        <strong id="analyticsToday">۰</strong>
+                      </article>
+                      <article class="analytics-kpi-card">
+                        <span>بازدید دیروز</span>
+                        <strong id="analyticsYesterday">۰</strong>
+                      </article>
+                    </div>
+
+                    <div class="analytics-layout">
+                      <section class="analytics-card analytics-card-wide">
+                        <div class="analytics-card-head">
+                          <h3>روند روزانه بازدید</h3>
+                          <span id="analyticsDailyCount">—</span>
+                        </div>
+                        <div class="analytics-bars" id="analyticsDailyChart">
+                          <div class="empty">هنوز داده‌ای برای نمایش وجود ندارد.</div>
+                        </div>
+                      </section>
+
+                      <section class="analytics-card">
+                        <div class="analytics-card-head">
+                          <h3>صفحات پربازدید</h3>
+                        </div>
+                        <div class="analytics-list" id="analyticsTopPages">
+                          <div class="empty">داده‌ای ثبت نشده است.</div>
+                        </div>
+                      </section>
+
+                      <section class="analytics-card">
+                        <div class="analytics-card-head">
+                          <h3>منابع ورودی</h3>
+                        </div>
+                        <div class="analytics-list" id="analyticsReferrers">
+                          <div class="empty">داده‌ای ثبت نشده است.</div>
+                        </div>
+                      </section>
+
+                      <section class="analytics-card">
+                        <div class="analytics-card-head">
+                          <h3>دستگاه‌ها</h3>
+                        </div>
+                        <div class="analytics-list" id="analyticsDevices">
+                          <div class="empty">داده‌ای ثبت نشده است.</div>
+                        </div>
+                      </section>
+
+                      <section class="analytics-card">
+                        <div class="analytics-card-head">
+                          <h3>کشورها</h3>
+                        </div>
+                        <div class="analytics-list" id="analyticsCountries">
+                          <div class="empty">داده‌ای ثبت نشده است.</div>
+                        </div>
+                      </section>
+
+                      <section class="analytics-card analytics-card-wide">
+                        <div class="analytics-card-head">
+                          <h3>آخرین بازدیدها</h3>
+                        </div>
+                        <div class="analytics-list analytics-recent-list" id="analyticsRecent">
+                          <div class="empty">هنوز بازدیدی ثبت نشده است.</div>
+                        </div>
+                      </section>
                     </div>
                   </div>
                 </section>
@@ -2412,6 +2656,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       const sortFilter = document.getElementById("sortFilter");
       const filtersBar = searchInput.closest(".filters");
       const postsPagination = document.getElementById("postsPagination");
+      const deletedPostsPagination = document.getElementById("deletedPostsPagination");
 
       const refreshBtn = document.getElementById("refreshBtn");
       const newPostBtn = document.getElementById("newPostBtn");
@@ -2443,8 +2688,10 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       const publishProgress = document.getElementById("publishProgress");
       const apiDetailText = document.getElementById("apiDetailText");
       const mediaLibrary = document.getElementById("mediaLibrary");
+      const mediaPagination = document.getElementById("mediaPagination");
       const mediaPanelCount = document.getElementById("mediaPanelCount");
       const seoChecklist = document.getElementById("seoChecklist");
+      const seoPagination = document.getElementById("seoPagination");
       const seoPanelCount = document.getElementById("seoPanelCount");
       const completeSeoBtn = document.getElementById("completeSeoBtn");
       const siteCopyState = document.getElementById("siteCopyState");
@@ -2457,6 +2704,20 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         home_hero_line_one: document.getElementById("homeHeroLineOneInput"),
         home_hero_line_two: document.getElementById("homeHeroLineTwoInput"),
         home_latest_title: document.getElementById("homeLatestTitleInput"),
+        home_ad_right_title: document.getElementById("homeAdRightTitleInput"),
+        home_ad_right_text: document.getElementById("homeAdRightTextInput"),
+        home_ad_right_url: document.getElementById("homeAdRightUrlInput"),
+        home_ad_left_title: document.getElementById("homeAdLeftTitleInput"),
+        home_ad_left_text: document.getElementById("homeAdLeftTextInput"),
+        home_ad_left_url: document.getElementById("homeAdLeftUrlInput"),
+        home_ad_right_enabled: document.getElementById("homeAdRightEnabledInput"),
+        home_ad_right_button: document.getElementById("homeAdRightButtonInput"),
+        home_ad_right_position: document.getElementById("homeAdRightPositionInput"),
+        home_ad_right_image: document.getElementById("homeAdRightImageInput"),
+        home_ad_left_enabled: document.getElementById("homeAdLeftEnabledInput"),
+        home_ad_left_button: document.getElementById("homeAdLeftButtonInput"),
+        home_ad_left_position: document.getElementById("homeAdLeftPositionInput"),
+        home_ad_left_image: document.getElementById("homeAdLeftImageInput"),
         about_lead: document.getElementById("aboutLeadInput"),
         about_body: document.getElementById("aboutBodyInput"),
         contact_lead: document.getElementById("contactLeadInput"),
@@ -2517,20 +2778,62 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       const sectionLinks = Array.from(document.querySelectorAll("[data-section-link]"));
       const adminSections = Array.from(document.querySelectorAll("[data-admin-section]"));
 
+      const analyticsRangeSelect = document.getElementById("analyticsRangeSelect");
+      const analyticsRefreshBtn = document.getElementById("analyticsRefreshBtn");
+      const analyticsStatus = document.getElementById("analyticsStatus");
+      const analyticsPageviews = document.getElementById("analyticsPageviews");
+      const analyticsVisitors = document.getElementById("analyticsVisitors");
+      const analyticsSessions = document.getElementById("analyticsSessions");
+      const analyticsToday = document.getElementById("analyticsToday");
+      const analyticsYesterday = document.getElementById("analyticsYesterday");
+      const analyticsDailyCount = document.getElementById("analyticsDailyCount");
+      const analyticsDailyChart = document.getElementById("analyticsDailyChart");
+      const analyticsTopPages = document.getElementById("analyticsTopPages");
+      const analyticsReferrers = document.getElementById("analyticsReferrers");
+      const analyticsDevices = document.getElementById("analyticsDevices");
+      const analyticsCountries = document.getElementById("analyticsCountries");
+      const analyticsRecent = document.getElementById("analyticsRecent");
+
+      /* mahoon-admin-ui-server-pagination-v1 */
       let posts = [];
+      let postsTotal = 0;
+      let adminStats = null;
+
       let deletedPosts = [];
+      let deletedPostsTotal = 0;
+
+      let mediaPosts = [];
+      let mediaPostsTotal = 0;
+
+      let seoPosts = [];
+      let seoPostsTotal = 0;
+
       let selectedPost = null;
       let selectedIds = new Set();
       let currentMedia = null;
       let currentView = "active";
+      let analyticsLoaded = false;
       let editorDirty = false;
       let editorBaseline = "";
       let messageTimer = null;
+      let authRecoveryShown = false;
+
       let currentPage = 1;
+      let deletedCurrentPage = 1;
+      let mediaCurrentPage = 1;
+      let seoCurrentPage = 1;
+
+      let postsRequestSerial = 0;
+      let deletedRequestSerial = 0;
+      let mediaRequestSerial = 0;
+      let seoRequestSerial = 0;
+      let searchDebounceTimer = null;
+
       const POSTS_PER_PAGE = 8;
-      const MEDIA_RENDER_LIMIT = 18;
-      const SEO_RENDER_LIMIT = 24;
-      const DELETED_RENDER_LIMIT = 24;
+      const DELETED_POSTS_PER_PAGE = 8;
+      const MEDIA_POSTS_PER_PAGE = 12;
+      const SEO_POSTS_PER_PAGE = 24;
+      const EXPORT_PAGE_SIZE = 100;
       const API_TIMEOUT_MS = 10000;
       const SITE_COPY_TIMEOUT_MS = 2200;
 
@@ -2544,6 +2847,42 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
       function clearToken() {
         localStorage.removeItem(TOKEN_KEY);
+      }
+
+      /* mahoon-admin-auth-recovery-v1 */
+      function isAuthFailure(error) {
+        const status = Number(error?.status || 0);
+        const message = String(error?.message || "");
+
+        return (
+          status === 401 ||
+          status === 403 ||
+          /unauthorized|forbidden|invalid token|expired token|\b401\b|\b403\b/i.test(message)
+        );
+      }
+
+      function recoverAdminSession(error) {
+        if (!isAuthFailure(error)) {
+          return false;
+        }
+
+        clearToken();
+        tokenInput.value = "";
+        updateLocalState();
+        showLogin();
+
+        if (!authRecoveryShown) {
+          authRecoveryShown = true;
+          clearTimeout(messageTimer);
+
+          loginMessage.textContent =
+            "نشست مدیریت منقضی شده یا دسترسی تغییر کرده است. دوباره وارد پنل شو.";
+
+          loginMessage.className =
+            "message show error";
+        }
+
+        return true;
       }
 
       function showLogin() {
@@ -2565,6 +2904,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         seo: { title: "سئو", kicker: "وضعیت عنوان، توضیح و پیش‌نمایش", visible: "seo" },
         "site-copy": { title: "متن‌ها و تنظیمات سایت", kicker: "ویرایش متن‌های عمومی سایت", visible: "site-copy" },
         deleted: { title: "حذف‌شده‌ها", kicker: "بازگردانی امن با ID ثابت", visible: "deleted" },
+        analytics: { title: "آمار بازدید", kicker: "تحلیل رفتار مخاطبان و بازدیدهای سایت", visible: "analytics" },
         export: { title: "خروجی و ابزارها", kicker: "JSON، کپی لینک و ابزارهای سریع", visible: "export" },
         settings: { title: "تنظیمات محلی", kicker: "Token و داده‌های سمت مرورگر", visible: "settings" }
       };
@@ -2612,12 +2952,16 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             await loadSiteCopy();
           }
 
+          if (key === "analytics") {
+            await loadAnalyticsReport();
+          }
+
           if (key === "media") {
-            renderMediaLibrary();
+            await loadMediaLibrary();
           }
 
           if (key === "seo") {
-            renderSeoChecklist();
+            await loadSeoChecklist();
           }
         }
 
@@ -2696,7 +3040,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       function userFriendlyError(error, fallback = "عملیات انجام نشد. دوباره تلاش کن.") {
         const message = error?.message || "";
 
-        if (/unauthorized|forbidden|admin|token|401|403/i.test(message)) {
+        if (isAuthFailure(error)) {
           return "دسترسی مدیریت تأیید نشد. دوباره وارد پنل شو.";
         }
 
@@ -2725,13 +3069,15 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       function authHeaders() {
         return {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${getToken()}`
+          "Authorization": `Bearer ${getToken()}`,
+          "X-Admin-Token": getToken()
         };
       }
 
       function authOnlyHeaders() {
         return {
-          "Authorization": `Bearer ${getToken()}`
+          "Authorization": `Bearer ${getToken()}`,
+          "X-Admin-Token": getToken()
         };
       }
 
@@ -2739,7 +3085,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         const controller = new AbortController();
         const timeoutMs = options.timeoutMs || API_TIMEOUT_MS;
         const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-        const { timeoutMs: _timeoutMs, ...fetchOptions } = options;
+        const { timeoutMs: _timeoutMs, skipAuthRecovery = false, ...fetchOptions } = options;
 
         const res = await fetch(`${WORKER_URL}${path}`, {
           ...fetchOptions,
@@ -2755,6 +3101,11 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         if (!res.ok) {
           const error = new Error(data?.error || "خطا در ارتباط با سرور");
           error.status = res.status;
+
+          if (!skipAuthRecovery) {
+            recoverAdminSession(error);
+          }
+
           throw error;
         }
 
@@ -2767,6 +3118,12 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         home_hero_line_one: "درخت هنر، زمانی میوه خواهد داد",
         home_hero_line_two: "که ریشه آن خشکیده نشده باشد!",
         home_latest_title: "تازه‌ترین روایت منتشرشده در ماهون",
+        home_ad_right_title: "جایگاه تبلیغات",
+        home_ad_right_text: "معرفی رویداد، کتاب، نمایشگاه یا همکاری فرهنگی",
+        home_ad_right_url: "",
+        home_ad_left_title: "جایگاه تبلیغات",
+        home_ad_left_text: "معرفی برندها و پروژه‌های همسو با فضای هنری ماهون",
+        home_ad_left_url: "",
         about_lead: "ماهون مجله‌ای برای روایت هنر، تصویر، صدا و نوشتار است.",
         about_body: [
           "ماهون جایی برای مکث، خواندن و دیدن است؛ جایی برای روایت‌هایی که از دل هنر، فرهنگ، تصویر، صدا و نوشتار می‌آیند و با زبانی آرام و دقیق کنار هم قرار می‌گیرند.",
@@ -2787,20 +3144,165 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         telegram_url: TELEGRAM_URL
       };
 
+      function siteCopyIsEnabledValue(value) {
+        const text = String(value ?? "").trim().toLowerCase();
+
+        if (!text) return false;
+
+        return !["0", "false", "off", "no", "خاموش", "غیرفعال"].includes(text);
+      }
+
       function fillSiteCopyForm(settings = {}) {
         const values = { ...SITE_COPY_DEFAULTS, ...(settings || {}) };
 
         Object.entries(siteCopyFields).forEach(([key, field]) => {
           if (!field) return;
-          field.value = values[key] || "";
+
+          const value = values[key] ?? "";
+
+          if (field.type === "checkbox") {
+            field.checked = siteCopyIsEnabledValue(value);
+            return;
+          }
+
+          field.value = value;
         });
       }
 
       function collectSiteCopyForm() {
-        return Object.fromEntries(
-          Object.entries(siteCopyFields).map(([key, field]) => [key, normalizeText(field?.value || "")])
-        );
+        const result = {};
+
+        Object.entries(siteCopyFields).forEach(([key, field]) => {
+          if (!field) return;
+
+          if (field.type === "checkbox") {
+            result[key] = field.checked ? "1" : "0";
+            return;
+          }
+
+          result[key] = normalizeText(field.value || "");
+        });
+
+        return result;
       }
+
+      async function uploadSiteAdImage(targetKey, button) {
+        if (!getToken()) {
+          showMessage(siteCopyMessage, "برای آپلود عکس ابتدا وارد پنل شو.", "error");
+          return;
+        }
+
+        const fileInput = document.querySelector('[data-site-ad-file="' + targetKey + '"]');
+        const urlInput = siteCopyFields[targetKey];
+        const file = fileInput?.files?.[0];
+
+        if (!file) {
+          showMessage(siteCopyMessage, "ابتدا یک عکس انتخاب کن.", "error");
+          return;
+        }
+
+        const oldText = button?.textContent || "آپلود";
+        const base = String(typeof API_BASE !== "undefined" ? API_BASE : "https://api.mahoonartmagazine.ir").replace(/\/+$/, "");
+        const endpoint = base + "/admin/upload";
+
+        if (button) {
+          button.disabled = true;
+          button.textContent = "در حال آپلود...";
+        }
+
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 60000);
+
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+
+          const headers = { ...authHeaders() };
+
+          delete headers["Content-Type"];
+          delete headers["content-type"];
+
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers,
+            body: formData,
+            signal: controller.signal
+          });
+
+          const data = await res.json().catch(() => null);
+
+          if (!res.ok || !data?.ok) {
+            const error = new Error(
+              data?.error ||
+              "آپلود عکس تبلیغ انجام نشد."
+            );
+
+            error.status = res.status;
+            throw error;
+          }
+
+          const media = data.media || {};
+          const fileId = media.photo_file_id || media.media_file_id || media.file_id || "";
+          const mediaUrl =
+            media.photo_url ||
+            media.media_url ||
+            media.url ||
+            media.src ||
+            (fileId ? base + "/media/" + encodeURIComponent(fileId) : "");
+
+          if (!mediaUrl) {
+            throw new Error("عکس آپلود شد اما آدرس قابل نمایش برنگشت.");
+          }
+
+          if (urlInput) {
+            urlInput.value = mediaUrl;
+          }
+
+          if (fileInput) {
+            fileInput.value = "";
+          }
+
+          showMessage(siteCopyMessage, "عکس تبلیغ آپلود شد. برای اعمال در سایت، دکمه ذخیره تنظیمات را بزن.", "ok");
+        } catch (error) {
+          if (recoverAdminSession(error)) {
+            return;
+          }
+
+          showMessage(
+            siteCopyMessage,
+            userFriendlyError(
+              error,
+              "آپلود عکس تبلیغ انجام نشد."
+            ),
+            "error"
+          );
+        } finally {
+          window.clearTimeout(timer);
+
+          if (button) {
+            button.disabled = false;
+            button.textContent = oldText;
+          }
+        }
+      }
+
+      function clearSiteAdImage(targetKey) {
+        const input = siteCopyFields[targetKey];
+
+        if (input) {
+          input.value = "";
+        }
+
+        showMessage(siteCopyMessage, "آدرس عکس حذف شد. برای اعمال در سایت، ذخیره تنظیمات را بزن.", "ok");
+      }
+
+      document.querySelectorAll("[data-site-ad-upload]").forEach((button) => {
+        button.addEventListener("click", () => uploadSiteAdImage(button.getAttribute("data-site-ad-upload"), button));
+      });
+
+      document.querySelectorAll("[data-site-ad-clear]").forEach((button) => {
+        button.addEventListener("click", () => clearSiteAdImage(button.getAttribute("data-site-ad-clear")));
+      });
 
       async function loadSiteCopy() {
         if (!getToken()) {
@@ -3096,54 +3598,350 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
       async function testLogin() {
         try {
-          await api("/admin/health");
+          await api("/admin/health", {
+            skipAuthRecovery: true
+          });
+
+          authRecoveryShown = false;
+          loginMessage.className = "message";
+          loginMessage.textContent = "";
+          tokenInput.value = "";
+
           showDashboard();
           await loadPosts();
-        } catch {
-          clearToken();
+        } catch (error) {
+          if (isAuthFailure(error)) {
+            clearToken();
+            authRecoveryShown = false;
+            tokenInput.value = "";
+            showLogin();
+
+            showMessage(
+              loginMessage,
+              "رمز مدیریت اشتباه است یا دسترسی مدیریت منقضی شده است.",
+              "error"
+            );
+
+            return;
+          }
+
+          tokenInput.value = getToken();
           showLogin();
-          showMessage(loginMessage, "رمز مدیریت اشتباه است یا سرویس مدیریت آماده نیست.", "error");
+
+          showMessage(
+            loginMessage,
+            userFriendlyError(
+              error,
+              "سرویس مدیریت موقتاً در دسترس نیست. رمز ذخیره‌شده حذف نشد؛ دوباره تلاش کن."
+            ),
+            "error"
+          );
         }
       }
 
-      async function loadPosts() {
-        postsList.innerHTML = `<div class="empty">در حال دریافت پست‌ها...</div>`;
+      function activeAdminSectionKey() {
+        const activeSection = adminSections.find(
+          section =>
+            !section.hidden &&
+            section.classList.contains("is-active")
+        );
+
+        return activeSection?.getAttribute("data-admin-section") || "";
+      }
+
+      function buildAdminPostsPath({
+        limit = POSTS_PER_PAGE,
+        offset = 0,
+        q = "",
+        status = "all",
+        media = "all",
+        sort = "newest"
+      } = {}) {
+        const params = new URLSearchParams();
+
+        params.set("limit", String(limit));
+        params.set("offset", String(Math.max(0, offset)));
+        params.set("status", status || "all");
+        params.set("media", media || "all");
+        params.set("sort", sort || "newest");
+
+        const query = String(q || "").trim();
+
+        if (query) {
+          params.set("q", query);
+        }
+
+        return `/admin/posts?${params.toString()}`;
+      }
+
+      function pageCount(totalItems, perPage) {
+        return Math.max(
+          Math.ceil(Math.max(Number(totalItems) || 0, 0) / perPage),
+          1
+        );
+      }
+
+      function compactPaginationPages(current, total) {
+        const pages = new Set([1, total]);
+
+        for (let offset = -2; offset <= 2; offset += 1) {
+          const page = current + offset;
+
+          if (page >= 1 && page <= total) {
+            pages.add(page);
+          }
+        }
+
+        const sorted = Array.from(pages).sort((a, b) => a - b);
+        const tokens = [];
+
+        sorted.forEach((page, index) => {
+          const previous = sorted[index - 1];
+
+          if (index > 0 && page - previous > 1) {
+            tokens.push(null);
+          }
+
+          tokens.push(page);
+        });
+
+        return tokens;
+      }
+
+      function paginationMarkup({
+        current,
+        totalPages,
+        totalItems,
+        pageAttribute,
+        previousAttribute,
+        nextAttribute
+      }) {
+        if (totalPages <= 1) {
+          return `<span>${totalItems} مطلب</span>`;
+        }
+
+        const buttons = compactPaginationPages(
+          current,
+          totalPages
+        ).map(token => {
+          if (token === null) {
+            return `<span class="pagination-ellipsis" aria-hidden="true">…</span>`;
+          }
+
+          return `
+            <button
+              class="admin-btn admin-glass-btn page-btn ${token === current ? "active" : ""}"
+              type="button"
+              ${pageAttribute}="${token}"
+              ${token === current ? 'aria-current="page"' : ""}
+            >${token}</button>
+          `;
+        }).join("");
+
+        return `
+          <button
+            class="admin-btn admin-glass-btn page-btn"
+            type="button"
+            ${previousAttribute}
+            ${current === 1 ? "disabled" : ""}
+          >قبلی</button>
+
+          ${buttons}
+
+          <button
+            class="admin-btn admin-glass-btn page-btn"
+            type="button"
+            ${nextAttribute}
+            ${current === totalPages ? "disabled" : ""}
+          >بعدی</button>
+
+          <span>${totalItems} مطلب</span>
+        `;
+      }
+
+      function findLoadedPostById(id) {
+        const targetId = Number(id);
+
+        return [
+          ...posts,
+          ...mediaPosts,
+          ...seoPosts
+        ].find(item => Number(item.id) === targetId) || null;
+      }
+
+      async function fetchAdminPostById(id) {
+        const data = await api(`/admin/posts/${id}`);
+
+        const post =
+          data?.post ||
+          data?.item ||
+          (Array.isArray(data?.posts) ? data.posts[0] : null) ||
+          data;
+
+        if (!post || Number(post.id) !== Number(id)) {
+          return null;
+        }
+
+        return post;
+      }
+
+      async function loadPosts(options = {}) {
+        const {
+          refreshStats = true
+        } = options;
+
+        const requestId = ++postsRequestSerial;
+
+        postsList.innerHTML =
+          `<div class="empty">در حال دریافت پست‌ها...</div>`;
+
         apiStatus.textContent = "در حال اتصال...";
 
+        const offset =
+          (Math.max(currentPage, 1) - 1) *
+          POSTS_PER_PAGE;
+
+        const path = buildAdminPostsPath({
+          limit: POSTS_PER_PAGE,
+          offset,
+          q: searchInput.value,
+          status: statusFilter.value,
+          media: mediaFilter.value,
+          sort: sortFilter.value
+        });
+
         try {
-          const data = await api("/admin/posts");
-          posts = data.posts || [];
+          const postsPromise = api(path);
+
+          const statsPromise =
+            refreshStats || !adminStats
+              ? api("/admin/stats-v1").catch(() => null)
+              : Promise.resolve(null);
+
+          const [data, statsData] = await Promise.all([
+            postsPromise,
+            statsPromise
+          ]);
+
+          if (requestId !== postsRequestSerial) {
+            return;
+          }
+
+          if (statsData?.stats) {
+            adminStats = statsData.stats;
+          }
+
+          const nextPosts = Array.isArray(data?.posts)
+            ? data.posts
+            : [];
+
+          const nextTotal = Number(
+            data?.total ?? nextPosts.length
+          );
+
+          const totalPages = pageCount(
+            nextTotal,
+            POSTS_PER_PAGE
+          );
+
+          if (currentPage > totalPages) {
+            currentPage = totalPages;
+
+            await loadPosts({
+              refreshStats: false
+            });
+
+            return;
+          }
+
+          posts = nextPosts;
+          postsTotal = nextTotal;
           selectedIds = new Set();
 
-        renderStats();
-        renderPosts();
-        renderActiveAuxiliarySection();
-        updateSelectedCount();
+          renderStats();
+          renderPosts();
+          updateSelectedCount();
+
           apiStatus.textContent = "API متصل است";
-          apiDetailText.textContent = "اتصال برقرار است و داده‌ها از مسیرهای مدیریت موجود دریافت شدند.";
+          apiDetailText.textContent =
+            `اتصال برقرار است؛ صفحه ${currentPage} از ${totalPages} و ${postsTotal} مطلب قابل مدیریت است.`;
+
           updateLocalState();
         } catch (error) {
-          postsList.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+          if (requestId !== postsRequestSerial) {
+            return;
+          }
+
+          postsList.innerHTML =
+            `<div class="empty">${escapeHtml(error.message)}</div>`;
+
+          postsPagination.innerHTML = "";
           apiStatus.textContent = "خطا در اتصال API";
-          apiDetailText.textContent = userFriendlyError(error, "اتصال برقرار نشد.");
+          apiDetailText.textContent =
+            userFriendlyError(error, "اتصال برقرار نشد.");
         }
       }
 
       async function loadDeletedPosts() {
+        const requestId = ++deletedRequestSerial;
+
         deletedPostsList.hidden = false;
-        deletedPostsList.innerHTML = `<div class="empty">در حال دریافت پست‌های حذف‌شده...</div>`;
+        deletedPostsList.innerHTML =
+          `<div class="empty">در حال دریافت پست‌های حذف‌شده...</div>`;
+
+        const offset =
+          (Math.max(deletedCurrentPage, 1) - 1) *
+          DELETED_POSTS_PER_PAGE;
 
         try {
-          const data = await api("/admin/posts/deleted");
-          deletedPosts = data.posts || [];
+          const data = await api(
+            `/admin/posts/deleted?limit=${DELETED_POSTS_PER_PAGE}&offset=${offset}`
+          );
+
+          if (requestId !== deletedRequestSerial) {
+            return;
+          }
+
+          const nextPosts = Array.isArray(data?.posts)
+            ? data.posts
+            : [];
+
+          const nextTotal = Number(
+            data?.total ?? nextPosts.length
+          );
+
+          const totalPages = pageCount(
+            nextTotal,
+            DELETED_POSTS_PER_PAGE
+          );
+
+          if (deletedCurrentPage > totalPages) {
+            deletedCurrentPage = totalPages;
+            await loadDeletedPosts();
+            return;
+          }
+
+          deletedPosts = nextPosts;
+          deletedPostsTotal = nextTotal;
+
           renderDeletedPosts();
           renderStats();
         } catch (error) {
+          if (requestId !== deletedRequestSerial) {
+            return;
+          }
+
           const message = error.status === 404
             ? "این قابلیت هنوز روی API آنلاین فعال نشده است."
-            : userFriendlyError(error, "دریافت پست‌های حذف‌شده انجام نشد.");
+            : userFriendlyError(
+                error,
+                "دریافت پست‌های حذف‌شده انجام نشد."
+              );
 
-          deletedPostsList.innerHTML = `<div class="empty">${escapeHtml(message)}</div>`;
+          deletedPostsList.innerHTML =
+            `<div class="empty">${escapeHtml(message)}</div>`;
+
+          deletedPostsPagination.innerHTML = "";
         }
       }
 
@@ -3171,14 +3969,26 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       }
 
       function renderDeletedPosts() {
+        const totalPages = pageCount(
+          deletedPostsTotal,
+          DELETED_POSTS_PER_PAGE
+        );
+
         if (deletedPosts.length === 0) {
           deletedPostsList.innerHTML = `
             <div class="id-note deleted-note">
               <strong>پست‌های حذف‌شده:</strong>
               بازگردانی فقط با ID ثابت دیتابیس انجام می‌شود؛ این ID همان کد ربات است.
             </div>
+
             <div class="empty">پست حذف‌شده‌ای پیدا نشد.</div>
           `;
+
+          renderDeletedPagination(
+            totalPages,
+            deletedPostsTotal
+          );
+
           return;
         }
 
@@ -3187,13 +3997,21 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             <strong>پست‌های حذف‌شده:</strong>
             بازگردانی فقط با ID ثابت دیتابیس انجام می‌شود؛ این ID همان کد ربات است و بعد از حذف تغییر نمی‌کند.
           </div>
+
           <div class="admin-data-list">
-          ${deletedPosts.slice(0, DELETED_RENDER_LIMIT).map(post => {
+          ${deletedPosts.map(post => {
             const title = makeTitle(post.text);
             const excerpt = makeExcerpt(post.text);
-            const statusText = Number(post.is_published) === 1 ? "منتشر شده" : "منتشر نشده";
+            const statusText =
+              Number(post.is_published) === 1
+                ? "منتشر شده"
+                : "منتشر نشده";
+
             const kind = contentKind(post);
-            const publicHref = post.slug ? `/post/${encodeURIComponent(post.slug)}` : "";
+
+            const publicHref = post.slug
+              ? `/post/${encodeURIComponent(post.slug)}`
+              : "";
 
             return `
               <article class="admin-data-row admin-deleted-row" data-deleted-id="${post.id}">
@@ -3226,8 +4044,12 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             `;
           }).join("")}
           </div>
-          ${deletedPosts.length > DELETED_RENDER_LIMIT ? `<div class="empty">برای سبک ماندن پنل، ${DELETED_RENDER_LIMIT} مورد نخست نمایش داده شد.</div>` : ""}
         `;
+
+        renderDeletedPagination(
+          totalPages,
+          deletedPostsTotal
+        );
       }
 
       async function restoreDeletedPost(id, button) {
@@ -3235,7 +4057,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
         const confirmed = await confirmAction({
           title: "بازگردانی مطلب",
-          message: `پست حذف‌شده با کد ثابت #${id} بازگردانی شود؟ این عملیات پست را دوباره منتشر می‌کند و ID ثابت تغییر نمی‌کند.`,
+          message: `پست حذف‌شده با کد ثبت #${id} بازیابی شود؟ این عملیات پست را به پیش‌نویس خصوصی برمی‌گرداند و آن را منتشر نمی‌کند.`,
           confirmText: "بازگردانی"
         });
 
@@ -3249,7 +4071,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             body: JSON.stringify({})
           });
 
-          showMessage(editorMessage, `پست #${id} با موفقیت بازگردانی شد.`, "ok");
+          showMessage(editorMessage, `پست #${id} به‌صورت پیش‌نویس خصوصی بازیابی شد.`, "ok");
           await loadDeletedPosts();
           await loadPosts();
         } catch (error) {
@@ -3263,36 +4085,308 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         }
       }
 
-      function renderStats() {
-        const published = posts.filter(post => Number(post.is_published) === 1).length;
-        const drafts = posts.filter(post => Number(post.is_published) !== 1).length;
-        const withMedia = posts.filter(post => post.media_file_id || post.photo_file_id).length;
-        const withoutMedia = Math.max(posts.length - withMedia, 0);
-        const latestId = posts.reduce((max, post) => Math.max(max, Number(post.id || 0)), 0);
-        const uniqueTags = new Set(posts.flatMap(post => parseContent(post.text).hashtags));
 
-        totalCount.textContent = posts.length;
-        topbarTotalCount.textContent = posts.length;
+      function formatAdminNumber(value) {
+        return String(Number(value || 0).toLocaleString("fa-IR"));
+      }
+
+      function analyticsRows(payload, ...keys) {
+        for (const key of keys) {
+          if (Array.isArray(payload?.[key])) return payload[key];
+        }
+
+        return [];
+      }
+
+      function analyticsTotal(payload, key) {
+        const totals = payload?.totals || {};
+        return totals[key] ?? payload?.[key] ?? 0;
+      }
+
+      function analyticsLabel(row, ...keys) {
+        for (const key of keys) {
+          const value = row?.[key];
+          if (value !== undefined && value !== null && String(value).trim()) return String(value);
+        }
+
+        return "نامشخص";
+      }
+
+      function analyticsValue(row, ...keys) {
+        for (const key of keys) {
+          const value = row?.[key];
+          if (value !== undefined && value !== null && value !== "") return Number(value || 0);
+        }
+
+        return 0;
+      }
+
+      function setAnalyticsStatus(text, type = "ok") {
+        if (!analyticsStatus) return;
+        analyticsStatus.textContent = text;
+        analyticsStatus.className = `message analytics-message show ${type === "error" ? "error" : "ok"}`;
+      }
+
+      async function loadAnalyticsReport(force = false) {
+        if (!analyticsStatus) return;
+
+        if (analyticsLoaded && !force) return;
+
+        const days = analyticsRangeSelect?.value || "30";
+
+        setAnalyticsStatus("در حال دریافت آمار بازدید...");
+
+        try {
+          const data = await api(`/analytics/report-v5?days=${encodeURIComponent(days)}`, {
+            method: "GET",
+            timeoutMs: 15000
+          });
+
+          if (!data?.ok) {
+            throw new Error(data?.error || "Analytics report failed");
+          }
+
+          analyticsLoaded = true;
+          renderAnalyticsReport(data);
+          setAnalyticsStatus(`آمار بازدید بروزرسانی شد. بازه انتخابی: ${formatAdminNumber(days)} روز اخیر`);
+        } catch (error) {
+          console.error(error);
+          setAnalyticsStatus(userFriendlyError(error, "دریافت آمار بازدید انجام نشد."), "error");
+        }
+      }
+
+      function renderAnalyticsReport(data) {
+        if (analyticsPageviews) analyticsPageviews.textContent = formatAdminNumber(analyticsTotal(data, "pageviews"));
+        if (analyticsVisitors) analyticsVisitors.textContent = formatAdminNumber(analyticsTotal(data, "unique_visitors"));
+        if (analyticsSessions) analyticsSessions.textContent = formatAdminNumber(analyticsTotal(data, "sessions"));
+        if (analyticsToday) analyticsToday.textContent = formatAdminNumber(analyticsTotal(data, "today"));
+        if (analyticsYesterday) analyticsYesterday.textContent = formatAdminNumber(analyticsTotal(data, "yesterday"));
+
+        renderAnalyticsDaily(analyticsRows(data, "byDay", "daily", "days", "timeline"));
+        renderAnalyticsList(analyticsTopPages, analyticsRows(data, "topPages", "top_pages", "pages"), {
+          titleKeys: ["title", "path", "url"],
+          subtitleKeys: ["path", "url"],
+          valueKeys: ["views", "pageviews", "count"]
+        });
+        renderAnalyticsList(analyticsReferrers, analyticsRows(data, "referrers", "sources", "topReferrers"), {
+          titleKeys: ["referrer_host", "source", "host", "referrer"],
+          subtitleKeys: ["referrer", "url"],
+          valueKeys: ["views", "pageviews", "count"]
+        });
+        renderAnalyticsList(analyticsDevices, analyticsRows(data, "devices", "byDevice"), {
+          titleKeys: ["device", "name", "label"],
+          subtitleKeys: ["device"],
+          valueKeys: ["views", "pageviews", "count"]
+        });
+        renderAnalyticsList(analyticsCountries, analyticsRows(data, "countries", "byCountry"), {
+          titleKeys: ["country", "name", "label"],
+          subtitleKeys: ["city", "country"],
+          valueKeys: ["views", "pageviews", "count"]
+        });
+        renderAnalyticsRecent(analyticsRows(data, "recent", "recentEvents", "latest"));
+      }
+
+      function renderAnalyticsDaily(rows) {
+        if (!analyticsDailyChart) return;
+
+        if (analyticsDailyCount) {
+          analyticsDailyCount.textContent = rows.length ? `${formatAdminNumber(rows.length)} روز` : "بدون داده";
+        }
+
+        if (!rows.length) {
+          analyticsDailyChart.innerHTML = '<div class="empty">هنوز داده‌ای برای نمایش وجود ندارد.</div>';
+          return;
+        }
+
+        const normalized = rows.slice(-31).map((row) => ({
+          label: analyticsLabel(row, "day", "date", "created_at"),
+          value: analyticsValue(row, "views", "pageviews", "count")
+        }));
+
+        const max = Math.max(...normalized.map((row) => row.value), 1);
+
+        analyticsDailyChart.innerHTML = normalized.map((row) => {
+          const width = Math.max(4, Math.round((row.value / max) * 100));
+
+          return `
+            <div class="analytics-bar-row">
+              <span>${escapeHtml(row.label)}</span>
+              <div class="analytics-bar-track"><i style="width:${width}%"></i></div>
+              <strong>${formatAdminNumber(row.value)}</strong>
+            </div>
+          `;
+        }).join("");
+      }
+
+      function renderAnalyticsList(container, rows, config) {
+        if (!container) return;
+
+        if (!rows.length) {
+          container.innerHTML = '<div class="empty">داده‌ای ثبت نشده است.</div>';
+          return;
+        }
+
+        container.innerHTML = rows.slice(0, 10).map((row) => {
+          const title = analyticsLabel(row, ...config.titleKeys);
+          const subtitle = analyticsLabel(row, ...config.subtitleKeys);
+          const value = analyticsValue(row, ...config.valueKeys);
+
+          return `
+            <div class="analytics-list-row">
+              <div>
+                <strong>${escapeHtml(title)}</strong>
+                ${subtitle && subtitle !== title ? `<small>${escapeHtml(subtitle)}</small>` : ""}
+              </div>
+              <b>${formatAdminNumber(value)}</b>
+            </div>
+          `;
+        }).join("");
+      }
+
+      function renderAnalyticsRecent(rows) {
+        if (!analyticsRecent) return;
+
+        if (!rows.length) {
+          analyticsRecent.innerHTML = '<div class="empty">هنوز بازدیدی ثبت نشده است.</div>';
+          return;
+        }
+
+        analyticsRecent.innerHTML = rows.slice(0, 12).map((row) => {
+          const title = analyticsLabel(row, "title", "path", "url");
+          const path = analyticsLabel(row, "path", "url");
+          const meta = [
+            analyticsLabel(row, "device"),
+            analyticsLabel(row, "country"),
+            analyticsLabel(row, "created_at")
+          ].filter(Boolean).join(" · ");
+          const referrer = analyticsLabel(row, "referrer_host", "source", "referrer");
+
+          return `
+            <div class="analytics-list-row">
+              <div>
+                <strong>${escapeHtml(title)}</strong>
+                <small>${escapeHtml(path)}${meta ? " · " + escapeHtml(meta) : ""}</small>
+              </div>
+              <b>${escapeHtml(referrer || "Direct")}</b>
+            </div>
+          `;
+        }).join("");
+      }
+
+
+      function renderStats() {
+        const loadedPublished =
+          posts.filter(post =>
+            Number(post.is_published) === 1
+          ).length;
+
+        const loadedDrafts =
+          posts.filter(post =>
+            Number(post.is_published) !== 1
+          ).length;
+
+        const loadedWithMedia =
+          posts.filter(post =>
+            post.media_file_id ||
+            post.photo_file_id
+          ).length;
+
+        const loadedWithoutMedia =
+          Math.max(
+            posts.length - loadedWithMedia,
+            0
+          );
+
+        const loadedLatestId =
+          posts.reduce(
+            (max, post) =>
+              Math.max(
+                max,
+                Number(post.id || 0)
+              ),
+            0
+          );
+
+        const uniqueTags = new Set(
+          posts.flatMap(post =>
+            parseContent(post.text).hashtags
+          )
+        );
+
+        const total = Number(
+          adminStats?.total_posts ??
+          postsTotal ??
+          posts.length
+        );
+
+        const published = Number(
+          adminStats?.published_posts ??
+          loadedPublished
+        );
+
+        const drafts = Number(
+          adminStats?.draft_posts ??
+          loadedDrafts
+        );
+
+        const deleted = Number(
+          adminStats?.deleted_posts ??
+          deletedPostsTotal ??
+          deletedPosts.length
+        );
+
+        const withMedia = Number(
+          adminStats?.media_posts ??
+          loadedWithMedia
+        );
+
+        const withoutMedia = Number(
+          adminStats?.text_posts ??
+          loadedWithoutMedia
+        );
+
+        const latestId = Number(
+          adminStats?.latest_id ??
+          loadedLatestId
+        );
+
+        totalCount.textContent = total;
+        topbarTotalCount.textContent = total;
         publishedCount.textContent = published;
         draftCount.textContent = drafts;
-        deletedCount.textContent = deletedPosts.length;
+        deletedCount.textContent = deleted;
         mediaCount.textContent = withMedia;
         textCount.textContent = withoutMedia;
         latestIdCount.textContent = latestId || "-";
-        tagsCount.textContent = uniqueTags.size;
-        exportCount.textContent = `${posts.length} مطلب آماده خروجی`;
 
-        const rate = posts.length ? Math.round((published / posts.length) * 100) : 0;
-        publishRate.textContent = `${rate}%`;
-        publishProgress.style.width = `${rate}%`;
-        lastRefresh.textContent = `آخرین بروزرسانی: ${new Intl.DateTimeFormat("fa-IR", {
-          hour: "2-digit",
-          minute: "2-digit"
-        }).format(new Date())}`;
+        tagsCount.textContent =
+          `${uniqueTags.size} / صفحه`;
+
+        tagsCount.title =
+          "تعداد هشتگ‌های یکتای صفحه جاری";
+
+        exportCount.textContent =
+          total + " مطلب آماده خروجی کامل";
+
+        const rate = total
+          ? Math.round((published / total) * 100)
+          : 0;
+
+        publishRate.textContent = rate + "%";
+        publishProgress.style.width = rate + "%";
+
+        lastRefresh.textContent =
+          "آخرین بروزرسانی: " +
+          new Intl.DateTimeFormat("fa-IR", {
+            hour: "2-digit",
+            minute: "2-digit"
+          }).format(new Date());
 
         renderActivity();
-        mediaPanelCount.textContent = `${withMedia} مورد`;
-        seoPanelCount.textContent = `${posts.filter(post => !post.seo_title || !post.seo_description).length} مورد نیازمند بررسی`;
+
+        mediaPanelCount.textContent =
+          withMedia + " مورد";
+
         updateLocalState();
       }
 
@@ -3327,109 +4421,289 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         `).join("");
       }
 
-      function renderMediaLibrary() {
-        const withMedia = posts.filter(post => mediaFromPost(post));
-        mediaPanelCount.textContent = `${withMedia.length} مورد`;
+      async function loadMediaLibrary() {
+        const requestId = ++mediaRequestSerial;
 
-        if (!withMedia.length) {
-          mediaLibrary.innerHTML = `<div class="empty">مطلب دارای رسانه پیدا نشد.</div>`;
+        mediaLibrary.innerHTML =
+          `<div class="empty">در حال دریافت رسانه‌ها...</div>`;
+
+        const offset =
+          (Math.max(mediaCurrentPage, 1) - 1) *
+          MEDIA_POSTS_PER_PAGE;
+
+        try {
+          const data = await api(
+            buildAdminPostsPath({
+              limit: MEDIA_POSTS_PER_PAGE,
+              offset,
+              media: "media",
+              sort: "newest"
+            })
+          );
+
+          if (requestId !== mediaRequestSerial) {
+            return;
+          }
+
+          const nextPosts = Array.isArray(data?.posts)
+            ? data.posts
+            : [];
+
+          const nextTotal = Number(
+            data?.total ?? nextPosts.length
+          );
+
+          const totalPages = pageCount(
+            nextTotal,
+            MEDIA_POSTS_PER_PAGE
+          );
+
+          if (mediaCurrentPage > totalPages) {
+            mediaCurrentPage = totalPages;
+            await loadMediaLibrary();
+            return;
+          }
+
+          mediaPosts = nextPosts;
+          mediaPostsTotal = nextTotal;
+
+          renderMediaLibrary();
+        } catch (error) {
+          if (requestId !== mediaRequestSerial) {
+            return;
+          }
+
+          mediaLibrary.innerHTML =
+            `<div class="empty">${escapeHtml(userFriendlyError(error, "دریافت رسانه‌ها انجام نشد."))}</div>`;
+
+          mediaPagination.innerHTML = "";
+        }
+      }
+
+      function renderMediaLibrary() {
+        const totalPages = pageCount(
+          mediaPostsTotal,
+          MEDIA_POSTS_PER_PAGE
+        );
+
+        mediaPanelCount.textContent =
+          `${mediaPostsTotal} مورد`;
+
+        if (!mediaPosts.length) {
+          mediaLibrary.innerHTML =
+            `<div class="empty">مطلب دارای رسانه پیدا نشد.</div>`;
+
+          renderMediaPagination(
+            totalPages,
+            mediaPostsTotal
+          );
+
           return;
         }
 
         mediaLibrary.innerHTML = `
           <div class="admin-data-list">
-          ${withMedia.slice(0, MEDIA_RENDER_LIMIT).map(post => {
-          const media = mediaFromPost(post);
-          const url = media?.media_url || media?.photo_url || "";
-          const publicHref = post.slug ? `/post/${encodeURIComponent(post.slug)}` : "";
-          const title = makeTitle(post.text);
+          ${mediaPosts.map(post => {
+            const media = mediaFromPost(post);
+            const url =
+              media?.media_url ||
+              media?.photo_url ||
+              "";
 
-          return `
-            <article class="admin-data-row admin-media-row">
-              <div class="admin-row-check">
-                <span class="admin-row-badge blue">رسانه</span>
-              </div>
-              <div class="admin-row-thumb">${renderThumb(post)}</div>
-              <div class="admin-row-main">
-                <h3 class="admin-row-title">${escapeHtml(title)}</h3>
-                <p class="admin-row-excerpt">${escapeHtml(makeExcerpt(post.text))}</p>
-                ${renderAdminTags(post)}
-              </div>
-              <div class="admin-row-meta">
-                <span class="admin-row-badge blue">ID ${escapeHtml(post.id)}</span>
-                <span class="admin-row-badge">${escapeHtml(mediaLabel(media.media_type))}</span>
-                <span class="admin-row-badge gray">${escapeHtml(formatDate(post.created_at))}</span>
-              </div>
-              <div class="admin-row-actions">
-                ${adminRowButton("ویرایش", `data-edit-id="${post.id}"`)}
-                ${publicHref ? adminRowLink("مشاهده", publicHref, "data-row-action") : ""}
-                ${url ? adminRowButton("کپی URL", `data-copy-value="${escapeAttr(url)}"`) : ""}
-              </div>
-            </article>
-          `;
-        }).join("")}
+            const publicHref = post.slug
+              ? `/post/${encodeURIComponent(post.slug)}`
+              : "";
+
+            const title = makeTitle(post.text);
+
+            return `
+              <article class="admin-data-row admin-media-row">
+                <div class="admin-row-check">
+                  <span class="admin-row-badge blue">رسانه</span>
+                </div>
+
+                <div class="admin-row-thumb">
+                  ${renderThumb(post)}
+                </div>
+
+                <div class="admin-row-main">
+                  <h3 class="admin-row-title">${escapeHtml(title)}</h3>
+                  <p class="admin-row-excerpt">${escapeHtml(makeExcerpt(post.text))}</p>
+                  ${renderAdminTags(post)}
+                </div>
+
+                <div class="admin-row-meta">
+                  <span class="admin-row-badge blue">ID ${escapeHtml(post.id)}</span>
+                  <span class="admin-row-badge">${escapeHtml(mediaLabel(media?.media_type))}</span>
+                  <span class="admin-row-badge gray">${escapeHtml(formatDate(post.created_at))}</span>
+                </div>
+
+                <div class="admin-row-actions">
+                  ${adminRowButton("ویرایش", `data-edit-id="${post.id}"`)}
+                  ${publicHref ? adminRowLink("مشاهده", publicHref, "data-row-action") : ""}
+                  ${url ? adminRowButton("کپی URL", `data-copy-value="${escapeAttr(url)}"`) : ""}
+                </div>
+              </article>
+            `;
+          }).join("")}
           </div>
-        ` + (
-          withMedia.length > MEDIA_RENDER_LIMIT
-            ? `<div class="empty">برای سبک ماندن پنل، ${MEDIA_RENDER_LIMIT} رسانه نخست نمایش داده شد.</div>`
-            : ""
+        `;
+
+        renderMediaPagination(
+          totalPages,
+          mediaPostsTotal
         );
       }
 
-      function renderSeoChecklist() {
-        const missingCount = posts.filter(post => !post.seo_title || !post.seo_description).length;
-        const items = [...posts].sort((a, b) => Number(b.id || 0) - Number(a.id || 0)).slice(0, SEO_RENDER_LIMIT);
-        seoPanelCount.textContent = `${missingCount} مورد نیازمند بررسی`;
+      async function loadSeoChecklist() {
+        const requestId = ++seoRequestSerial;
 
-        if (!items.length) {
-          seoChecklist.innerHTML = `<div class="empty">تمام مطالب لودشده حداقل عنوان و توضیح SEO دارند.</div>`;
+        seoChecklist.innerHTML =
+          `<div class="empty">در حال دریافت اطلاعات SEO...</div>`;
+
+        const offset =
+          (Math.max(seoCurrentPage, 1) - 1) *
+          SEO_POSTS_PER_PAGE;
+
+        try {
+          const data = await api(
+            buildAdminPostsPath({
+              limit: SEO_POSTS_PER_PAGE,
+              offset,
+              sort: "id"
+            })
+          );
+
+          if (requestId !== seoRequestSerial) {
+            return;
+          }
+
+          const nextPosts = Array.isArray(data?.posts)
+            ? data.posts
+            : [];
+
+          const nextTotal = Number(
+            data?.total ?? nextPosts.length
+          );
+
+          const totalPages = pageCount(
+            nextTotal,
+            SEO_POSTS_PER_PAGE
+          );
+
+          if (seoCurrentPage > totalPages) {
+            seoCurrentPage = totalPages;
+            await loadSeoChecklist();
+            return;
+          }
+
+          seoPosts = nextPosts;
+          seoPostsTotal = nextTotal;
+
+          renderSeoChecklist();
+        } catch (error) {
+          if (requestId !== seoRequestSerial) {
+            return;
+          }
+
+          seoChecklist.innerHTML =
+            `<div class="empty">${escapeHtml(userFriendlyError(error, "دریافت اطلاعات SEO انجام نشد."))}</div>`;
+
+          seoPagination.innerHTML = "";
+        }
+      }
+
+      function renderSeoChecklist() {
+        const missingCount =
+          seoPosts.filter(post =>
+            !post.seo_title ||
+            !post.seo_description
+          ).length;
+
+        const totalPages = pageCount(
+          seoPostsTotal,
+          SEO_POSTS_PER_PAGE
+        );
+
+        seoPanelCount.textContent =
+          `${seoPostsTotal} مطلب؛ ${missingCount} مورد ناقص در این صفحه`;
+
+        completeSeoBtn.disabled =
+          missingCount === 0;
+
+        if (!seoPosts.length) {
+          seoChecklist.innerHTML =
+            `<div class="empty">مطلبی برای بررسی SEO وجود ندارد.</div>`;
+
+          renderSeoPagination(
+            totalPages,
+            seoPostsTotal
+          );
+
           return;
         }
 
         seoChecklist.innerHTML = `
           <div class="admin-data-list">
-          ${items.map(post => {
-          const publicHref = post.slug ? `/post/${encodeURIComponent(post.slug)}` : "";
-          const publicUrl = publicHref ? `${window.location.origin}${publicHref}` : "";
-          const generatedSeo = ensureSeoForPost(post);
-          const titleStatus = post.seo_title ? "عنوان ثبت‌شده" : "عنوان پیشنهادی";
-          const descStatus = post.seo_description ? "توضیح ثبت‌شده" : "توضیح پیشنهادی";
+          ${seoPosts.map(post => {
+            const publicHref = post.slug
+              ? `/post/${encodeURIComponent(post.slug)}`
+              : "";
 
-          return `
-          <article class="admin-data-row admin-seo-row">
-            <div class="admin-row-check">
-              <span class="admin-row-badge blue">SEO</span>
-            </div>
-            <div class="admin-row-thumb">
-              ${renderThumb(post)}
-            </div>
-            <div class="admin-row-main">
-              <h3 class="admin-row-title">${escapeHtml(makeTitle(post.text))}</h3>
-              <div class="admin-seo-preview">
-                <strong>${escapeHtml(generatedSeo.seo_title)}</strong>
-                <p>${escapeHtml(generatedSeo.seo_description)}</p>
-              </div>
-            </div>
+            const publicUrl = publicHref
+              ? `${window.location.origin}${publicHref}`
+              : "";
 
-            <div class="admin-row-meta">
-              <span class="admin-row-badge blue">ID ${escapeHtml(post.id)}</span>
-              <span class="admin-row-badge ${post.seo_title ? "green" : "gray"}">${escapeHtml(titleStatus)}</span>
-              <span class="admin-row-badge ${post.seo_description ? "green" : "gray"}">${escapeHtml(descStatus)}</span>
-            </div>
+            const generatedSeo =
+              ensureSeoForPost(post);
 
-            <div class="admin-row-actions">
-              ${adminRowButton("ویرایش SEO", `data-edit-id="${post.id}" data-editor-target="seo"`, "warning")}
-              ${publicHref ? adminRowLink("مشاهده", publicHref, "data-row-action") : ""}
-              ${publicUrl ? adminRowButton("کپی لینک", `data-copy-value="${escapeAttr(publicUrl)}"`) : ""}
-            </div>
-          </article>
-        `;
-        }).join("")}
+            const titleStatus = post.seo_title
+              ? "عنوان ثبت‌شده"
+              : "عنوان پیشنهادی";
+
+            const descStatus = post.seo_description
+              ? "توضیح ثبت‌شده"
+              : "توضیح پیشنهادی";
+
+            return `
+              <article class="admin-data-row admin-seo-row">
+                <div class="admin-row-check">
+                  <span class="admin-row-badge blue">SEO</span>
+                </div>
+
+                <div class="admin-row-thumb">
+                  ${renderThumb(post)}
+                </div>
+
+                <div class="admin-row-main">
+                  <h3 class="admin-row-title">${escapeHtml(makeTitle(post.text))}</h3>
+
+                  <div class="admin-seo-preview">
+                    <strong>${escapeHtml(generatedSeo.seo_title)}</strong>
+                    <p>${escapeHtml(generatedSeo.seo_description)}</p>
+                  </div>
+                </div>
+
+                <div class="admin-row-meta">
+                  <span class="admin-row-badge blue">ID ${escapeHtml(post.id)}</span>
+                  <span class="admin-row-badge ${post.seo_title ? "green" : "gray"}">${escapeHtml(titleStatus)}</span>
+                  <span class="admin-row-badge ${post.seo_description ? "green" : "gray"}">${escapeHtml(descStatus)}</span>
+                </div>
+
+                <div class="admin-row-actions">
+                  ${adminRowButton("ویرایش SEO", `data-edit-id="${post.id}" data-editor-target="seo"`, "warning")}
+                  ${publicHref ? adminRowLink("مشاهده", publicHref, "data-row-action") : ""}
+                  ${publicUrl ? adminRowButton("کپی لینک", `data-copy-value="${escapeAttr(publicUrl)}"`) : ""}
+                </div>
+              </article>
+            `;
+          }).join("")}
           </div>
-        ` + (
-          posts.length > SEO_RENDER_LIMIT
-            ? `<div class="empty">برای سرعت بهتر، ${SEO_RENDER_LIMIT} مورد اخیر SEO نمایش داده شد.</div>`
-            : ""
+        `;
+
+        renderSeoPagination(
+          totalPages,
+          seoPostsTotal
         );
       }
 
@@ -3438,46 +4712,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       }
 
       function getFilteredPosts() {
-        const query = (searchInput.value || "").trim().toLowerCase();
-        const status = statusFilter.value;
-        const media = mediaFilter.value;
-        const sort = sortFilter.value;
-
-        let filtered = posts.filter(post => {
-          const parsed = parseContent(post.text);
-          const mediaType = post.media_type || (post.photo_file_id ? "photo" : null);
-          const hasMedia = Boolean(post.media_file_id || post.photo_file_id);
-
-          const searchText = `${post.id} ${post.slug} ${post.text} ${post.seo_title || ""} ${post.seo_description || ""} ${parsed.hashtags.join(" ")}`.toLowerCase();
-
-          const matchesQuery = !query || searchText.includes(query);
-          const matchesStatus =
-            status === "all" ||
-            (status === "published" && Number(post.is_published) === 1) ||
-            (status === "draft" && Number(post.is_published) !== 1);
-
-          const matchesMedia =
-            media === "all" ||
-            (media === "media" && hasMedia) ||
-            (media === "photo" && mediaType === "photo") ||
-            (media === "video" && mediaType === "video") ||
-            (media === "audio" && (mediaType === "audio" || mediaType === "voice")) ||
-            (media === "text" && !hasMedia);
-
-          return matchesQuery && matchesStatus && matchesMedia;
-        });
-
-        if (sort === "oldest") {
-          filtered.sort((a, b) => Number(a.id) - Number(b.id));
-        } else if (sort === "id") {
-          filtered.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
-        } else if (sort === "title") {
-          filtered.sort((a, b) => makeTitle(a.text).localeCompare(makeTitle(b.text), "fa"));
-        } else {
-          filtered.sort((a, b) => Number(b.id) - Number(a.id));
-        }
-
-        return filtered;
+        return [...posts];
       }
 
       function contentKind(post) {
@@ -3532,36 +4767,65 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       }
 
       function renderPosts() {
-        const filtered = getFilteredPosts();
+        const totalPages = pageCount(
+          postsTotal,
+          POSTS_PER_PAGE
+        );
 
-        if (filtered.length === 0) {
-          postsList.innerHTML = `<div class="empty">پستی پیدا نشد.</div>`;
-          postsPagination.innerHTML = "";
+        if (posts.length === 0) {
+          postsList.innerHTML =
+            `<div class="empty">پستی پیدا نشد.</div>`;
+
+          renderPagination(
+            totalPages,
+            postsTotal
+          );
+
           return;
         }
 
-        const totalPages = Math.max(Math.ceil(filtered.length / POSTS_PER_PAGE), 1);
-        currentPage = Math.min(Math.max(currentPage, 1), totalPages);
-        const start = (currentPage - 1) * POSTS_PER_PAGE;
-        const visiblePosts = filtered.slice(start, start + POSTS_PER_PAGE);
-
         postsList.innerHTML = `
           <div class="admin-data-list">
-            ${visiblePosts.map(post => {
-          const active = selectedPost && Number(selectedPost.id) === Number(post.id) ? "active" : "";
-          const checked = selectedIds.has(Number(post.id)) ? "checked" : "";
-          const statusClass = Number(post.is_published) === 1 ? "green" : "red";
-          const statusText = Number(post.is_published) === 1 ? "منتشر شده" : "منتشر نشده";
+            ${posts.map(post => {
+          const active =
+            selectedPost &&
+            Number(selectedPost.id) === Number(post.id)
+              ? "active"
+              : "";
+
+          const checked =
+            selectedIds.has(Number(post.id))
+              ? "checked"
+              : "";
+
+          const statusClass =
+            Number(post.is_published) === 1
+              ? "green"
+              : "red";
+
+          const statusText =
+            Number(post.is_published) === 1
+              ? "منتشر شده"
+              : "منتشر نشده";
+
           const title = makeTitle(post.text);
           const excerpt = makeExcerpt(post.text);
           const media = mediaFromPost(post);
           const kind = contentKind(post);
-          const publicHref = post.slug ? `/post/${encodeURIComponent(post.slug)}` : "";
+
+          const publicHref = post.slug
+            ? `/post/${encodeURIComponent(post.slug)}`
+            : "";
 
           return `
             <article class="admin-data-row admin-post-row ${active}" data-row-id="${post.id}">
               <div class="admin-row-check">
-                <input class="admin-checkbox switch-input" type="checkbox" data-check-id="${post.id}" ${checked} />
+                <input
+                  class="admin-checkbox switch-input"
+                  type="checkbox"
+                  data-check-id="${post.id}"
+                  ${checked}
+                />
               </div>
 
               <div class="admin-row-thumb">
@@ -3596,30 +4860,77 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           </div>
         `;
 
-        renderPagination(totalPages, filtered.length);
+        renderPagination(
+          totalPages,
+          postsTotal
+        );
       }
 
       function renderPagination(totalPages, totalItems) {
-        if (totalPages <= 1) {
-          postsPagination.innerHTML = `<span>${totalItems} مطلب</span>`;
-          return;
-        }
+        postsPagination.innerHTML =
+          paginationMarkup({
+            current: currentPage,
+            totalPages,
+            totalItems,
+            pageAttribute: "data-page",
+            previousAttribute: "data-page-prev",
+            nextAttribute: "data-page-next"
+          });
+      }
 
-        const pageButtons = Array.from({ length: totalPages }, (_, index) => {
-          const page = index + 1;
-          return `<button class="admin-btn admin-glass-btn page-btn ${page === currentPage ? "active" : ""}" type="button" data-page="${page}">${page}</button>`;
-        }).join("");
+      function renderDeletedPagination(totalPages, totalItems) {
+        deletedPostsPagination.innerHTML =
+          paginationMarkup({
+            current: deletedCurrentPage,
+            totalPages,
+            totalItems,
+            pageAttribute: "data-deleted-page",
+            previousAttribute: "data-deleted-page-prev",
+            nextAttribute: "data-deleted-page-next"
+          });
+      }
 
-        postsPagination.innerHTML = `
-          <button class="admin-btn admin-glass-btn page-btn" type="button" data-page-prev ${currentPage === 1 ? "disabled" : ""}>قبلی</button>
-          ${pageButtons}
-          <button class="admin-btn admin-glass-btn page-btn" type="button" data-page-next ${currentPage === totalPages ? "disabled" : ""}>بعدی</button>
-          <span>${totalItems} مطلب</span>
-        `;
+      function renderMediaPagination(totalPages, totalItems) {
+        mediaPagination.innerHTML =
+          paginationMarkup({
+            current: mediaCurrentPage,
+            totalPages,
+            totalItems,
+            pageAttribute: "data-media-page",
+            previousAttribute: "data-media-page-prev",
+            nextAttribute: "data-media-page-next"
+          });
+      }
+
+      function renderSeoPagination(totalPages, totalItems) {
+        seoPagination.innerHTML =
+          paginationMarkup({
+            current: seoCurrentPage,
+            totalPages,
+            totalItems,
+            pageAttribute: "data-seo-page",
+            previousAttribute: "data-seo-page-prev",
+            nextAttribute: "data-seo-page-next"
+          });
       }
 
       function updateSelectedCount() {
-        selectedCount.textContent = `${selectedIds.size} پست انتخاب شده`;
+        const pageIds =
+          posts.map(post => Number(post.id));
+
+        const allPageSelected =
+          pageIds.length > 0 &&
+          pageIds.every(id =>
+            selectedIds.has(id)
+          );
+
+        selectedCount.textContent =
+          `${selectedIds.size} پست از این صفحه انتخاب شده`;
+
+        selectAllBtn.textContent =
+          allPageSelected
+            ? "لغو انتخاب این صفحه"
+            : "انتخاب همه این صفحه";
       }
 
       function setEditorTab(name) {
@@ -3769,7 +5080,13 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           const data = await res.json().catch(() => null);
 
           if (!res.ok || !data?.ok) {
-            throw new Error(data?.error || "آپلود فایل ناموفق بود.");
+            const error = new Error(
+              data?.error ||
+              "آپلود فایل ناموفق بود."
+            );
+
+            error.status = res.status;
+            throw error;
           }
 
           currentMedia = data.media;
@@ -3777,7 +5094,18 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           markEditorDirty();
           showMessage(editorMessage, "فایل با موفقیت ذخیره شد. برای اتصال آن به پست، ذخیره را بزن.", "ok");
         } catch (error) {
-          showMessage(editorMessage, userFriendlyError(error, "آپلود فایل انجام نشد."), "error");
+          if (recoverAdminSession(error)) {
+            return;
+          }
+
+          showMessage(
+            editorMessage,
+            userFriendlyError(
+              error,
+              "آپلود فایل انجام نشد."
+            ),
+            "error"
+          );
         } finally {
           setButtonLoading(uploadMediaBtn, false);
         }
@@ -3798,36 +5126,65 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         const payload = editorPayload();
 
         if (!payload.text) {
-          showMessage(editorMessage, "متن پست نمی‌تواند خالی باشد.", "error");
+          showMessage(
+            editorMessage,
+            "متن پست نمی‌تواند خالی باشد.",
+            "error"
+          );
+
           return;
         }
 
-        setButtonLoading(saveBtn, true, id ? "در حال ذخیره..." : "در حال ساخت...");
+        setButtonLoading(
+          saveBtn,
+          true,
+          id ? "در حال ذخیره..." : "در حال ساخت..."
+        );
 
         try {
+          let savedId = id;
+
           if (id) {
             await api(`/admin/posts/${id}`, {
               method: "PATCH",
               body: JSON.stringify(payload)
             });
 
-            showMessage(editorMessage, `پست با کد ثابت #${id} با موفقیت ذخیره شد.`, "ok");
+            showMessage(
+              editorMessage,
+              `پست با کد ثابت #${id} با موفقیت ذخیره شد.`,
+              "ok"
+            );
           } else {
             const data = await api("/admin/posts", {
               method: "POST",
               body: JSON.stringify(payload)
             });
 
-            showMessage(editorMessage, `پست جدید ساخته شد. کد ثابت آن #${data.id || "-"} است.`, "ok");
+            savedId = data.id || "";
 
-            postId.value = data.id || "";
-            updateStableIdDisplay(data.id || "");
-            postSlug.value = data.slug || payload.slug;
+            showMessage(
+              editorMessage,
+              `پست جدید ساخته شد. کد ثابت آن #${savedId || "-"} است.`,
+              "ok"
+            );
+
+            postId.value = savedId;
+            updateStableIdDisplay(savedId);
+            postSlug.value =
+              data.slug || payload.slug;
           }
 
           await loadPosts();
 
-          const fresh = posts.find(item => Number(item.id) === Number(postId.value));
+          let fresh =
+            findLoadedPostById(savedId);
+
+          if (!fresh && savedId) {
+            fresh =
+              await fetchAdminPostById(savedId)
+                .catch(() => null);
+          }
 
           if (fresh) {
             selectPost(fresh);
@@ -3835,7 +5192,14 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             resetEditorDirty();
           }
         } catch (error) {
-          showMessage(editorMessage, userFriendlyError(error, "ذخیره پست انجام نشد."), "error");
+          showMessage(
+            editorMessage,
+            userFriendlyError(
+              error,
+              "ذخیره پست انجام نشد."
+            ),
+            "error"
+          );
         } finally {
           setButtonLoading(saveBtn, false);
         }
@@ -3883,15 +5247,29 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         const payload = editorPayload();
 
         if (!payload.text) {
-          showMessage(editorMessage, "متن پست خالی است.", "error");
+          showMessage(
+            editorMessage,
+            "متن پست خالی است.",
+            "error"
+          );
+
           return;
         }
 
         payload.slug = "";
         payload.is_published = 0;
-        payload.admin_note = payload.admin_note ? payload.admin_note + "\nکپی شده از پست قبلی" : "کپی شده از پست قبلی";
 
-        setButtonLoading(duplicateBtn, true, "در حال کپی...");
+        payload.admin_note =
+          payload.admin_note
+            ? payload.admin_note +
+              "\nکپی شده از پست قبلی"
+            : "کپی شده از پست قبلی";
+
+        setButtonLoading(
+          duplicateBtn,
+          true,
+          "در حال کپی..."
+        );
 
         try {
           const data = await api("/admin/posts", {
@@ -3899,63 +5277,131 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             body: JSON.stringify(payload)
           });
 
-          showMessage(editorMessage, `کپی پست ساخته شد و با کد ثابت #${data.id || "-"} در حالت منتشر نشده قرار گرفت.`, "ok");
+          const createdId = data.id || "";
+
+          showMessage(
+            editorMessage,
+            `کپی پست ساخته شد و با کد ثابت #${createdId || "-"} در حالت منتشر نشده قرار گرفت.`,
+            "ok"
+          );
 
           await loadPosts();
 
-          const fresh = posts.find(item => Number(item.id) === Number(data.id));
+          let fresh =
+            findLoadedPostById(createdId);
+
+          if (!fresh && createdId) {
+            fresh =
+              await fetchAdminPostById(createdId)
+                .catch(() => null);
+          }
 
           if (fresh) {
             selectPost(fresh);
           }
         } catch (error) {
-          showMessage(editorMessage, userFriendlyError(error, "کپی پست انجام نشد."), "error");
+          showMessage(
+            editorMessage,
+            userFriendlyError(
+              error,
+              "کپی پست انجام نشد."
+            ),
+            "error"
+          );
         } finally {
-          setButtonLoading(duplicateBtn, false);
+          setButtonLoading(
+            duplicateBtn,
+            false
+          );
         }
       }
 
       async function completeMissingSeo() {
-        const targets = posts.filter(post => !post.seo_title || !post.seo_description);
+        const targets =
+          seoPosts.filter(post =>
+            !post.seo_title ||
+            !post.seo_description
+          );
 
         if (!targets.length) {
-          showToast("همه مطالب لودشده سئوی کامل دارند.", "ok");
+          showToast(
+            "همه مطالب این صفحه سئوی کامل دارند.",
+            "ok"
+          );
+
           return;
         }
 
         const confirmed = await confirmAction({
-          title: "تکمیل سئوی خالی‌ها",
-          message: `برای ${targets.length} مطلب، عنوان و توضیح SEO پیشنهادی ساخته و ذخیره شود؟`,
-          confirmText: "تکمیل سئو"
+          title: "تکمیل سئوی خالی‌های این صفحه",
+          message: `برای ${targets.length} مطلب ناقص در صفحه جاری، عنوان و توضیح SEO پیشنهادی ساخته و ذخیره شود؟`,
+          confirmText: "تکمیل سئوی صفحه"
         });
 
-        if (!confirmed || completeSeoBtn.disabled) return;
+        if (
+          !confirmed ||
+          completeSeoBtn.disabled
+        ) {
+          return;
+        }
 
-        setButtonLoading(completeSeoBtn, true, "در حال تکمیل...");
+        setButtonLoading(
+          completeSeoBtn,
+          true,
+          "در حال تکمیل..."
+        );
 
         let completed = 0;
 
         try {
           for (const post of targets) {
-            const generatedSeo = ensureSeoForPost(post);
+            const generatedSeo =
+              ensureSeoForPost(post);
 
-            await api(`/admin/posts/${post.id}`, {
-              method: "PATCH",
-              body: JSON.stringify(postPatchPayload(post, {
-                seo_title: post.seo_title || generatedSeo.seo_title,
-                seo_description: post.seo_description || generatedSeo.seo_description
-              }))
-            });
+            await api(
+              `/admin/posts/${post.id}`,
+              {
+                method: "PATCH",
+                body: JSON.stringify(
+                  postPatchPayload(post, {
+                    seo_title:
+                      post.seo_title ||
+                      generatedSeo.seo_title,
+
+                    seo_description:
+                      post.seo_description ||
+                      generatedSeo.seo_description
+                  })
+                )
+              }
+            );
 
             completed += 1;
           }
 
-          showToast(`${completed} مطلب با سئوی خودکار تکمیل شد.`, "ok");
-          await loadPosts();
+          showToast(
+            `${completed} مطلب این صفحه با سئوی خودکار تکمیل شد.`,
+            "ok"
+          );
+
+          await loadSeoChecklist();
+          await loadPosts({
+            refreshStats: true
+          });
         } catch (error) {
-          showMessage(editorMessage, userFriendlyError(error, `تکمیل SEO بعد از ${completed} مطلب متوقف شد.`), "error");
+          showMessage(
+            editorMessage,
+            userFriendlyError(
+              error,
+              `تکمیل SEO بعد از ${completed} مطلب متوقف شد.`
+            ),
+            "error"
+          );
         } finally {
-          setButtonLoading(completeSeoBtn, false);
+          setButtonLoading(
+            completeSeoBtn,
+            false
+          );
         }
       }
 
@@ -4118,17 +5564,170 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         }
       }
 
-      function exportJson() {
-        const data = JSON.stringify(posts, null, 2);
-        const blob = new Blob([data], { type: "application/json;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
+      async function exportJson() {
+        const buttons = Array.from(
+          new Set(
+            [
+              exportBtn,
+              document.querySelector(
+                "[data-export-json]"
+              )
+            ].filter(Boolean)
+          )
+        );
 
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `mahoon-posts-${Date.now()}.json`;
-        a.click();
+        if (
+          buttons.some(button =>
+            button.disabled
+          )
+        ) {
+          return;
+        }
 
-        URL.revokeObjectURL(url);
+        const labels = buttons.map(
+          button => button.textContent
+        );
+
+        buttons.forEach(button => {
+          button.disabled = true;
+          button.textContent =
+            "در حال آماده‌سازی خروجی...";
+        });
+
+        try {
+          const allPosts = [];
+          const seenIds = new Set();
+
+          let offset = 0;
+          let total = null;
+
+          while (
+            total === null ||
+            offset < total
+          ) {
+            const data = await api(
+              buildAdminPostsPath({
+                limit: EXPORT_PAGE_SIZE,
+                offset,
+                sort: "newest"
+              }),
+              {
+                timeoutMs: 30000
+              }
+            );
+
+            const batch =
+              Array.isArray(data?.posts)
+                ? data.posts
+                : [];
+
+            if (total === null) {
+              total = Number(
+                data?.total ??
+                batch.length
+              );
+            }
+
+            batch.forEach(post => {
+              const id = Number(post.id);
+
+              if (!seenIds.has(id)) {
+                seenIds.add(id);
+                allPosts.push(post);
+              }
+            });
+
+            buttons.forEach(button => {
+              button.textContent =
+                `دریافت ${allPosts.length} از ${total}`;
+            });
+
+            const nextOffset = Number(
+              data?.next_offset ??
+              offset + batch.length
+            );
+
+            if (
+              batch.length === 0 &&
+              offset < total
+            ) {
+              throw new Error(
+                "دریافت خروجی کامل پیش از پایان داده‌ها متوقف شد."
+              );
+            }
+
+            if (
+              nextOffset <= offset &&
+              offset < total
+            ) {
+              throw new Error(
+                "پیشروی صفحه‌بندی خروجی متوقف شد."
+              );
+            }
+
+            offset = nextOffset;
+          }
+
+          if (
+            total !== null &&
+            allPosts.length !== total
+          ) {
+            throw new Error(
+              `تعداد خروجی کامل نیست؛ ${allPosts.length} از ${total} مطلب دریافت شد.`
+            );
+          }
+
+          const json = JSON.stringify(
+            allPosts,
+            null,
+            2
+          );
+
+          const blob = new Blob(
+            [json],
+            {
+              type:
+                "application/json;charset=utf-8"
+            }
+          );
+
+          const url =
+            URL.createObjectURL(blob);
+
+          const anchor =
+            document.createElement("a");
+
+          anchor.href = url;
+
+          anchor.download =
+            `mahoon-posts-all-${Date.now()}.json`;
+
+          anchor.click();
+
+          URL.revokeObjectURL(url);
+
+          showToast(
+            `${allPosts.length} مطلب در خروجی کامل JSON ذخیره شد.`,
+            "ok"
+          );
+        } catch (error) {
+          showToast(
+            userFriendlyError(
+              error,
+              "ساخت خروجی کامل انجام نشد."
+            ),
+            "error"
+          );
+        } finally {
+          buttons.forEach(
+            (button, index) => {
+              button.disabled = false;
+              button.textContent =
+                labels[index] ||
+                "خروجی JSON";
+            }
+          );
+        }
       }
 
       postsList.addEventListener("click", event => {
@@ -4196,22 +5795,224 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         }
       });
 
-      postsPagination.addEventListener("click", event => {
-        const pageButton = event.target.closest("[data-page]");
-        const prevButton = event.target.closest("[data-page-prev]");
-        const nextButton = event.target.closest("[data-page-next]");
+      postsPagination.addEventListener("click", async event => {
+        const pageButton =
+          event.target.closest("[data-page]");
+
+        const prevButton =
+          event.target.closest("[data-page-prev]");
+
+        const nextButton =
+          event.target.closest("[data-page-next]");
+
+        const totalPages =
+          pageCount(
+            postsTotal,
+            POSTS_PER_PAGE
+          );
+
+        let nextPage = currentPage;
 
         if (pageButton) {
-          currentPage = Number(pageButton.getAttribute("data-page"));
+          nextPage = Number(
+            pageButton.getAttribute("data-page")
+          );
         } else if (prevButton) {
-          currentPage = Math.max(currentPage - 1, 1);
+          nextPage = Math.max(
+            currentPage - 1,
+            1
+          );
         } else if (nextButton) {
-          currentPage += 1;
+          nextPage = Math.min(
+            currentPage + 1,
+            totalPages
+          );
         } else {
           return;
         }
 
-        renderPosts();
+        if (
+          !Number.isInteger(nextPage) ||
+          nextPage === currentPage
+        ) {
+          return;
+        }
+
+        currentPage = nextPage;
+
+        await loadPosts({
+          refreshStats: false
+        });
+
+        postsList.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      });
+
+      deletedPostsPagination.addEventListener("click", async event => {
+        const pageButton =
+          event.target.closest("[data-deleted-page]");
+
+        const prevButton =
+          event.target.closest("[data-deleted-page-prev]");
+
+        const nextButton =
+          event.target.closest("[data-deleted-page-next]");
+
+        const totalPages =
+          pageCount(
+            deletedPostsTotal,
+            DELETED_POSTS_PER_PAGE
+          );
+
+        let nextPage =
+          deletedCurrentPage;
+
+        if (pageButton) {
+          nextPage = Number(
+            pageButton.getAttribute(
+              "data-deleted-page"
+            )
+          );
+        } else if (prevButton) {
+          nextPage = Math.max(
+            deletedCurrentPage - 1,
+            1
+          );
+        } else if (nextButton) {
+          nextPage = Math.min(
+            deletedCurrentPage + 1,
+            totalPages
+          );
+        } else {
+          return;
+        }
+
+        if (
+          !Number.isInteger(nextPage) ||
+          nextPage === deletedCurrentPage
+        ) {
+          return;
+        }
+
+        deletedCurrentPage = nextPage;
+        await loadDeletedPosts();
+
+        deletedPostsList.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      });
+
+      mediaPagination.addEventListener("click", async event => {
+        const pageButton =
+          event.target.closest("[data-media-page]");
+
+        const prevButton =
+          event.target.closest("[data-media-page-prev]");
+
+        const nextButton =
+          event.target.closest("[data-media-page-next]");
+
+        const totalPages =
+          pageCount(
+            mediaPostsTotal,
+            MEDIA_POSTS_PER_PAGE
+          );
+
+        let nextPage =
+          mediaCurrentPage;
+
+        if (pageButton) {
+          nextPage = Number(
+            pageButton.getAttribute(
+              "data-media-page"
+            )
+          );
+        } else if (prevButton) {
+          nextPage = Math.max(
+            mediaCurrentPage - 1,
+            1
+          );
+        } else if (nextButton) {
+          nextPage = Math.min(
+            mediaCurrentPage + 1,
+            totalPages
+          );
+        } else {
+          return;
+        }
+
+        if (
+          !Number.isInteger(nextPage) ||
+          nextPage === mediaCurrentPage
+        ) {
+          return;
+        }
+
+        mediaCurrentPage = nextPage;
+        await loadMediaLibrary();
+
+        mediaLibrary.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      });
+
+      seoPagination.addEventListener("click", async event => {
+        const pageButton =
+          event.target.closest("[data-seo-page]");
+
+        const prevButton =
+          event.target.closest("[data-seo-page-prev]");
+
+        const nextButton =
+          event.target.closest("[data-seo-page-next]");
+
+        const totalPages =
+          pageCount(
+            seoPostsTotal,
+            SEO_POSTS_PER_PAGE
+          );
+
+        let nextPage =
+          seoCurrentPage;
+
+        if (pageButton) {
+          nextPage = Number(
+            pageButton.getAttribute(
+              "data-seo-page"
+            )
+          );
+        } else if (prevButton) {
+          nextPage = Math.max(
+            seoCurrentPage - 1,
+            1
+          );
+        } else if (nextButton) {
+          nextPage = Math.min(
+            seoCurrentPage + 1,
+            totalPages
+          );
+        } else {
+          return;
+        }
+
+        if (
+          !Number.isInteger(nextPage) ||
+          nextPage === seoCurrentPage
+        ) {
+          return;
+        }
+
+        seoCurrentPage = nextPage;
+        await loadSeoChecklist();
+
+        seoChecklist.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
       });
 
       deletedPostsList.addEventListener("click", event => {
@@ -4235,7 +6036,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
           if (editButton) {
             const id = Number(editButton.getAttribute("data-edit-id"));
-            const post = posts.find(item => Number(item.id) === id);
+            const post = findLoadedPostById(id);
             if (post) {
               selectPost(post);
               const target = editButton.getAttribute("data-editor-target");
@@ -4294,8 +6095,24 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       });
 
       refreshBtn.addEventListener("click", () => {
-        if (currentView === "deleted") {
+        const activeKey =
+          activeAdminSectionKey();
+
+        if (
+          currentView === "deleted" ||
+          activeKey === "deleted"
+        ) {
           loadDeletedPosts();
+          return;
+        }
+
+        if (activeKey === "media") {
+          loadMediaLibrary();
+          return;
+        }
+
+        if (activeKey === "seo") {
+          loadSeoChecklist();
           return;
         }
 
@@ -4303,10 +6120,34 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       });
       activePostsTabBtn.addEventListener("click", () => showAdminSection("posts"));
       deletedPostsTabBtn.addEventListener("click", () => showAdminSection("deleted"));
-      [searchInput, statusFilter, mediaFilter, sortFilter].forEach(control => {
-        control.addEventListener(control === searchInput ? "input" : "change", () => {
+      searchInput.addEventListener("input", () => {
+        currentPage = 1;
+        selectedIds = new Set();
+        updateSelectedCount();
+
+        clearTimeout(searchDebounceTimer);
+
+        searchDebounceTimer =
+          window.setTimeout(() => {
+            loadPosts({
+              refreshStats: false
+            });
+          }, 320);
+      });
+
+      [
+        statusFilter,
+        mediaFilter,
+        sortFilter
+      ].forEach(control => {
+        control.addEventListener("change", () => {
           currentPage = 1;
-          renderPosts();
+          selectedIds = new Set();
+          updateSelectedCount();
+
+          loadPosts({
+            refreshStats: false
+          });
         });
       });
 
@@ -4322,6 +6163,10 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       completeSeoBtn.addEventListener("click", completeMissingSeo);
       saveSiteCopyBtn.addEventListener("click", saveSiteCopy);
       reloadSiteCopyBtn.addEventListener("click", loadSiteCopy);
+
+      /* mahoon-admin-analytics-listener-fix-v1 */
+      analyticsRefreshBtn?.addEventListener("click", () => loadAnalyticsReport(true));
+      analyticsRangeSelect?.addEventListener("change", () => loadAnalyticsReport(true));
       openPostBtn.addEventListener("click", openPost);
       copyLinkBtn.addEventListener("click", copyLink);
       exportBtn.addEventListener("click", exportJson);
@@ -4365,13 +6210,20 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       bulkDeleteBtn.addEventListener("click", () => bulkAction("delete"));
 
       selectAllBtn.addEventListener("click", () => {
-        const filtered = getFilteredPosts();
+        const pageIds =
+          posts.map(post =>
+            Number(post.id)
+          );
 
-        if (selectedIds.size === filtered.length) {
-          selectedIds = new Set();
-        } else {
-          selectedIds = new Set(filtered.map(post => Number(post.id)));
-        }
+        const allPageSelected =
+          pageIds.length > 0 &&
+          pageIds.every(id =>
+            selectedIds.has(id)
+          );
+
+        selectedIds = allPageSelected
+          ? new Set()
+          : new Set(pageIds);
 
         updateSelectedCount();
         renderPosts();
@@ -4426,3 +6278,323 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
     </script>
   </body>
 </html>
+
+
+  <style is:global>
+    /* admin-analytics-final-ui-v3 */
+    #analyticsPanel {
+      overflow: hidden !important;
+      border-radius: 34px !important;
+      background:
+        radial-gradient(circle at 8% 0%, rgba(184, 135, 70, 0.18), transparent 35%),
+        linear-gradient(135deg, rgba(255, 250, 242, 0.98), rgba(243, 229, 217, 0.92)) !important;
+      box-shadow: 0 28px 80px rgba(74, 9, 13, 0.14) !important;
+    }
+
+    #analyticsPanel .panel-head {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) auto !important;
+      gap: 24px !important;
+      align-items: start !important;
+      padding: 32px !important;
+      border-bottom: 1px solid rgba(74, 9, 13, 0.1) !important;
+      background:
+        linear-gradient(rgba(255, 253, 248, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 253, 248, 0.05) 1px, transparent 1px),
+        linear-gradient(145deg, #6d0f14, #2a1713) !important;
+      background-size: 38px 38px, 38px 38px, auto !important;
+      color: #fff8ef !important;
+    }
+
+    #analyticsPanel .panel-head h2 {
+      margin: 0 0 10px !important;
+      color: #fff8ef !important;
+      font-size: clamp(34px, 4.5vw, 58px) !important;
+      line-height: 1.25 !important;
+      font-weight: 1000 !important;
+    }
+
+    #analyticsPanel .analytics-help {
+      max-width: 760px !important;
+      margin: 0 !important;
+      color: rgba(255, 248, 239, 0.72) !important;
+      line-height: 2 !important;
+      font-size: 15px !important;
+    }
+
+    #analyticsPanel .panel-head .actions {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      justify-content: flex-end !important;
+      gap: 10px !important;
+    }
+
+    #analyticsPanel .panel-head .actions select,
+    #analyticsPanel .panel-head .actions button,
+    #analyticsPanel .panel-head .actions a {
+      min-height: 48px !important;
+      border-radius: 999px !important;
+      border: 1px solid rgba(255, 248, 239, 0.22) !important;
+      background: rgba(255, 248, 239, 0.94) !important;
+      color: #5a0f0f !important;
+      padding: 10px 18px !important;
+      font-weight: 900 !important;
+      box-shadow: 0 14px 32px rgba(0, 0, 0, 0.12) !important;
+    }
+
+    #analyticsPanel #analyticsRefreshBtn {
+      background: #fff8ef !important;
+      color: #5a0f0f !important;
+    }
+
+    #analyticsPanel .analytics-panel-body {
+      display: grid !important;
+      gap: 22px !important;
+      padding: 28px !important;
+      background:
+        radial-gradient(circle at 88% 10%, rgba(109, 15, 20, 0.07), transparent 28%),
+        rgba(255, 252, 246, 0.76) !important;
+    }
+
+    #analyticsPanel .analytics-message {
+      display: block !important;
+      margin: 0 !important;
+      padding: 15px 18px !important;
+      border-radius: 20px !important;
+      border: 1px solid rgba(47, 133, 90, 0.18) !important;
+      background: rgba(47, 133, 90, 0.08) !important;
+      color: #246342 !important;
+      font-weight: 800 !important;
+      box-shadow: none !important;
+    }
+
+    #analyticsPanel .analytics-kpi-grid {
+      display: grid !important;
+      grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+      gap: 14px !important;
+      margin: 0 !important;
+    }
+
+    #analyticsPanel .analytics-kpi-card {
+      position: relative !important;
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: space-between !important;
+      min-height: 150px !important;
+      overflow: hidden !important;
+      border: 1px solid rgba(255, 248, 239, 0.16) !important;
+      border-radius: 30px !important;
+      padding: 22px !important;
+      background:
+        radial-gradient(circle at 18% 0%, rgba(255, 248, 239, 0.22), transparent 36%),
+        linear-gradient(145deg, #6d0f14, #2a1713) !important;
+      box-shadow: 0 24px 58px rgba(74, 9, 13, 0.18) !important;
+    }
+
+    #analyticsPanel .analytics-kpi-card:nth-child(2),
+    #analyticsPanel .analytics-kpi-card:nth-child(4) {
+      background:
+        radial-gradient(circle at 18% 0%, rgba(255, 248, 239, 0.22), transparent 36%),
+        linear-gradient(145deg, #b88746, #6d0f14) !important;
+    }
+
+    #analyticsPanel .analytics-kpi-card::after {
+      content: "" !important;
+      position: absolute !important;
+      width: 120px !important;
+      height: 120px !important;
+      left: -34px !important;
+      bottom: -46px !important;
+      border-radius: 999px !important;
+      background: rgba(255, 248, 239, 0.09) !important;
+    }
+
+    #analyticsPanel .analytics-kpi-card span {
+      position: relative !important;
+      z-index: 1 !important;
+      display: block !important;
+      margin: 0 !important;
+      color: rgba(255, 248, 239, 0.72) !important;
+      font-size: 13px !important;
+      font-weight: 900 !important;
+      line-height: 1.8 !important;
+    }
+
+    #analyticsPanel .analytics-kpi-card strong {
+      position: relative !important;
+      z-index: 1 !important;
+      display: block !important;
+      margin-top: 18px !important;
+      color: #fff8ef !important;
+      font-size: clamp(36px, 4vw, 56px) !important;
+      line-height: 1 !important;
+      font-weight: 1000 !important;
+      letter-spacing: -1px !important;
+    }
+
+    #analyticsPanel .analytics-layout {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr) !important;
+      gap: 16px !important;
+      align-items: start !important;
+    }
+
+    #analyticsPanel .analytics-card {
+      min-width: 0 !important;
+      overflow: hidden !important;
+      border: 1px solid rgba(74, 9, 13, 0.1) !important;
+      border-radius: 30px !important;
+      padding: 22px !important;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 250, 242, 0.78)) !important;
+      box-shadow: 0 24px 62px rgba(74, 9, 13, 0.08) !important;
+    }
+
+    #analyticsPanel .analytics-card-wide {
+      grid-column: 1 / -1 !important;
+    }
+
+    #analyticsPanel .analytics-card-head {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 12px !important;
+      margin: 0 0 18px !important;
+      padding-bottom: 14px !important;
+      border-bottom: 1px solid rgba(74, 9, 13, 0.08) !important;
+    }
+
+    #analyticsPanel .analytics-card-head h3 {
+      margin: 0 !important;
+      color: #5a0f0f !important;
+      font-size: 21px !important;
+      line-height: 1.7 !important;
+      font-weight: 1000 !important;
+    }
+
+    #analyticsPanel .analytics-card-head span {
+      color: rgba(42, 23, 19, 0.54) !important;
+      font-size: 12px !important;
+      font-weight: 900 !important;
+    }
+
+    #analyticsPanel .analytics-bars {
+      display: grid !important;
+      gap: 12px !important;
+    }
+
+    #analyticsPanel .analytics-bar-row {
+      display: grid !important;
+      grid-template-columns: 132px minmax(0, 1fr) 70px !important;
+      align-items: center !important;
+      gap: 12px !important;
+      min-height: 46px !important;
+      padding: 9px 12px !important;
+      border-radius: 18px !important;
+      background: rgba(247, 239, 230, 0.58) !important;
+      color: #2a1713 !important;
+      font-size: 13px !important;
+      font-weight: 900 !important;
+    }
+
+    #analyticsPanel .analytics-bar-track {
+      height: 14px !important;
+      overflow: hidden !important;
+      border-radius: 999px !important;
+      background: rgba(74, 9, 13, 0.1) !important;
+    }
+
+    #analyticsPanel .analytics-bar-track i {
+      display: block !important;
+      height: 100% !important;
+      border-radius: inherit !important;
+      background: linear-gradient(90deg, #6d0f14, #b88746) !important;
+      box-shadow: 0 8px 18px rgba(109, 15, 20, 0.24) !important;
+    }
+
+    #analyticsPanel .analytics-list {
+      display: grid !important;
+      gap: 10px !important;
+    }
+
+    #analyticsPanel .analytics-list-row {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) auto !important;
+      gap: 14px !important;
+      align-items: center !important;
+      padding: 14px 16px !important;
+      border: 1px solid rgba(74, 9, 13, 0.08) !important;
+      border-radius: 20px !important;
+      background: rgba(255, 255, 255, 0.72) !important;
+      box-shadow: 0 12px 30px rgba(74, 9, 13, 0.04) !important;
+    }
+
+    #analyticsPanel .analytics-list-row strong {
+      display: block !important;
+      color: #5a0f0f !important;
+      font-size: 13.5px !important;
+      line-height: 1.8 !important;
+      font-weight: 900 !important;
+      overflow-wrap: anywhere !important;
+    }
+
+    #analyticsPanel .analytics-list-row small {
+      display: block !important;
+      margin-top: 4px !important;
+      color: rgba(42, 23, 19, 0.52) !important;
+      font-size: 11.5px !important;
+      line-height: 1.7 !important;
+      direction: ltr !important;
+      text-align: right !important;
+      overflow-wrap: anywhere !important;
+    }
+
+    #analyticsPanel .analytics-list-row b {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      min-width: 48px !important;
+      height: 34px !important;
+      padding: 0 10px !important;
+      border-radius: 999px !important;
+      background: rgba(109, 15, 20, 0.08) !important;
+      color: #6d0f14 !important;
+      font-size: 14px !important;
+      font-weight: 1000 !important;
+      white-space: nowrap !important;
+    }
+
+    #analyticsPanel .empty {
+      padding: 16px !important;
+      border-radius: 18px !important;
+      background: rgba(247, 239, 230, 0.58) !important;
+      color: rgba(42, 23, 19, 0.58) !important;
+      font-weight: 800 !important;
+      line-height: 2 !important;
+    }
+
+    @media (max-width: 1180px) {
+      #analyticsPanel .panel-head {
+        grid-template-columns: 1fr !important;
+      }
+
+      #analyticsPanel .analytics-kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+
+      #analyticsPanel .analytics-layout {
+        grid-template-columns: 1fr !important;
+      }
+    }
+
+    @media (max-width: 620px) {
+      #analyticsPanel .analytics-kpi-grid {
+        grid-template-columns: 1fr !important;
+      }
+
+      #analyticsPanel .analytics-bar-row {
+        grid-template-columns: 86px minmax(0, 1fr) 48px !important;
+      }
+    }
+    /* end-admin-analytics-final-ui-v3 */
+  </style>

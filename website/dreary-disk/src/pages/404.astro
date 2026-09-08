@@ -3,13 +3,410 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 ---
 
 <BaseLayout title="صفحه پیدا نشد" description="صفحه مورد نظر پیدا نشد">
-  <main class="page-section">
-    <div class="container">
-      <section class="not-found">
-        <h1>صفحه پیدا نشد</h1>
-        <p>آدرسی که وارد کرده‌اید وجود ندارد یا ممکن است تغییر کرده باشد.</p>
-        <a class="btn btn-primary" href="/">بازگشت به خانه</a>
-      </section>
-    </div>
+
+  <main class="mahoon-static-page mahoon-404-page">
+    <section class="mahoon-static-hero">
+      <span class="mahoon-404-code">۴۰۴</span>
+      <span class="mahoon-static-eyebrow">مسیر پیدا نشد</span>
+
+      <h1>این صفحه دیگر اینجا نیست</h1>
+
+      <p>
+        آدرسی که وارد کرده‌اید وجود ندارد، تغییر کرده یا از آرشیو ماهون
+        حذف شده است.
+      </p>
+
+      <div class="mahoon-static-actions">
+        <a class="mahoon-static-button" href="/">
+          بازگشت به صفحه اصلی
+        </a>
+
+        <a
+          class="mahoon-static-button mahoon-static-button--ghost"
+          href="/posts"
+        >
+          مشاهده همه مطالب
+        </a>
+      </div>
+    </section>
   </main>
+
+
+  <style is:global>
+    /* mahoon-static-pages-luxury-v1 */
+    .mahoon-static-page {
+      direction: rtl;
+      width: min(1180px, calc(100% - 32px));
+      min-height: 70vh;
+      margin: 0 auto;
+      padding: 30px 0 88px;
+    }
+
+    .mahoon-static-hero {
+      position: relative;
+      min-height: 330px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      border-radius: 34px;
+      padding: clamp(30px, 5vw, 62px);
+      color: #fff8ef;
+      background:
+        linear-gradient(
+          rgba(255, 255, 255, 0.025) 1px,
+          transparent 1px
+        ),
+        linear-gradient(
+          90deg,
+          rgba(255, 255, 255, 0.025) 1px,
+          transparent 1px
+        ),
+        radial-gradient(
+          circle at 14% 82%,
+          rgba(255, 248, 239, 0.09),
+          transparent 28%
+        ),
+        linear-gradient(135deg, #74191c, #32100e);
+      background-size: 54px 54px, 54px 54px, auto, auto;
+      box-shadow: 0 28px 82px rgba(75, 13, 13, 0.2);
+    }
+
+    .mahoon-static-hero::after {
+      content: "";
+      position: absolute;
+      left: -90px;
+      bottom: -115px;
+      width: 260px;
+      height: 260px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 248, 239, 0.13);
+      pointer-events: none;
+    }
+
+    .mahoon-static-eyebrow {
+      position: relative;
+      z-index: 1;
+      display: inline-flex;
+      width: fit-content;
+      margin-bottom: 12px;
+      color: rgba(255, 248, 239, 0.72);
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .mahoon-static-hero h1 {
+      position: relative;
+      z-index: 1;
+      max-width: 850px;
+      margin: 0 0 16px;
+      color: #fff8ef;
+      font-size: clamp(40px, 6vw, 70px);
+      font-weight: 950;
+      line-height: 1.35;
+    }
+
+    .mahoon-static-hero p {
+      position: relative;
+      z-index: 1;
+      max-width: 760px;
+      margin: 0;
+      color: rgba(255, 248, 239, 0.86);
+      font-size: clamp(15px, 1.5vw, 18px);
+      line-height: 2.1;
+    }
+
+    .mahoon-static-actions {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 11px;
+      margin-top: 26px;
+    }
+
+    .mahoon-static-button {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255, 248, 239, 0.18);
+      border-radius: 999px;
+      padding: 8px 17px;
+      color: #4b0d0d;
+      background: #fff8ef;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 950;
+      box-shadow: 0 14px 32px rgba(20, 4, 4, 0.16);
+    }
+
+    .mahoon-static-button--ghost {
+      color: #fff8ef;
+      background: rgba(255, 248, 239, 0.08);
+      backdrop-filter: blur(10px);
+    }
+
+    .mahoon-static-content {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.75fr);
+      gap: 22px;
+      margin-top: 22px;
+      align-items: start;
+    }
+
+    .mahoon-static-card {
+      border: 1px solid rgba(75, 13, 13, 0.1);
+      border-radius: 30px;
+      padding: clamp(25px, 4vw, 48px);
+      background:
+        radial-gradient(
+          circle at 92% 94%,
+          rgba(90, 15, 15, 0.045),
+          transparent 30%
+        ),
+        linear-gradient(180deg, #fffdf8, #faf1e8);
+      box-shadow: 0 22px 64px rgba(75, 13, 13, 0.09);
+    }
+
+    .mahoon-static-card h2 {
+      margin: 0 0 18px;
+      color: #4b0d0d;
+      font-size: clamp(24px, 3vw, 34px);
+      font-weight: 950;
+      line-height: 1.55;
+    }
+
+    .mahoon-static-copy {
+      color: #3d2b27;
+      font-size: clamp(16px, 1.4vw, 18px);
+      line-height: 2.25;
+    }
+
+    .mahoon-static-copy p {
+      margin: 0 0 19px;
+    }
+
+    .mahoon-static-copy p:last-child {
+      margin-bottom: 0;
+    }
+
+    .mahoon-values {
+      display: grid;
+      gap: 12px;
+    }
+
+    .mahoon-value {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(75, 13, 13, 0.09);
+      border-radius: 21px;
+      padding: 18px;
+      background: rgba(255, 253, 248, 0.72);
+    }
+
+    .mahoon-value::after {
+      content: "";
+      position: absolute;
+      left: -35px;
+      bottom: -44px;
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      border: 1px solid rgba(75, 13, 13, 0.07);
+    }
+
+    .mahoon-value strong {
+      position: relative;
+      z-index: 1;
+      display: block;
+      margin-bottom: 5px;
+      color: #5a0f0f;
+      font-size: 17px;
+      font-weight: 950;
+    }
+
+    .mahoon-value span {
+      position: relative;
+      z-index: 1;
+      color: #78615b;
+      font-size: 13px;
+      line-height: 1.9;
+    }
+
+    .mahoon-contact-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(310px, 0.7fr);
+      gap: 22px;
+      margin-top: 22px;
+      align-items: stretch;
+    }
+
+    .mahoon-contact-panel {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-radius: 30px;
+      padding: clamp(25px, 4vw, 42px);
+      color: #fff8ef;
+      background:
+        radial-gradient(
+          circle at 15% 15%,
+          rgba(255, 248, 239, 0.1),
+          transparent 28%
+        ),
+        linear-gradient(145deg, #681418, #2f0b0b);
+      box-shadow: 0 22px 64px rgba(75, 13, 13, 0.16);
+    }
+
+    .mahoon-contact-panel strong {
+      display: block;
+      margin-bottom: 10px;
+      color: #fff8ef;
+      font-size: 24px;
+      font-weight: 950;
+    }
+
+    .mahoon-contact-panel p {
+      margin: 0;
+      color: rgba(255, 248, 239, 0.78);
+      line-height: 2;
+    }
+
+    .mahoon-contact-topics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      margin-top: 28px;
+    }
+
+    .mahoon-contact-topics span {
+      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid rgba(255, 248, 239, 0.15);
+      border-radius: 999px;
+      padding: 6px 12px;
+      color: #fff8ef;
+      background: rgba(255, 248, 239, 0.07);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .mahoon-contact-primary {
+      margin-top: 30px;
+    }
+
+    .mahoon-contact-primary a {
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 9px 19px;
+      color: #4b0d0d;
+      background: #fff8ef;
+      text-decoration: none;
+      font-weight: 950;
+      box-shadow: 0 14px 34px rgba(15, 3, 3, 0.18);
+    }
+
+    .mahoon-404-page {
+      min-height: calc(100vh - 210px);
+      display: grid;
+      place-items: center;
+    }
+
+    .mahoon-404-page .mahoon-static-hero {
+      width: 100%;
+      min-height: 430px;
+      align-items: center;
+      text-align: center;
+    }
+
+    .mahoon-404-code {
+      position: relative;
+      z-index: 1;
+      display: block;
+      margin-bottom: 4px;
+      color: rgba(255, 248, 239, 0.22);
+      font-size: clamp(72px, 15vw, 170px);
+      font-weight: 950;
+      line-height: 0.9;
+    }
+
+    .mahoon-404-page .mahoon-static-hero p {
+      margin-inline: auto;
+    }
+
+    .mahoon-404-page .mahoon-static-actions {
+      justify-content: center;
+    }
+
+    @media (max-width: 900px) {
+      .mahoon-static-content,
+      .mahoon-contact-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .mahoon-values {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 620px) {
+      .mahoon-static-page {
+        width: min(100% - 18px, 1180px);
+        padding: 13px 0 58px;
+      }
+
+      .mahoon-static-hero {
+        min-height: auto;
+        border-radius: 24px;
+        padding: 25px 18px;
+      }
+
+      .mahoon-static-hero h1 {
+        font-size: clamp(34px, 11vw, 47px);
+      }
+
+      .mahoon-static-hero p {
+        font-size: 14px;
+      }
+
+      .mahoon-static-actions {
+        width: 100%;
+      }
+
+      .mahoon-static-button {
+        flex: 1 1 150px;
+      }
+
+      .mahoon-static-content,
+      .mahoon-contact-layout {
+        gap: 14px;
+        margin-top: 14px;
+      }
+
+      .mahoon-static-card,
+      .mahoon-contact-panel {
+        border-radius: 23px;
+        padding: 22px 17px;
+      }
+
+      .mahoon-values {
+        grid-template-columns: 1fr;
+      }
+
+      .mahoon-404-page {
+        min-height: 65vh;
+      }
+
+      .mahoon-404-page .mahoon-static-hero {
+        min-height: 420px;
+      }
+    }
+    /* end-mahoon-static-pages-luxury-v1 */
+  </style>
+
 </BaseLayout>

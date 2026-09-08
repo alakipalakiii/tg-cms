@@ -1,55 +1,96 @@
 ---
-import BaseLayout from "../layouts/BaseLayout.astro";
-import { SITE } from "../config";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { SITE } from "../../config";
 import {
   fetchPublicArchivePage,
+  findArchiveCategory,
   renderArchiveCardsHtml,
+  safeDecodeArchiveValue,
   toPersianNumber
-} from "../lib/archive";
+} from "../../lib/archive";
 
 export const prerender = false;
 
-// mahoon-archive-ssr-v1
+// mahoon-category-archive-ssr-real-404-v1
 const PAGE_SIZE = 20;
 const apiBase = (SITE.workerUrl || "https://api.mahoonartmagazine.ir").replace(/\/+$/, "");
-const pageTitle = "همه مطالب";
-const pageDescription = "آرشیو کامل مطالب منتشرشده در مجله هنری ماهون";
-const canonicalUrl = SITE.url + "/posts";
+const requestedCategory = safeDecodeArchiveValue(Astro.params.category)
+  .replace(/^#/, "")
+  .replace(/_/g, " ")
+  .trim();
+const categoryDefinition = findArchiveCategory(requestedCategory);
+const displayCategory = categoryDefinition?.title || requestedCategory || "دسته‌بندی";
+const pageTitle = categoryDefinition
+  ? displayCategory + " | دسته‌بندی مطالب"
+  : "دسته‌بندی پیدا نشد";
+const pageDescription = categoryDefinition
+  ? "همه مطالب دسته‌بندی " + displayCategory + " در مجله هنری ماهون"
+  : "دسته‌بندی مورد نظر در مجله هنری ماهون پیدا نشد.";
+const canonicalUrl = categoryDefinition
+  ? SITE.url + "/category/" + encodeURIComponent(displayCategory)
+  : SITE.url + Astro.url.pathname;
 
-const initialArchive = await fetchPublicArchivePage({
-  apiBase,
-  limit: PAGE_SIZE,
-  offset: 0,
-  timeoutMs: 5000
-});
+if (!categoryDefinition) {
+  Astro.response.status = 404;
+  Astro.response.statusText = "Not Found";
+}
 
-if (!initialArchive.ok) {
+const initialArchive = categoryDefinition
+  ? await fetchPublicArchivePage({
+      apiBase,
+      category: displayCategory,
+      limit: PAGE_SIZE,
+      offset: 0,
+      timeoutMs: 5000
+    })
+  : {
+      ok: true,
+      status: 404,
+      posts: [],
+      total: 0,
+      limit: PAGE_SIZE,
+      offset: 0,
+      nextOffset: 0,
+      hasMore: false,
+      error: ""
+    };
+
+if (categoryDefinition && !initialArchive.ok) {
   Astro.response.status = 503;
   Astro.response.statusText = "Service Unavailable";
   Astro.response.headers.set("Retry-After", "60");
 }
 
-const initialCardsHtml = renderArchiveCardsHtml(initialArchive.posts, { apiBase });
+const initialCardsHtml = categoryDefinition
+  ? renderArchiveCardsHtml(initialArchive.posts, {
+      apiBase,
+      category: displayCategory
+    })
+  : "";
 const initialShown = Math.min(initialArchive.nextOffset, initialArchive.total);
 const initialCountText = initialArchive.ok
   ? initialArchive.total > 0
     ? "نمایش " + toPersianNumber(initialShown) + " مطلب از " + toPersianNumber(initialArchive.total)
     : "۰ مطلب"
   : "خطا در دریافت مطالب";
-const initialTotalText = initialArchive.ok
-  ? toPersianNumber(initialArchive.total) + " مطلب"
-  : "دریافت موقتاً ناموفق";
+const initialTotalText = categoryDefinition
+  ? initialArchive.ok
+    ? toPersianNumber(initialArchive.total) + " مطلب"
+    : "دریافت موقتاً ناموفق"
+  : "دسته‌بندی نامعتبر";
 
 const pageConfig = {
   apiBase,
-  title: "همه مطالب",
+  title: displayCategory,
   description: pageDescription,
-  mode: "posts",
+  mode: "category",
+  category: displayCategory,
   pageSize: PAGE_SIZE,
+  validCategory: Boolean(categoryDefinition),
   initialTotal: initialArchive.total,
   initialNextOffset: initialArchive.nextOffset,
   initialHasMore: initialArchive.hasMore,
-  initialLoadFailed: !initialArchive.ok
+  initialLoadFailed: Boolean(categoryDefinition && !initialArchive.ok)
 };
 
 function safeJson(value) {
@@ -58,21 +99,25 @@ function safeJson(value) {
 ---
 
 <BaseLayout title={pageTitle} description={pageDescription} canonical={canonicalUrl}>
-  <main class="mahoon-archive" data-archive-mode="posts">
+  {!categoryDefinition && <meta slot="head" name="robots" content="noindex,follow" />}
+
+  <main class="mahoon-archive" data-archive-mode="category">
     <section class="mahoon-archive-hero">
       <a class="mahoon-archive-back" href="/">بازگشت به صفحه اصلی</a>
-      <span>آرشیو ماهون</span>
-      <h1>همه مطالب</h1>
+      <span>دسته‌بندی ماهون</span>
+      <h1>{displayCategory}</h1>
       <p>{pageDescription}</p>
       <strong id="archiveTotal">{initialTotalText}</strong>
     </section>
 
-    <section class="mahoon-archive-search">
-      <label>
-        <span>جستجو در همه مطالب</span>
-        <input id="archiveSearch" type="search" placeholder="عنوان، متن، کد مطلب یا کلیدواژه را جستجو کن..." autocomplete="off" />
-      </label>
-    </section>
+    {categoryDefinition ? (
+      <section class="mahoon-archive-search">
+        <label>
+          <span>جستجو در {displayCategory}</span>
+          <input id="archiveSearch" type="search" placeholder="عنوان، متن، کد مطلب یا کلیدواژه را جستجو کن..." autocomplete="off" />
+        </label>
+      </section>
+    ) : null}
 
     <section class="mahoon-archive-tabs" aria-label="دسته‌بندی‌های ماهون">
       <a data-archive-link="همه مطالب" href="/posts">همه مطالب</a>
@@ -83,24 +128,30 @@ function safeJson(value) {
       <a data-archive-link="نقاشی" href="/category/%D9%86%D9%82%D8%A7%D8%B4%DB%8C">نقاشی</a>
     </section>
 
-    <section class="mahoon-archive-results" aria-live="polite">
-      <div class="mahoon-archive-count" id="archiveCount">{initialCountText}</div>
-      <div class="mahoon-archive-list" id="archiveGrid" set:html={initialCardsHtml}></div>
-      <div
-        class="mahoon-archive-empty"
-        id="archiveEmpty"
-        hidden={initialArchive.ok && initialArchive.total > 0}
-        data-empty-message="نتیجه‌ای پیدا نشد."
-        data-error-message="دریافت مطالب انجام نشد."
-      >
-        {initialArchive.ok && initialArchive.total === 0
-          ? "نتیجه‌ای پیدا نشد."
-          : !initialArchive.ok
-            ? "دریافت مطالب انجام نشد."
-            : null}
-      </div>
-      <button class="mahoon-archive-more" id="archiveMore" type="button" hidden={!initialArchive.hasMore}>نمایش ۲۰ مطلب دیگر</button>
-    </section>
+    {categoryDefinition ? (
+      <section class="mahoon-archive-results" aria-live="polite">
+        <div class="mahoon-archive-count" id="archiveCount">{initialCountText}</div>
+        <div class="mahoon-archive-list" id="archiveGrid" set:html={initialCardsHtml}></div>
+        <div
+          class="mahoon-archive-empty"
+          id="archiveEmpty"
+          hidden={initialArchive.ok && initialArchive.total > 0}
+          data-empty-message="نتیجه‌ای پیدا نشد."
+          data-error-message="دریافت مطالب انجام نشد."
+        >
+          {initialArchive.ok && initialArchive.total === 0
+            ? "نتیجه‌ای پیدا نشد."
+            : !initialArchive.ok
+              ? "دریافت مطالب انجام نشد."
+              : null}
+        </div>
+        <button class="mahoon-archive-more" id="archiveMore" type="button" hidden={!initialArchive.hasMore}>نمایش ۲۰ مطلب دیگر</button>
+      </section>
+    ) : (
+      <section class="mahoon-archive-results" aria-live="polite">
+        <div class="mahoon-archive-empty">دسته‌بندی مورد نظر پیدا نشد.</div>
+      </section>
+    )}
 
     <script id="archiveConfig" type="application/json" set:html={safeJson(pageConfig)}></script>
   </main>
@@ -116,6 +167,8 @@ function safeJson(value) {
       const empty = document.getElementById("archiveEmpty");
       const more = document.getElementById("archiveMore");
       const search = document.getElementById("archiveSearch");
+
+      if (config.validCategory === false) return;
       // mahoon-archive-safe-v3-active-tabs
       document.querySelectorAll("[data-archive-link]").forEach((link) => {
         const value = link.getAttribute("data-archive-link") || "";
@@ -535,6 +588,7 @@ function safeJson(value) {
 
         const url = new URL(API_BASE + "/public/posts-v1");
         url.searchParams.set("limit", String(PAGE_SIZE));
+        if (config.category) url.searchParams.set("category", config.category);
         url.searchParams.set("offset", String(offset));
         if (q) url.searchParams.set("q", q);
 

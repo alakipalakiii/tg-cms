@@ -1,8 +1,11 @@
 ---
+import { organizationSchema, websiteSchema, stringifySchema } from "../lib/seoSchema";
 import "../styles/global.css";
 import { SITE } from "../config";
 
 interface Props {
+  preloadMahoorExtraBold?: boolean;
+  schema?: unknown;
   title?: string;
   description?: string;
   image?: string;
@@ -81,10 +84,45 @@ const currentPath = Astro.url.pathname.replace(/\/+$/, "") || "/";
 const isHome = currentPath === "/";
 const isAbout = currentPath === "/about";
 const isContact = currentPath === "/contact";
+
+// mahoon-schema-base-v1
+const mahoonPageSchema = Astro.props?.schema;
+const mahoonStructuredData = [
+  organizationSchema(),
+  websiteSchema(),
+  ...(Array.isArray(mahoonPageSchema) ? mahoonPageSchema : mahoonPageSchema ? [mahoonPageSchema] : [])
+].filter(Boolean);
+const mahoonStructuredDataJson = stringifySchema(mahoonStructuredData);
+
+
+// MAHOON_STAGE18C_R4_FONT_PRELOAD
+const __mahoonStage18CR4PreloadExtraBold =
+  Astro.props.preloadMahoorExtraBold === true;
+import MahoonGlobalAudioSystem from "../components/MahoonGlobalAudioSystem.astro";
+import { ClientRouter } from "astro:transitions";
 ---
 
 <html lang="fa" dir="rtl">
   <head>
+<script is:inline>
+  (() => {
+    try {
+      const mode = localStorage.getItem("mahoon-theme-mode-v1") || "auto";
+      const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+      const resolved = mode === "dark" ? "dark" : mode === "light" ? "light" : (dark ? "dark" : "light");
+      document.documentElement.dataset.mahoonThemeMode = mode;
+      document.documentElement.dataset.mahoonTheme = resolved;
+    } catch {
+      document.documentElement.dataset.mahoonThemeMode = "auto";
+      document.documentElement.dataset.mahoonTheme =
+        matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+  })();
+</script>
+  <!-- MAHOON_STAGE18C_R4_FONT_PRELOAD -->
+  {__mahoonStage18CR4PreloadExtraBold && (
+    <link rel="preload" href="/fonts/Mahoor-FD-ExtraBold.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+  )}
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
@@ -108,10 +146,11 @@ const isContact = currentPath === "/contact";
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={absoluteImage} />
 
-    <script type="application/ld+json" set:html={JSON.stringify(websiteJsonLd)} />
+    <script type="application/ld+json" set:html={mahoonStructuredDataJson} />
 
     <slot name="head" />
-  </head>
+    <ClientRouter />
+</head>
 
   <body>
     <header class="site-header">
@@ -194,5 +233,161 @@ const isContact = currentPath === "/contact";
         });
       })();
     </script>
-  </body>
+
+  <script is:inline>
+    (() => {
+      // mahoon-public-analytics-v2
+      const path = window.location.pathname || "/";
+
+      if (path.startsWith("/admin")) return;
+      if (/^(localhost|127\\.0\\.0\\.1)$/i.test(window.location.hostname)) return;
+      if (/bot|crawl|spider|slurp|facebookexternalhit|telegrambot|whatsapp|preview/i.test(navigator.userAgent || "")) return;
+
+      const endpoint = "https://api.mahoonartmagazine.ir/analytics/collect";
+
+      const makeId = () => {
+        try {
+          return window.crypto?.randomUUID?.() || String(Date.now()) + "-" + Math.random().toString(16).slice(2);
+        } catch {
+          return String(Date.now()) + "-" + Math.random().toString(16).slice(2);
+        }
+      };
+
+      const getVisitorId = () => {
+        try {
+          let value = window.localStorage.getItem("mahoon_visitor_id");
+          if (!value) {
+            value = makeId();
+            window.localStorage.setItem("mahoon_visitor_id", value);
+          }
+          return value;
+        } catch {
+          return "";
+        }
+      };
+
+      const getSessionId = () => {
+        try {
+          let value = window.sessionStorage.getItem("mahoon_session_id");
+          if (!value) {
+            value = makeId();
+            window.sessionStorage.setItem("mahoon_session_id", value);
+          }
+          return value;
+        } catch {
+          return "";
+        }
+      };
+
+      const payload = {
+        event_type: "page_view",
+        path,
+        url: window.location.href,
+        title: document.title || "",
+        referrer: document.referrer || "",
+        visitor_id: getVisitorId(),
+        session_id: getSessionId(),
+        screen_width: window.screen?.width || 0,
+        screen_height: window.screen?.height || 0,
+        language: navigator.language || ""
+      };
+
+      const body = JSON.stringify(payload);
+
+      try {
+        const blob = new Blob([body], { type: "text/plain;charset=UTF-8" });
+        if (navigator.sendBeacon && navigator.sendBeacon(endpoint, blob)) return;
+      } catch {}
+
+      try {
+        window.fetch(endpoint, {
+          method: "POST",
+          body,
+          headers: { "Content-Type": "text/plain;charset=UTF-8" },
+          keepalive: true,
+          cache: "no-store"
+        }).catch(() => {});
+      } catch {}
+    })();
+  </script>
+
+
+  <MahoonGlobalAudioSystem />
+
+
+<style is:global>
+  /* MAHOON_UI_HOTFIX_R3_R1_EXACT_MOBILE_DARK_MENU */
+  @media (max-width: 900px) {
+    html[data-mahoon-theme="dark"] .site-menu-toggle {
+      color: #fff7f2 !important;
+      background: rgba(255,255,255,.10) !important;
+      border-color: rgba(255,247,242,.38) !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+    }
+
+    html[data-mahoon-theme="dark"] .site-menu-toggle > span {
+      background: #fff7f2 !important;
+      opacity: 1 !important;
+    }
+
+    html[data-mahoon-theme="dark"] .site-menu-toggle :where(svg,path,line,polyline) {
+      color: #fff7f2 !important;
+      stroke: #fff7f2 !important;
+    }
+
+    html[data-mahoon-theme="light"] .site-menu-toggle {
+      opacity: 1 !important;
+      visibility: visible !important;
+    }
+
+    html[data-mahoon-theme] .site-menu-toggle,
+    html[data-mahoon-theme] .site-menu-toggle > span {
+      transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease, opacity 140ms ease !important;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html[data-mahoon-theme] .site-menu-toggle,
+    html[data-mahoon-theme] .site-menu-toggle > span {
+      transition: none !important;
+    }
+  }
+</style>
+
+
+
+<style is:global>
+  /* MAHOON_UI_HOTFIX_R4_R2_ZERO_RESIDUAL_TOAST_ARTIFACT
+     Native player proof:
+       const toast = root.querySelector(".js-toast");
+       toast.classList.add/remove("is-visible")
+     Frozen global proof:
+       toast.classList.add/remove("show")
+
+     At rest, visibility:hidden guarantees zero viewport residue even when the
+     original transition hides via transform only.
+  */
+  .mahoon-native-player .js-toast:not(.is-visible) {
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  .mahoon-native-player .js-toast.is-visible {
+    visibility: visible !important;
+  }
+
+  .mahoon-frozen-global-scope #toast:not(.show),
+  .mahoon-frozen-global-scope .toast:not(.show) {
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  .mahoon-frozen-global-scope #toast.show,
+  .mahoon-frozen-global-scope .toast.show {
+    visibility: visible !important;
+  }
+</style>
+
+</body>
 </html>
