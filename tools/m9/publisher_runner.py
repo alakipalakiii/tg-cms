@@ -18,7 +18,7 @@ API = os.environ.get("MAHOON_PUBLIC_CONTENT_API", "https://api.mahoonartmagazine
 
 def main() -> int:
     mode = os.environ.get("PUBLISHER_MODE", "proof")
-    request = urllib.request.Request(API, headers={"Accept": "application/json"})
+    request = urllib.request.Request(API, headers={"Accept": "application/json", "User-Agent": "MAHOON-M9-PUBLISHER/1.0"})
     with urllib.request.urlopen(request, timeout=30) as response:
         payload = json.loads(response.read().decode("utf-8"))
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
