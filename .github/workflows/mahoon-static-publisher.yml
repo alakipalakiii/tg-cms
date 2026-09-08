@@ -22,7 +22,7 @@ concurrency:
 jobs:
   publisher:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     env:
       PUBLISHER_MODE: ${{ github.event_name == 'schedule' && 'CHECK_ONLY' || inputs.mode }}
       CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
