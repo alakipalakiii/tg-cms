@@ -177,6 +177,9 @@ class PublisherFullSuite(unittest.TestCase):
     def test_85_failure_injection_media_fixture_is_scoped(self):
         source = Path("tools/publisher/cloudflare_direct_api.py").read_text(encoding="utf-8")
         self.assertIn("MAHOON_FAILURE_INJECTION_NO_PERSISTED_MEDIA", source)
+    def test_86_failure_injection_uses_proof_baseline(self):
+        source = Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8")
+        self.assertIn("proof_baseline", source)
 
 
 if __name__ == "__main__":

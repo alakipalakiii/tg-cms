@@ -117,6 +117,12 @@ def main() -> int:
     os.environ["MAHOON_CREATE_VERSION_ONLY"] = "1"
     pre_promotion = deployment.active_deployment()
     rollback_state = rollback_anchor(pre_promotion)
+    if mode == "FAILURE_INJECTION":
+        proof_baseline = next((item.get("version_id") for item in pre_promotion.get("versions", []) if item.get("percentage") == 100), None)
+        if not proof_baseline:
+            print("FAILURE_INJECTION_BASELINE_MISSING", file=sys.stderr)
+            return 18
+        os.environ["MAHOON_SSR_VERSION"] = proof_baseline
     Path("runner-evidence").mkdir(parents=True, exist_ok=True)
     Path("runner-evidence/rollback-anchor-order.json").write_text(json.dumps({"phase": "PRE_DEPLOYMENT_MUTATION", "rollback_anchor": rollback_state, "captured_before_direct_api": True}, ensure_ascii=False, indent=2), encoding="utf-8")
     proc = subprocess.run([sys.executable, "tools/publisher/cloudflare_direct_api.py"], text=True, capture_output=True)
