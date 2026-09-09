@@ -44,7 +44,7 @@ def fetch_json(url: str, timeout: int = 60, opener=urllib.request.urlopen) -> tu
                 body = response.read()
                 meta = {"attempt": index, "status": response.status, "content_type": response.headers.get("Content-Type"), "content_length": response.headers.get("Content-Length"), "server": response.headers.get("Server"), "cf_ray": response.headers.get("CF-Ray"), "retry_after": response.headers.get("Retry-After"), "location": response.headers.get("Location"), "elapsed_ms": round((time.monotonic() - started) * 1000)}
                 payload = json.loads(body.decode("utf-8"))
-                meta.update({"sha256": hashlib.sha256(body).hexdigest(), "response_bytes": len(body), "attempts": attempts + [meta]})
+                meta.update({"sha256": hashlib.sha256(body).hexdigest(), "response_bytes": len(body), "attempts": attempts + [dict(meta)]})
                 return payload, meta
         except Exception as exc:
             kind = classify_error(exc)
