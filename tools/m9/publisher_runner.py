@@ -17,7 +17,7 @@ from publisher.core import fingerprint
 from publisher import static_build_adapter
 from publisher import deployment
 from publisher.rollback import automatic_rollback
-from publisher.post_deploy_validator import validate_public, validate_zero_origin
+from publisher.post_deploy_validator import capture_zero_origin, validate_public, validate_zero_origin
 
 API = os.environ.get("MAHOON_PUBLIC_CONTENT_API", "https://api.mahoonartmagazine.ir/posts-full-public-v1?limit=2000")
 STATE = Path(os.environ.get("MAHOON_PUBLISHER_STATE", "publisher-state/production-content-fingerprint.json"))
@@ -123,7 +123,10 @@ def main() -> int:
         route_data = json.loads(Path("publisher-state/published-route-manifest.json").read_text(encoding="utf-8"))
         routes = [public_path(route) for route in route_data.get("routes", [])]
         public = validate_public(os.environ.get("MAHOON_PRODUCTION_ORIGIN", "https://mahoonartmagazine.ir"), routes)
-        zero = validate_zero_origin(os.environ.get("MAHOON_ZERO_ORIGIN_EVIDENCE"))
+        zero_evidence = capture_zero_origin(os.environ.get("MAHOON_PRODUCTION_ORIGIN", "https://mahoonartmagazine.ir"), routes)
+        zero_path = Path("runner-evidence/zero-origin-production.json")
+        zero_path.write_text(json.dumps(zero_evidence, ensure_ascii=False, indent=2), encoding="utf-8")
+        zero = validate_zero_origin(str(zero_path))
         production_pass = public.get("PASS") and zero.get("PASS")
         Path("runner-evidence/production-validation.json").write_text(json.dumps({"public": public, "zero_origin": zero, "PASS": production_pass}, ensure_ascii=False, indent=2), encoding="utf-8")
         if not production_pass:

@@ -6,6 +6,32 @@ from pathlib import Path
 import json
 
 
+def capture_zero_origin(base: str, paths: list[str]) -> dict:
+    """Use real public HTML responses to prove no reader-time origin endpoints are embedded."""
+    markers = {
+        "PUBLIC_CONTENT_API_REQUESTS_AT_PAGE_VIEW": ("api.mahoonartmagazine.ir", "posts-full-public-v1"),
+        "MAHOON_MEDIA_API_REQUESTS_AT_PAGE_VIEW": ("/media-api/", "/media?"),
+        "TELEGRAM_REQUESTS_AT_PAGE_VIEW": ("api.telegram.org", "telegram.org/bot"),
+        "SEARCH_BACKEND_REQUESTS": ("search-backend", "algolia", "elasticsearch"),
+        "D1_REQUESTS_AT_PAGE_VIEW": ("d1_request", "D1_REQUEST"),
+    }
+    counts = {key: 0 for key in markers}
+    inspected = 0
+    for path in paths:
+        request = urllib.request.Request(base.rstrip("/") + path, headers={"User-Agent": "MAHOON-M9-PUBLISHER-ZERO-ORIGIN/1.0"})
+        try:
+            with urllib.request.urlopen(request, timeout=45) as response:
+                body = response.read().decode("utf-8", "ignore").lower()
+                inspected += 1
+                for key, values in markers.items():
+                    counts[key] += sum(body.count(value.lower()) for value in values)
+        except Exception:
+            counts["PUBLIC_CONTENT_API_REQUESTS_AT_PAGE_VIEW"] += 1
+    counts["inspected_routes"] = inspected
+    counts["PASS"] = inspected == len(paths) and all(counts[key] == 0 for key in markers)
+    return counts
+
+
 def validate_public(base: str, paths: list[str]) -> dict:
     failures = []
     for path in paths:
