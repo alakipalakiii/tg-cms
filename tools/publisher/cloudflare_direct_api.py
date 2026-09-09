@@ -19,7 +19,7 @@ TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "")
 WORKER = os.environ.get("MAHOON_WORKER", "mahoon-static-proof")
 ROOT = Path(os.environ.get("MAHOON_ASSETS_DIRECTORY", "website/mahoon-static/dist"))
 MEDIA_STATE = Path(os.environ.get("MAHOON_MEDIA_MANIFEST", "publisher-state/production-media-manifest.json"))
-MEDIA_SOURCE = os.environ.get("MAHOON_MEDIA_SOURCE", "https://mahoonartmagazine.ir")
+MEDIA_SOURCE = os.environ.get("MAHOON_MEDIA_SOURCE", "https://mahoon-static-proof.morentoofficial.workers.dev")
 OUT = Path(os.environ.get("MAHOON_M9C_EVIDENCE", "artifacts/mahoon-static-publisher/m9c"))
 OUT.mkdir(parents=True, exist_ok=True)
 
@@ -73,7 +73,8 @@ def manifest_data():
 def asset_bytes(public: str, byte_hashes: dict) -> bytes:
     if public.startswith("/media/"):
         item = byte_hashes[public]
-        request = urllib.request.Request(MEDIA_SOURCE + public, headers={"User-Agent": "MAHOON-M9-PUBLISHER-MEDIA/1.0"})
+        source = item.get("source") or MEDIA_SOURCE
+        request = urllib.request.Request(source if source.endswith(public) else source + public, headers={"User-Agent": "MAHOON-M9-PUBLISHER-MEDIA/1.0"})
         with urllib.request.urlopen(request, timeout=180) as response:
             data = response.read()
         if len(data) != item["size"] or hashlib.sha256(data).hexdigest() != item["mahoon_sha256"]:
