@@ -74,6 +74,12 @@ def manifest_data():
 def asset_bytes(public: str, byte_hashes: dict) -> bytes:
     if public.startswith("/media/"):
         item = byte_hashes[public]
+        local = ROOT / public.lstrip("/").replace("/", os.sep)
+        if local.exists():
+            data = local.read_bytes()
+            if len(data) != item["size"] or hashlib.sha256(data).hexdigest() != item["mahoon_sha256"]:
+                raise RuntimeError("MEDIA_SHA_MISMATCH_FAIL_CLOSED")
+            return data
         source = item.get("source") or MEDIA_SOURCE
         request = urllib.request.Request(source if source.endswith(public) else source + public, headers={"User-Agent": "MAHOON-M9-PUBLISHER-MEDIA/1.0"})
         try:
