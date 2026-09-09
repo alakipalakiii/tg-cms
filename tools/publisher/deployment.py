@@ -36,7 +36,8 @@ def deployment(version_id: str, ssr_version: str, static_percent: int, ssr_perce
 def active_deployment() -> dict:
     """Capture the current deployment; promotion must rollback this exact object."""
     data = api("GET", f"/client/v4/accounts/{ACCOUNT}/workers/scripts/{WORKER}/deployments")
-    deployments = data.get("result", [])
+    result = data.get("result", [])
+    deployments = result.get("deployments", []) if isinstance(result, dict) else result
     if not deployments:
         raise RuntimeError("ACTIVE_DEPLOYMENT_MISSING")
     return deployments[0]

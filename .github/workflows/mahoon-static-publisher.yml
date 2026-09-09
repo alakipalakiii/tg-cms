@@ -66,7 +66,7 @@ jobs:
 
   persist-state:
     needs: publisher
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && needs.publisher.result == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && needs.publisher.result == 'success' && needs.publisher.outputs.production_pass == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
