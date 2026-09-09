@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 from core import PromotionGuard, delta, fingerprint, route_gate
 from tools.m9.publisher_runner import public_path
-from deployment import rollback
+from deployment import rollback, wait_for_active
 from post_deploy_validator import validate_zero_origin
 from state import persist_checked, persist_after_public_pass
 from delta_build_adapter import sha_cloud
@@ -77,6 +77,15 @@ class PublisherFullSuite(unittest.TestCase):
         self.assertEqual(public_path("/robots.txt"), "/robots.txt")
         self.assertEqual(public_path("/rss.xml"), "/rss.xml")
         self.assertEqual(public_path("/sitemap.xml"), "/sitemap.xml")
+    @patch("deployment.active_deployment", return_value={"id": "d", "versions": [{"version_id": "v", "percentage": 100}, {"version_id": "b660c7ff-9042-4b4e-ab14-63211aa9c1f1", "percentage": 0}]})
+    @patch("deployment.time.sleep")
+    def test_48_deployment_active_polling(self, sleep, active):
+        self.assertEqual("d", wait_for_active("v", 100, 0, timeout_seconds=1)["id"])
+        active.assert_called_once()
+    @patch("deployment.active_deployment", return_value={"id": "d", "versions": [{"version_id": "v", "percentage": 0}, {"version_id": "b660c7ff-9042-4b4e-ab14-63211aa9c1f1", "percentage": 100}]})
+    @patch("deployment.time.sleep")
+    def test_49_deployment_propagation_timeout(self, sleep, active):
+        with self.assertRaises(RuntimeError): wait_for_active("v", 100, 0, timeout_seconds=0)
     def test_43_zero_integer_is_valid_evidence(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "zero.json"
