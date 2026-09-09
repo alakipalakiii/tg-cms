@@ -19,7 +19,7 @@ on:
         required: false
         default: "NO"
         type: choice
-        options: [NO, YES]
+        options: ["NO", "YES"]
   schedule:
     - cron: "17 * * * *"
 
