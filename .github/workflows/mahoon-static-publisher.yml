@@ -8,7 +8,7 @@ on:
         required: true
         default: CHECK_ONLY
         type: choice
-        options: [CHECK_ONLY, PROOF_ZERO_PERCENT, PUBLISH]
+        options: [CHECK_ONLY, PROOF_ZERO_PERCENT, PUBLISH, CONTENT_DIAGNOSTIC]
       expected_fingerprint:
         description: "Optional reviewed pending-candidate fingerprint for a no-change proof"
         required: false
@@ -31,7 +31,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  content-diagnostic:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'CONTENT_DIAGNOSTIC' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read-only content transport diagnostic
+        run: python tools/publisher/github_content_diagnostic.py
+      - name: Upload diagnostic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahoon-github-content-transport-diagnostic
+          path: runner-evidence/github-content-api-transport-matrix.json
+
   publisher:
+    if: ${{ github.event_name == 'schedule' || inputs.mode != 'CONTENT_DIAGNOSTIC' }}
     outputs:
       production_pass: ${{ steps.result.outputs.production_pass }}
     runs-on: ubuntu-latest

@@ -8,6 +8,7 @@ import json
 import urllib.request
 from pathlib import Path
 from urllib.parse import quote
+from content_transport import fetch_json
 
 API = "https://api.mahoonartmagazine.ir/posts-full-public-v1?limit=2000"
 
@@ -54,9 +55,7 @@ def main() -> int:
     media_manifest = json.loads(Path(args.media_manifest).read_text(encoding="utf-8"))
     routes = json.loads(Path(args.route_manifest).read_text(encoding="utf-8"))
     existing_ids = {int(p.parent.name) for p in (output / "post").glob("*/index.html") if p.parent.name.isdigit()}
-    request = urllib.request.Request(API, headers={"User-Agent": "MAHOON-M9-PUBLISHER-DELTA/1.0"})
-    with urllib.request.urlopen(request, timeout=60) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    payload, _transport = fetch_json(API)
     added = [normalize(p) for p in payload["posts"] if int(p.get("id", 0)) not in existing_ids]
     known_ids = {int(p.parent.name) for p in (output / "post").glob("*/index.html") if p.parent.name.isdigit()}
     if any(int(p.get("id", 0)) in known_ids for p in payload["posts"]):

@@ -22,6 +22,7 @@ from publisher import deployment
 from publisher.rollback import automatic_rollback
 from publisher.post_deploy_validator import capture_zero_origin, validate_public, validate_zero_origin
 from publisher.state_machine import promotion_precondition, rollback_anchor, verify_promotion_precondition
+from publisher.content_transport import fetch_json
 
 API = os.environ.get("MAHOON_PUBLIC_CONTENT_API", "https://api.mahoonartmagazine.ir/posts-full-public-v1?limit=2000")
 STATE = Path(os.environ.get("MAHOON_PUBLISHER_STATE", "publisher-state/production-content-fingerprint.json"))
@@ -67,9 +68,7 @@ def public_path(route: str) -> str:
 
 
 def export_content() -> tuple[dict, str]:
-    request = urllib.request.Request(API, headers={"Accept": "application/json", "User-Agent": "MAHOON-M9-PUBLISHER/1.0"})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    payload, _transport = fetch_json(API)
     posts = payload.get("posts", payload if isinstance(payload, list) else [])
     stable = [{key: value for key, value in post.items() if key not in {"view_count", "last_viewed_at"}}
               for post in sorted(posts, key=lambda item: int(item.get("id", 0)))]

@@ -11,6 +11,7 @@ from deployment import rollback, wait_for_active
 from post_deploy_validator import validate_zero_origin
 from state import persist_checked, persist_after_public_pass
 from delta_build_adapter import sha_cloud
+from content_transport import classify_error, SAFE_HEADERS
 from state_machine import promotion_precondition, rollback_anchor, verify_promotion_precondition
 
 
@@ -142,6 +143,18 @@ class PublisherFullSuite(unittest.TestCase):
     def test_65_delta_builder_creates_missing_redirect_file(self):
         source = Path("tools/publisher/delta_build_adapter.py").read_text(encoding="utf-8")
         self.assertIn("if redirects.exists() else", source)
+    def test_66_transport_safe_headers(self): self.assertEqual("application/json", SAFE_HEADERS["Accept"])
+    def test_67_transport_403_classification(self):
+        from urllib.error import HTTPError
+        self.assertEqual("HTTP_403", classify_error(HTTPError("https://x", 403, "", {}, None)))
+    def test_68_transport_429_classification(self):
+        from urllib.error import HTTPError
+        self.assertEqual("HTTP_429", classify_error(HTTPError("https://x", 429, "", {}, None)))
+    def test_69_transport_5xx_classification(self):
+        from urllib.error import HTTPError
+        self.assertEqual("HTTP_5XX", classify_error(HTTPError("https://x", 503, "", {}, None)))
+    def test_70_transport_headers_do_not_contain_auth(self): self.assertNotIn("Authorization", SAFE_HEADERS)
+    def test_71_content_source_is_public_api(self): self.assertIn("posts-full-public-v1", Path("tools/publisher/delta_build_adapter.py").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
