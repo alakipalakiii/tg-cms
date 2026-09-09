@@ -146,6 +146,23 @@ def upload_bucket(bucket, manifest, upload_jwt, byte_hashes):
     return api("POST", f"/client/v4/accounts/{ACCOUNT}/workers/assets/upload?{urlencode({'base64': 'true'})}", body, ctype, upload_jwt)
 
 
+def recover_bucket_one_asset_at_a_time(items, manifest, byte_hashes, upload_jwt):
+    """Seed recovery for a transport-failing bucket; never retries the corpus."""
+    completion = None
+    for item in items:
+        recovered = False
+        for attempt in range(1, 4):
+            status, data = upload_bucket([item["hash"]], manifest, upload_jwt, byte_hashes)
+            if 200 <= status < 300:
+                completion = (data.get("result") or {}).get("jwt") or completion
+                recovered = True
+                break
+            time.sleep(2 ** (attempt - 1))
+        if not recovered:
+            return None
+    return completion or upload_jwt
+
+
 def do_upload(manifest, byte_hashes, buckets, upload_jwt):
     plan = build_bucket_plan(manifest, buckets)
     (OUT / "asset-upload-bucket-plan.json").write_text(json.dumps({"bucket_count": len(plan), "total_files": sum(x["file_count"] for x in plan), "total_bytes": sum(x["raw_bytes"] for x in plan), "buckets": plan}, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -169,9 +186,13 @@ def do_upload(manifest, byte_hashes, buckets, upload_jwt):
                 record["attempts"].append({"attempt": attempt, "started_at": started, "ended_at": now(), "http_status": None, "success": False, "error_type": type(exc).__name__})
             time.sleep(2 ** (attempt - 1))
         if not ok:
-            state["failed"].append(record)
-            state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
-            raise RuntimeError(f"bucket {item['bucket']} failed after bounded retries")
+            seed_completion = recover_bucket_one_asset_at_a_time(item["files"], manifest, byte_hashes, upload_jwt)
+            if not seed_completion:
+                state["failed"].append(record)
+                state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+                raise RuntimeError(f"bucket {item['bucket']} failed after bounded retries and seed recovery")
+            record["seed_recovery"] = "PASS"
+            completion = seed_completion
         state["completed"].append(record)
         state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     state["ended_at"] = now()
