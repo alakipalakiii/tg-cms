@@ -9,6 +9,7 @@ import os
 import sys
 import time
 import uuid
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -75,8 +76,11 @@ def asset_bytes(public: str, byte_hashes: dict) -> bytes:
         item = byte_hashes[public]
         source = item.get("source") or MEDIA_SOURCE
         request = urllib.request.Request(source if source.endswith(public) else source + public, headers={"User-Agent": "MAHOON-M9-PUBLISHER-MEDIA/1.0"})
-        with urllib.request.urlopen(request, timeout=180) as response:
-            data = response.read()
+        try:
+            with urllib.request.urlopen(request, timeout=180) as response:
+                data = response.read()
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"MEDIA_SOURCE_HTTP_{exc.code}:{public}") from None
         if len(data) != item["size"] or hashlib.sha256(data).hexdigest() != item["mahoon_sha256"]:
             raise RuntimeError("MEDIA_SHA_MISMATCH_FAIL_CLOSED")
         return data
