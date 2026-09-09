@@ -70,6 +70,8 @@ def main() -> int:
     os.environ["MAHOON_CREATE_VERSION_ONLY"] = "1"
     proc = subprocess.run([sys.executable, "tools/publisher/cloudflare_direct_api.py"], text=True, capture_output=True)
     if proc.returncode != 0:
+        safe_error = " ".join(line for line in proc.stderr.splitlines() if "TOKEN" not in line.upper() and "JWT" not in line.upper())[-1200:]
+        print("PUBLISHER_DIRECT_API_ERROR: " + safe_error, file=sys.stderr)
         print("PUBLISHER_DIRECT_API_FAILED", file=sys.stderr)
         return 13
     version_id = None
