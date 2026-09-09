@@ -84,7 +84,8 @@ def main() -> int:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(rendered, encoding="utf-8")
         redirects = output / "_redirects"
-        redirects.write_text(redirects.read_text(encoding="utf-8") + f"/post/{quote(slug, safe='')} /post/{post_id}/ 200\n", encoding="utf-8")
+        existing_redirects = redirects.read_text(encoding="utf-8") if redirects.exists() else ""
+        redirects.write_text(existing_redirects + f"/post/{quote(slug, safe='')} /post/{post_id}/ 200\n", encoding="utf-8")
         routes["routes"].append(f"/post/{post_id}/index.html")
     Path(args.media_manifest).write_text(json.dumps(media_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     routes["routes"] = sorted(set(routes["routes"]))

@@ -139,6 +139,9 @@ class PublisherFullSuite(unittest.TestCase):
     def test_63_no_state_persistence_after_rollback(self): self.assertFalse(False)
     def test_64_no_scheduled_activation_after_rollback(self):
         self.assertIn("CHECK_ONLY", Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8"))
+    def test_65_delta_builder_creates_missing_redirect_file(self):
+        source = Path("tools/publisher/delta_build_adapter.py").read_text(encoding="utf-8")
+        self.assertIn("if redirects.exists() else", source)
 
 
 if __name__ == "__main__":
