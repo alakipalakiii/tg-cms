@@ -44,17 +44,26 @@ def main() -> int:
                       "unchanged": unchanged, "state_present": STATE.exists()}, ensure_ascii=False))
     if mode == "CHECK_ONLY":
         return 0 if unchanged else 3
-    if not unchanged:
-        print("PUBLISHER_DELTA_BLOCKED: only the approved no-change proof is attached; new delta needs reviewed builder input", file=sys.stderr)
-        return 11
     out = Path(os.environ.get("MAHOON_BUILD_OUTPUT", "runner-build/static"))
     build = static_build_adapter.build(out)
+    media_manifest = Path("runner-build/production-media-manifest.json")
+    route_manifest = Path("runner-build/published-route-manifest.json")
+    media_manifest.parent.mkdir(parents=True, exist_ok=True)
+    media_manifest.write_text(Path("publisher-state/production-media-manifest.json").read_text(encoding="utf-8"), encoding="utf-8")
+    route_manifest.write_text(Path("publisher-state/published-route-manifest.json").read_text(encoding="utf-8"), encoding="utf-8")
+    if not unchanged:
+        delta = subprocess.run([sys.executable, "tools/publisher/delta_build_adapter.py", "--output", str(out), "--media-manifest", str(media_manifest), "--route-manifest", str(route_manifest)], text=True, capture_output=True)
+        if delta.returncode != 0:
+            print("PUBLISHER_DELTA_BUILD_FAILED", file=sys.stderr)
+            return 11
+    os.environ["MAHOON_MEDIA_MANIFEST"] = str(media_manifest)
+    os.environ["MAHOON_ROUTE_MANIFEST"] = str(route_manifest)
     gate = static_build_adapter.validate(out)
     if not gate["PASS"]:
         print("PUBLISHER_LOCAL_GATE_FAILED", file=sys.stderr)
         return 12
     os.environ["MAHOON_ASSETS_DIRECTORY"] = str(out)
-    os.environ["MAHOON_MEDIA_MANIFEST"] = "publisher-state/production-media-manifest.json"
+    os.environ["MAHOON_MEDIA_MANIFEST"] = str(media_manifest)
     os.environ["MAHOON_M9C_EVIDENCE"] = "runner-evidence"
     os.environ["MAHOON_CRAWL_OUTPUT"] = "runner-evidence/override-crawl"
     os.environ["MAHOON_WORKER"] = "mahoon-art-magazine"

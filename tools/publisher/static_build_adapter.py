@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parents[2] / "publisher-base"
-STATE = Path("publisher-state/published-route-manifest.json")
+STATE = Path(__import__("os").environ.get("MAHOON_ROUTE_MANIFEST", "publisher-state/published-route-manifest.json"))
 
 
 def build(out: Path) -> dict:
