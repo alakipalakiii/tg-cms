@@ -21,6 +21,7 @@ from publisher import static_build_adapter
 from publisher import deployment
 from publisher.rollback import automatic_rollback
 from publisher.post_deploy_validator import capture_zero_origin, validate_public, validate_zero_origin
+from publisher.state_machine import promotion_precondition, rollback_anchor, verify_promotion_precondition
 
 API = os.environ.get("MAHOON_PUBLIC_CONTENT_API", "https://api.mahoonartmagazine.ir/posts-full-public-v1?limit=2000")
 STATE = Path(os.environ.get("MAHOON_PUBLISHER_STATE", "publisher-state/production-content-fingerprint.json"))
@@ -130,8 +131,11 @@ def main() -> int:
         print("PUBLISHER_VERSION_ID_MISSING", file=sys.stderr)
         return 14
     pre_promotion = deployment.active_deployment()
+    rollback_state = rollback_anchor(pre_promotion)
     zero_percent_response = deployment.deployment(version_id, os.environ.get("MAHOON_SSR_VERSION", "b660c7ff-9042-4b4e-ab14-63211aa9c1f1"), 0, 100)
     zero_percent_deployment_id = (zero_percent_response.get("result") or {}).get("id") if isinstance(zero_percent_response, dict) else None
+    zero_percent_state = deployment.wait_for_active(version_id, 0, 100)
+    promotion_anchor = promotion_precondition(zero_percent_state, version_id, os.environ.get("MAHOON_SSR_VERSION", "b660c7ff-9042-4b4e-ab14-63211aa9c1f1"))
     os.environ["MAHOON_CANDIDATE_VERSION"] = version_id
     os.environ["MAHOON_ASSETS_DIRECTORY"] = str(out)
     crawl = subprocess.run([sys.executable, "tools/publisher/candidate_override_crawl.py"], text=True, capture_output=True)
@@ -166,11 +170,13 @@ def main() -> int:
         print("PUBLISHER_PROMOTION_BLOCKED: MAHOON_PUBLISH_READY=YES required", file=sys.stderr)
         return 18
     current_before = deployment.active_deployment()
-    if current_before.get("id") != pre_promotion.get("id"):
-        error = PublisherStageError("DEPLOYMENT_STATE_VERIFICATION", "ERR_DEPLOYMENT_STATE_DRIFT", "active deployment changed before promotion", expected=pre_promotion.get("id"), observed=current_before.get("id"))
-        write_safe_error(error.stage, error.code, error, version_id, current_before.get("id"), expected=pre_promotion.get("id"), observed=current_before.get("id"))
+    guard_pass, guard_diagnostics = verify_promotion_precondition(current_before, promotion_anchor, os.environ.get("MAHOON_WORKER", "mahoon-art-magazine"))
+    Path("runner-evidence/promotion-precondition.json").write_text(json.dumps({"rollback_anchor": rollback_state, "promotion_precondition_anchor": promotion_anchor, "diagnostics": guard_diagnostics, "PASS": guard_pass}, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not guard_pass:
+        error = PublisherStageError("DEPLOYMENT_STATE_VERIFICATION", "ERR_DEPLOYMENT_STATE_DRIFT", "promotion precondition changed after intentional zero-percent deployment", expected=guard_diagnostics.get("expected"), observed=guard_diagnostics.get("observed"), state_machine_phase="STATE_3_IMMEDIATE_PRE_PROMOTION_READ")
+        write_safe_error(error.stage, error.code, error, version_id, current_before.get("id"), **getattr(error, "details", {}))
         return 18
-    previous = pre_promotion
+    previous = rollback_state["deployment"]
     transaction = {"previous_deployment": previous, "candidate_version": version_id,
                    "fingerprint": digest, "validated_candidate": version_id}
     Path("runner-evidence/promotion-transaction.json").write_text(json.dumps(transaction, ensure_ascii=False, indent=2), encoding="utf-8")

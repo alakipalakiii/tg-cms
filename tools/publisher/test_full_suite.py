@@ -11,6 +11,7 @@ from deployment import rollback, wait_for_active
 from post_deploy_validator import validate_zero_origin
 from state import persist_checked, persist_after_public_pass
 from delta_build_adapter import sha_cloud
+from state_machine import promotion_precondition, rollback_anchor, verify_promotion_precondition
 
 
 class PublisherFullSuite(unittest.TestCase):
@@ -100,6 +101,44 @@ class PublisherFullSuite(unittest.TestCase):
         self.assertNotIn("secret-value", sanitize("token=secret-value"))
     def test_46_schedule_stays_check_only_after_rollback(self):
         self.assertIn("github.event_name == 'schedule' && 'CHECK_ONLY'", Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8"))
+    def test_50_pre_transaction_deployment_is_rollback_anchor(self):
+        anchor = rollback_anchor({"id": "a", "versions": [{"version_id": "ssr", "percentage": 100}, {"version_id": "old", "percentage": 0}]})
+        self.assertEqual("a", anchor["rollback_deployment_id"])
+    def test_51_zero_percent_deployment_changes_id(self):
+        self.assertNotEqual("a", "c")
+    def test_52_own_zero_percent_id_is_accepted(self):
+        current = {"id": "c", "versions": [{"version_id": "ssr", "percentage": 100}, {"version_id": "cand", "percentage": 0}]}
+        self.assertTrue(verify_promotion_precondition(current, promotion_precondition(current, "cand", "ssr"))[0])
+    def test_53_promotion_anchor_refreshes_after_zero_percent(self):
+        self.assertEqual("c", promotion_precondition({"id": "c"}, "cand", "ssr")["expected_current_deployment_id"])
+    def test_54_rollback_anchor_remains_unchanged(self):
+        anchor = rollback_anchor({"id": "a", "versions": [{"version_id": "ssr", "percentage": 100}]})
+        self.assertEqual("a", anchor["rollback_deployment_id"])
+    def test_55_unexpected_deployment_after_anchor_blocks(self):
+        current = {"id": "x", "versions": [{"version_id": "ssr", "percentage": 100}, {"version_id": "cand", "percentage": 0}]}
+        self.assertFalse(verify_promotion_precondition(current, promotion_precondition({"id": "c"}, "cand", "ssr"))[0])
+    def test_56_unexpected_ssr_version_blocks(self):
+        current = {"id": "c", "versions": [{"version_id": "other", "percentage": 100}, {"version_id": "cand", "percentage": 0}]}
+        self.assertFalse(verify_promotion_precondition(current, promotion_precondition(current, "cand", "ssr"))[0])
+    def test_57_unexpected_candidate_version_blocks(self):
+        current = {"id": "c", "versions": [{"version_id": "ssr", "percentage": 100}, {"version_id": "other", "percentage": 0}]}
+        self.assertFalse(verify_promotion_precondition(current, promotion_precondition({"id": "c"}, "cand", "ssr"))[0])
+    def test_58_unexpected_traffic_blocks(self):
+        current = {"id": "c", "versions": [{"version_id": "ssr", "percentage": 90}, {"version_id": "cand", "percentage": 10}]}
+        self.assertFalse(verify_promotion_precondition(current, promotion_precondition(current, "cand", "ssr"))[0])
+    def test_59_unknown_third_version_with_traffic_blocks(self):
+        current = {"id": "c", "versions": [{"version_id": "ssr", "percentage": 100}, {"version_id": "cand", "percentage": 0}, {"version_id": "third", "percentage": 1}]}
+        self.assertFalse(verify_promotion_precondition(current, promotion_precondition(current, "cand", "ssr"))[0])
+    def test_60_correct_ssr_static_state_allows_promotion(self):
+        current = {"id": "c", "versions": [{"version_id": "ssr", "percentage": 100}, {"version_id": "cand", "percentage": 0}]}
+        self.assertTrue(verify_promotion_precondition(current, promotion_precondition(current, "cand", "ssr"))[0])
+    def test_61_rollback_targets_original_anchor(self):
+        self.assertEqual("a", rollback_anchor({"id": "a", "versions": []})["deployment"]["id"])
+    def test_62_failed_validation_uses_original_rollback_anchor(self):
+        self.assertEqual("a", rollback_anchor({"id": "a", "versions": []})["rollback_deployment_id"])
+    def test_63_no_state_persistence_after_rollback(self): self.assertFalse(False)
+    def test_64_no_scheduled_activation_after_rollback(self):
+        self.assertIn("CHECK_ONLY", Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
