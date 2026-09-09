@@ -61,7 +61,7 @@ def manifest_data():
         public = "/" + rel
         items[public] = {"hash": cloud_hash, "size": len(data)}
         byte_hashes[public] = {"mahoon_sha256": mahoon_hash, "cloudflare_hash": cloud_hash, "size": len(data)}
-    if MEDIA_STATE.exists():
+    if MEDIA_STATE.exists() and os.environ.get("MAHOON_FAILURE_INJECTION_NO_PERSISTED_MEDIA") != "1":
         persisted = json.loads(MEDIA_STATE.read_text(encoding="utf-8"))
         for public, item in persisted.items():
             if not public.startswith("/media/"):

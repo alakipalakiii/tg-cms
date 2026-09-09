@@ -111,6 +111,9 @@ def main() -> int:
     os.environ["MAHOON_WORKER"] = target_worker
     if mode == "FAILURE_INJECTION":
         os.environ["MAHOON_PRODUCTION_ORIGIN"] = "https://mahoon-static-proof.morentoofficial.workers.dev"
+        os.environ["MAHOON_CRAWL_BASE"] = "https://mahoon-static-proof.morentoofficial.workers.dev"
+        os.environ["MAHOON_OVERRIDE_WORKER"] = "mahoon-static-proof"
+        os.environ["MAHOON_FAILURE_INJECTION_NO_PERSISTED_MEDIA"] = "1"
     os.environ["MAHOON_CREATE_VERSION_ONLY"] = "1"
     pre_promotion = deployment.active_deployment()
     rollback_state = rollback_anchor(pre_promotion)

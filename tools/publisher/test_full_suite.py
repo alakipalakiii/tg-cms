@@ -174,6 +174,9 @@ class PublisherFullSuite(unittest.TestCase):
         self.assertIn("captured_before_direct_api", Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8"))
     def test_84_failure_injection_is_nonproduction_mode(self):
         self.assertIn("FAILURE_INJECTION", Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8"))
+    def test_85_failure_injection_media_fixture_is_scoped(self):
+        source = Path("tools/publisher/cloudflare_direct_api.py").read_text(encoding="utf-8")
+        self.assertIn("MAHOON_FAILURE_INJECTION_NO_PERSISTED_MEDIA", source)
 
 
 if __name__ == "__main__":
