@@ -10,7 +10,7 @@ import concurrent.futures
 def _request(base: str, path: str, override_version: str | None = None):
     headers = {"User-Agent": "MAHOON-M9-PUBLISHER-VALIDATOR/1.0"}
     if override_version:
-        headers["Cloudflare-Workers-Version-Overrides"] = f'mahoon-art-magazine="{override_version}"'
+        headers["Cloudflare-Workers-Version-Overrides"] = f'{__import__("os").environ.get("MAHOON_OVERRIDE_WORKER", "mahoon-art-magazine")}="{override_version}"'
     return urllib.request.Request(base.rstrip("/") + path, headers=headers)
 
 

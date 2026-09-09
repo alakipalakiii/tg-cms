@@ -13,6 +13,7 @@ from state import persist_checked, persist_after_public_pass
 from delta_build_adapter import sha_cloud
 from content_transport import classify_error, SAFE_HEADERS
 from state_machine import promotion_precondition, rollback_anchor, verify_promotion_precondition
+from error_contract import PublisherStageError, build_error, safe_details
 
 
 class PublisherFullSuite(unittest.TestCase):
@@ -155,6 +156,24 @@ class PublisherFullSuite(unittest.TestCase):
         self.assertEqual("HTTP_5XX", classify_error(HTTPError("https://x", 503, "", {}, None)))
     def test_70_transport_headers_do_not_contain_auth(self): self.assertNotIn("Authorization", SAFE_HEADERS)
     def test_71_content_source_is_public_api(self): self.assertIn("posts-full-public-v1", Path("tools/publisher/delta_build_adapter.py").read_text(encoding="utf-8"))
+    def test_72_error_positional_message(self): self.assertEqual("m", str(build_error("s", "c", "m")))
+    def test_73_error_keyword_message_is_supported(self): self.assertEqual("m", PublisherStageError("s", "c", message="m").message)
+    def test_74_error_message_detail_is_renamed(self): self.assertEqual("x", safe_details({"message": "x"})["detail_message"])
+    def test_75_error_stage_detail_is_renamed(self): self.assertEqual("x", safe_details({"stage": "x"})["detail_stage"])
+    def test_76_error_code_detail_is_renamed(self): self.assertEqual("x", safe_details({"code": "x"})["detail_code"])
+    def test_77_error_exception_detail_is_renamed(self): self.assertEqual("x", safe_details({"exception_class": "x"})["detail_exception_class"])
+    def test_78_error_nested_details_preserved(self): self.assertEqual("x", safe_details({"nested": {"message": "x"}})["nested"]["message"])
+    def test_79_error_path_and_expected_observed_preserved(self): self.assertEqual({"detail_path": "/دسته", "detail_expected": 200, "detail_observed": 500}, safe_details({"path": "/دسته", "expected": 200, "observed": 500}))
+    def test_80_error_no_secret_leakage(self): self.assertNotIn("jwt-secret", str(build_error("s", "c", "m", token="jwt-secret")))
+    def test_81_original_failure_code_preserved(self):
+        error = build_error("POST_PROMOTION_ROUTE_CRAWL", "ERR_ROUTE_HTTP", "original", **safe_details({"message": "detail"}))
+        self.assertEqual("ERR_ROUTE_HTTP", error.code)
+    def test_82_error_serialization_does_not_raise(self):
+        self.assertIsInstance(build_error("s", "c", "m", observed={"message": "x"}), PublisherStageError)
+    def test_83_rollback_anchor_order_is_pre_mutation(self):
+        self.assertIn("captured_before_direct_api", Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8"))
+    def test_84_failure_injection_is_nonproduction_mode(self):
+        self.assertIn("FAILURE_INJECTION", Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

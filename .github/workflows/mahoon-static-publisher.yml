@@ -8,7 +8,7 @@ on:
         required: true
         default: CHECK_ONLY
         type: choice
-        options: [CHECK_ONLY, PROOF_ZERO_PERCENT, PUBLISH, CONTENT_DIAGNOSTIC]
+        options: [CHECK_ONLY, PROOF_ZERO_PERCENT, PUBLISH, FAILURE_INJECTION, CONTENT_DIAGNOSTIC]
       expected_fingerprint:
         description: "Optional reviewed pending-candidate fingerprint for a no-change proof"
         required: false

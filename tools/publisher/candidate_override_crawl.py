@@ -13,8 +13,8 @@ SOURCE = Path(__import__("os").environ.get("MAHOON_ASSETS_DIRECTORY", "publisher
 ROOT = Path(__import__("os").environ.get("MAHOON_CRAWL_OUTPUT", "publisher-state/override-crawl"))
 OUT = ROOT / "production-override-crawl"
 STATE_PATH = OUT / "production-override-crawl-state.json"
-BASE = "https://mahoonartmagazine.ir"
-OVERRIDE = 'mahoon-art-magazine="' + __import__("os").environ.get("MAHOON_CANDIDATE_VERSION", "") + '"'
+BASE = __import__("os").environ.get("MAHOON_CRAWL_BASE", "https://mahoonartmagazine.ir")
+OVERRIDE = __import__("os").environ.get("MAHOON_OVERRIDE_WORKER", "mahoon-art-magazine") + '="' + __import__("os").environ.get("MAHOON_CANDIDATE_VERSION", "") + '"'
 USE_OVERRIDE = __import__("os").environ.get("MAHOON_DISABLE_VERSION_OVERRIDE") != "1"
 UA = "MAHOON-M9-FINAL-Override-Crawl/1.0"
 
