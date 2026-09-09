@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 import urllib.request
 from pathlib import Path
+from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from publisher.core import fingerprint
@@ -23,11 +26,43 @@ API = os.environ.get("MAHOON_PUBLIC_CONTENT_API", "https://api.mahoonartmagazine
 STATE = Path(os.environ.get("MAHOON_PUBLISHER_STATE", "publisher-state/production-content-fingerprint.json"))
 
 
+class PublisherStageError(RuntimeError):
+    def __init__(self, stage: str, code: str, message: str, **details):
+        super().__init__(message)
+        self.stage, self.code, self.details = stage, code, details
+
+
+def now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def sanitize(message: str) -> str:
+    message = re.sub(r"(?i)(authorization|token|jwt|cookie|secret)\s*[:=]\s*[^\s,;]+", r"\1=[REDACTED]", str(message))
+    return message.replace("CLOUDFLARE_API_TOKEN", "[REDACTED_SECRET]")[:500]
+
+
+def write_safe_error(stage: str, code: str, exc: Exception, candidate: str | None,
+                     deployment_id: str | None, **details) -> dict:
+    record = {"timestamp": now(), "failing_stage": stage, "failure_code": code,
+              "exception_class": type(exc).__name__, "sanitized_message": sanitize(str(exc)),
+              "candidate_version": candidate, "deployment_id": deployment_id,
+              "validation_artifact_id": "runner-evidence/candidate-validation.json",
+              "retry_count": details.pop("retry_count", 0), **details}
+    Path("runner-evidence").mkdir(parents=True, exist_ok=True)
+    Path("runner-evidence/publisher-safe-error-contract.json").write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(json.dumps({"failure_code": code, "failing_stage": stage, "message": record["sanitized_message"]}, ensure_ascii=False), file=sys.stderr)
+    return record
+
+
 def public_path(route: str) -> str:
     route = "/" + route.lstrip("/")
     if route == "/index.html":
         return "/"
-    return "/" + route.removeprefix("/").removesuffix("index.html").rstrip("/") + "/"
+    if route.endswith("index.html"):
+        logical = "/" + route.removeprefix("/").removesuffix("index.html").rstrip("/") + "/"
+    else:
+        logical = route
+    return quote(logical, safe="/%:@!$&'()*+,;=-._~")
 
 
 def export_content() -> tuple[dict, str]:
@@ -47,7 +82,8 @@ def main() -> int:
         print("PUBLISHER_MODE_INVALID", file=sys.stderr)
         return 2
     exported, digest = export_content()
-    previous = os.environ.get("PUBLISHER_EXPECTED_FINGERPRINT") or (json.loads(STATE.read_text(encoding="utf-8")).get("fingerprint") if STATE.exists() else None)
+    state_fingerprint = json.loads(STATE.read_text(encoding="utf-8")).get("fingerprint") if STATE.exists() else None
+    previous = (os.environ.get("PUBLISHER_EXPECTED_FINGERPRINT") or state_fingerprint) if mode == "CHECK_ONLY" else state_fingerprint
     unchanged = previous == digest
     print(json.dumps({"mode": mode, "count": exported["count"], "fingerprint": digest,
                       "unchanged": unchanged, "state_present": STATE.exists()}, ensure_ascii=False))
@@ -93,7 +129,9 @@ def main() -> int:
     if not version_id:
         print("PUBLISHER_VERSION_ID_MISSING", file=sys.stderr)
         return 14
-    deployment.deployment(version_id, os.environ.get("MAHOON_SSR_VERSION", "b660c7ff-9042-4b4e-ab14-63211aa9c1f1"), 0, 100)
+    pre_promotion = deployment.active_deployment()
+    zero_percent_response = deployment.deployment(version_id, os.environ.get("MAHOON_SSR_VERSION", "b660c7ff-9042-4b4e-ab14-63211aa9c1f1"), 0, 100)
+    zero_percent_deployment_id = (zero_percent_response.get("result") or {}).get("id") if isinstance(zero_percent_response, dict) else None
     os.environ["MAHOON_CANDIDATE_VERSION"] = version_id
     os.environ["MAHOON_ASSETS_DIRECTORY"] = str(out)
     crawl = subprocess.run([sys.executable, "tools/publisher/candidate_override_crawl.py"], text=True, capture_output=True)
@@ -102,24 +140,48 @@ def main() -> int:
         return 15
     summary_path = Path("runner-evidence/override-crawl/production-override-crawl-summary.json")
     summary = json.loads(summary_path.read_text(encoding="utf-8")) if summary_path.exists() else {}
-    validated = summary.get("html_final_200") == summary.get("html_routes") and summary.get("post_final_200") == summary.get("post_routes") and not any(summary.get(key, 0) for key in ("broken_critical_links", "orphan_posts", "duplicate_canonicals", "redirect_loops", "remote_reader_media_dependencies", "workers_dev_leaks", "preview_url_leaks", "post_seo_failures"))
+    route_data = json.loads(route_manifest.read_text(encoding="utf-8"))
+    expected_post_routes = sum(route.startswith("/post/") for route in route_data.get("routes", []))
+    route_binding = (route_data.get("route_count") == len(route_data.get("routes", [])) and expected_post_routes == exported["count"])
+    validated = route_binding and summary.get("html_final_200") == summary.get("html_routes") and summary.get("post_final_200") == summary.get("post_routes") and not any(summary.get(key, 0) for key in ("broken_critical_links", "orphan_posts", "duplicate_canonicals", "redirect_loops", "remote_reader_media_dependencies", "workers_dev_leaks", "preview_url_leaks", "post_seo_failures"))
     Path("runner-evidence/candidate-validation.json").parent.mkdir(parents=True, exist_ok=True)
-    Path("runner-evidence/candidate-validation.json").write_text(json.dumps({"candidate_version": version_id, "fingerprint": digest, "build": build, "local_gate": gate, "override": summary, "PASS": validated}, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path("runner-evidence/candidate-validation.json").write_text(json.dumps({"candidate_version": version_id, "fingerprint": digest, "build": build, "local_gate": gate, "override": summary, "route_binding": {"route_count": route_data.get("route_count"), "post_routes": expected_post_routes, "content_posts": exported["count"], "PASS": route_binding}, "PASS": validated}, ensure_ascii=False, indent=2), encoding="utf-8")
     if not validated:
         print("PUBLISHER_CANDIDATE_VALIDATION_FAILED", file=sys.stderr)
         return 16
     if mode == "PROOF_ZERO_PERCENT":
-        print(json.dumps({"mode": mode, "candidate_version": version_id, "zero_percent": "PASS"}))
+        proof_routes = [public_path(route) for route in json.loads(Path("publisher-state/published-route-manifest.json").read_text(encoding="utf-8")).get("routes", [])]
+        override_public = validate_public(os.environ.get("MAHOON_PRODUCTION_ORIGIN", "https://mahoonartmagazine.ir"), proof_routes, version_id)
+        override_zero = capture_zero_origin(os.environ.get("MAHOON_PRODUCTION_ORIGIN", "https://mahoonartmagazine.ir"), proof_routes, version_id)
+        Path("runner-evidence/post-validator-override.json").write_text(json.dumps({"public": override_public, "zero_origin": override_zero, "route_count": len(proof_routes), "post_count": sum(p.startswith('/post/') for p in proof_routes), "PASS": override_public.get("PASS") and override_zero.get("PASS")}, ensure_ascii=False, indent=2), encoding="utf-8")
+        if not (override_public.get("PASS") and override_zero.get("PASS")):
+            details = (override_public.get("failure_details") or [{}])[0]
+            error = PublisherStageError("POST_PROMOTION_ROUTE_CRAWL", "ERR_ROUTE_HTTP", "override validator failed", **details)
+            write_safe_error(error.stage, error.code, error, version_id, zero_percent_deployment_id, expected="all canonical routes HTTP 200", observed=details)
+            print("PUBLISHER_OVERRIDE_VALIDATOR_FAILED", file=sys.stderr)
+            return 17
+        print(json.dumps({"mode": mode, "candidate_version": version_id, "zero_percent": "PASS", "post_validator_override": "PASS"}))
         return 0
     if os.environ.get("MAHOON_PUBLISH_READY") != "YES":
         print("PUBLISHER_PROMOTION_BLOCKED: MAHOON_PUBLISH_READY=YES required", file=sys.stderr)
         return 18
-    previous = deployment.active_deployment()
+    current_before = deployment.active_deployment()
+    if current_before.get("id") != pre_promotion.get("id"):
+        error = PublisherStageError("DEPLOYMENT_STATE_VERIFICATION", "ERR_DEPLOYMENT_STATE_DRIFT", "active deployment changed before promotion", expected=pre_promotion.get("id"), observed=current_before.get("id"))
+        write_safe_error(error.stage, error.code, error, version_id, current_before.get("id"), expected=pre_promotion.get("id"), observed=current_before.get("id"))
+        return 18
+    previous = pre_promotion
     transaction = {"previous_deployment": previous, "candidate_version": version_id,
                    "fingerprint": digest, "validated_candidate": version_id}
     Path("runner-evidence/promotion-transaction.json").write_text(json.dumps(transaction, ensure_ascii=False, indent=2), encoding="utf-8")
     try:
-        deployment.deployment(version_id, os.environ.get("MAHOON_SSR_VERSION", "b660c7ff-9042-4b4e-ab14-63211aa9c1f1"), 100, 0)
+        promoted_response = deployment.deployment(version_id, os.environ.get("MAHOON_SSR_VERSION", "b660c7ff-9042-4b4e-ab14-63211aa9c1f1"), 100, 0)
+        promoted_deployment_id = (promoted_response.get("result") or {}).get("id") if isinstance(promoted_response, dict) else None
+        try:
+            promoted = deployment.wait_for_active(version_id, 100, 0)
+        except Exception as exc:
+            raise PublisherStageError("DEPLOYMENT_STATE_VERIFICATION", "ERR_DEPLOYMENT_PROPAGATION_TIMEOUT", str(exc), expected={version_id: 100}, observed=None) from exc
+        promoted_deployment_id = promoted.get("id") or promoted_deployment_id
         route_data = json.loads(Path("publisher-state/published-route-manifest.json").read_text(encoding="utf-8"))
         routes = [public_path(route) for route in route_data.get("routes", [])]
         public = validate_public(os.environ.get("MAHOON_PRODUCTION_ORIGIN", "https://mahoonartmagazine.ir"), routes)
@@ -129,8 +191,11 @@ def main() -> int:
         zero = validate_zero_origin(str(zero_path))
         production_pass = public.get("PASS") and zero.get("PASS")
         Path("runner-evidence/production-validation.json").write_text(json.dumps({"public": public, "zero_origin": zero, "PASS": production_pass}, ensure_ascii=False, indent=2), encoding="utf-8")
-        if not production_pass:
-            raise RuntimeError("PRODUCTION_VALIDATION_FAILED")
+        if not public.get("PASS"):
+            detail = (public.get("failure_details") or [{}])[0]
+            raise PublisherStageError("POST_PROMOTION_ROUTE_CRAWL", "ERR_ROUTE_HTTP", "public validator failed", **detail)
+        if not zero.get("PASS"):
+            raise PublisherStageError("POST_PROMOTION_ZERO_ORIGIN", "ERR_ZERO_ORIGIN", "zero-origin validator failed", expected=0, observed=zero)
         published_state = Path("runner-evidence/published-state")
         published_state.mkdir(parents=True, exist_ok=True)
         (published_state / "production-content-fingerprint.json").write_text(
@@ -144,6 +209,9 @@ def main() -> int:
                           "zero_origin": "PASS"}))
         return 0
     except Exception as exc:
+        stage = exc.stage if isinstance(exc, PublisherStageError) else "UNEXPECTED_RUNNER_BUG"
+        code = exc.code if isinstance(exc, PublisherStageError) else "ERR_VALIDATOR_INTERNAL"
+        write_safe_error(stage, code, exc, version_id, locals().get("promoted_deployment_id"), **getattr(exc, "details", {}))
         try:
             automatic_rollback(previous)
         except Exception:

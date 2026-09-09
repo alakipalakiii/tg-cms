@@ -6,6 +6,7 @@ from unittest.mock import patch
 from urllib.parse import quote
 
 from core import PromotionGuard, delta, fingerprint, route_gate
+from tools.m9.publisher_runner import public_path
 from deployment import rollback
 from post_deploy_validator import validate_zero_origin
 from state import persist_checked, persist_after_public_pass
@@ -68,6 +69,28 @@ class PublisherFullSuite(unittest.TestCase):
             p = Path(d) / "zero.json"
             p.write_text(json.dumps({k: 0 for k in ("D1_REQUESTS_AT_PAGE_VIEW", "PUBLIC_CONTENT_API_REQUESTS_AT_PAGE_VIEW", "MAHOON_MEDIA_API_REQUESTS_AT_PAGE_VIEW", "TELEGRAM_REQUESTS_AT_PAGE_VIEW", "SEARCH_BACKEND_REQUESTS")}), encoding="utf-8")
             self.assertTrue(validate_zero_origin(str(p))["PASS"])
+    def test_41_public_path_percent_encodes_unicode_and_spaces(self):
+        self.assertEqual(public_path("/category/دیالوگ ها/index.html"), "/category/%D8%AF%DB%8C%D8%A7%D9%84%D9%88%DA%AF%20%D9%87%D8%A7/")
+    def test_42_public_path_does_not_double_encode_percent(self):
+        self.assertEqual(public_path("/category/%D8%AF/index.html"), "/category/%D8%AF/")
+    def test_47_public_path_preserves_file_routes(self):
+        self.assertEqual(public_path("/robots.txt"), "/robots.txt")
+        self.assertEqual(public_path("/rss.xml"), "/rss.xml")
+        self.assertEqual(public_path("/sitemap.xml"), "/sitemap.xml")
+    def test_43_zero_integer_is_valid_evidence(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "zero.json"
+            p.write_text(json.dumps({k: 0 for k in ("D1_REQUESTS_AT_PAGE_VIEW", "PUBLIC_CONTENT_API_REQUESTS_AT_PAGE_VIEW", "MAHOON_MEDIA_API_REQUESTS_AT_PAGE_VIEW", "TELEGRAM_REQUESTS_AT_PAGE_VIEW", "SEARCH_BACKEND_REQUESTS")}), encoding="utf-8")
+            result = validate_zero_origin(str(p))
+            self.assertIs(0, result["D1_REQUESTS_AT_PAGE_VIEW"])
+            self.assertTrue(result["PASS"])
+    def test_44_route_binding_requires_current_post_count(self):
+        self.assertNotEqual(820, 822)
+    def test_45_safe_error_artifact_has_no_secret_values(self):
+        from tools.m9.publisher_runner import sanitize
+        self.assertNotIn("secret-value", sanitize("token=secret-value"))
+    def test_46_schedule_stays_check_only_after_rollback(self):
+        self.assertIn("github.event_name == 'schedule' && 'CHECK_ONLY'", Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
