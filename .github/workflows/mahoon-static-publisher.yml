@@ -9,6 +9,11 @@ on:
         default: CHECK_ONLY
         type: choice
         options: [CHECK_ONLY, PROOF_ZERO_PERCENT, PUBLISH]
+      expected_fingerprint:
+        description: "Optional reviewed pending-candidate fingerprint for a no-change proof"
+        required: false
+        default: ""
+        type: string
   schedule:
     - cron: "17 * * * *"
 
@@ -27,6 +32,7 @@ jobs:
       PUBLISHER_MODE: ${{ github.event_name == 'schedule' && 'CHECK_ONLY' || inputs.mode }}
       CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      PUBLISHER_EXPECTED_FINGERPRINT: ${{ inputs.expected_fingerprint }}
     steps:
       - uses: actions/checkout@v4
       - name: Run shared publisher
