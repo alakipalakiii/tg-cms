@@ -114,6 +114,7 @@ def main() -> int:
     os.environ["MAHOON_CREATE_VERSION_ONLY"] = "1"
     pre_promotion = deployment.active_deployment()
     rollback_state = rollback_anchor(pre_promotion)
+    Path("runner-evidence").mkdir(parents=True, exist_ok=True)
     Path("runner-evidence/rollback-anchor-order.json").write_text(json.dumps({"phase": "PRE_DEPLOYMENT_MUTATION", "rollback_anchor": rollback_state, "captured_before_direct_api": True}, ensure_ascii=False, indent=2), encoding="utf-8")
     proc = subprocess.run([sys.executable, "tools/publisher/cloudflare_direct_api.py"], text=True, capture_output=True)
     if proc.returncode != 0:
