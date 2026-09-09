@@ -100,7 +100,7 @@ def main() -> int:
     if not unchanged:
         delta = subprocess.run([sys.executable, "tools/publisher/delta_build_adapter.py", "--output", str(out), "--media-manifest", str(media_manifest), "--route-manifest", str(route_manifest)], text=True, capture_output=True)
         if delta.returncode != 0:
-            print("PUBLISHER_DELTA_BUILD_FAILED", file=sys.stderr)
+            print("PUBLISHER_DELTA_BUILD_FAILED: " + sanitize(delta.stderr), file=sys.stderr)
             return 11
     os.environ["MAHOON_MEDIA_MANIFEST"] = str(media_manifest)
     os.environ["MAHOON_ROUTE_MANIFEST"] = str(route_manifest)
