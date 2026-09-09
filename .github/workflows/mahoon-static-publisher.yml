@@ -14,6 +14,12 @@ on:
         required: false
         default: ""
         type: string
+      ready:
+        description: "Explicitly authorize the already-reviewed production cutover"
+        required: false
+        default: "NO"
+        type: choice
+        options: [NO, YES]
   schedule:
     - cron: "17 * * * *"
 
@@ -26,6 +32,8 @@ concurrency:
 
 jobs:
   publisher:
+    outputs:
+      production_pass: ${{ steps.result.outputs.production_pass }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -33,7 +41,62 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       PUBLISHER_EXPECTED_FINGERPRINT: ${{ inputs.expected_fingerprint }}
+      MAHOON_PUBLISH_READY: ${{ inputs.ready }}
     steps:
       - uses: actions/checkout@v4
       - name: Run shared publisher
+        id: execute
         run: python tools/m9/publisher_runner.py
+
+      - name: Publish result marker
+        id: result
+        if: ${{ always() }}
+        run: |
+          if test -f runner-evidence/production-validation.json && python -c "import json; raise SystemExit(0 if json.load(open('runner-evidence/production-validation.json')).get('PASS') is True else 1)"; then
+            echo "production_pass=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "production_pass=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload validated result
+        if: ${{ steps.result.outputs.production_pass == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahoon-publisher-production-result
+          path: runner-evidence
+
+  persist-state:
+    needs: publisher
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && needs.publisher.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: mahoon-publisher-production-result
+          path: runner-evidence
+      - name: Refuse unproven state persistence
+        run: |
+          test -f runner-evidence/production-validation.json
+          python - <<'PY'
+          import json
+          p=json.load(open('runner-evidence/production-validation.json', encoding='utf-8'))
+          assert p.get('PASS') is True
+          PY
+      - name: Install only validated publisher state
+        run: |
+          test -f runner-evidence/published-state/production-content-fingerprint.json
+          test -f runner-evidence/published-state/production-media-manifest.json
+          test -f runner-evidence/published-state/published-route-manifest.json
+          cp runner-evidence/published-state/production-content-fingerprint.json publisher-state/production-content-fingerprint.json
+          cp runner-evidence/published-state/production-media-manifest.json publisher-state/production-media-manifest.json
+          cp runner-evidence/published-state/published-route-manifest.json publisher-state/published-route-manifest.json
+          test -z "$(git diff --name-only -- publisher-state | grep -v -E '^publisher-state/(production-content-fingerprint|production-media-manifest|published-route-manifest)\.json$' || true)"
+      - name: Persist only approved publisher state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add publisher-state/production-content-fingerprint.json publisher-state/production-media-manifest.json publisher-state/published-route-manifest.json
+          git diff --cached --quiet || git commit -m "chore: persist published publisher state"
+          git push

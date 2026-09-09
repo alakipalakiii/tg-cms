@@ -33,6 +33,15 @@ def deployment(version_id: str, ssr_version: str, static_percent: int, ssr_perce
                {"strategy": "percentage", "versions": [{"version_id": ssr_version, "percentage": ssr_percent}, {"version_id": version_id, "percentage": static_percent}]})
 
 
+def active_deployment() -> dict:
+    """Capture the current deployment; promotion must rollback this exact object."""
+    data = api("GET", f"/client/v4/accounts/{ACCOUNT}/workers/scripts/{WORKER}/deployments")
+    deployments = data.get("result", [])
+    if not deployments:
+        raise RuntimeError("ACTIVE_DEPLOYMENT_MISSING")
+    return deployments[0]
+
+
 def rollback(previous_deployment: dict):
     versions = previous_deployment.get("versions", [])
     return api("POST", f"/client/v4/accounts/{ACCOUNT}/workers/scripts/{WORKER}/deployments",
