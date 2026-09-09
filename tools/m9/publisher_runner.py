@@ -196,6 +196,16 @@ def main() -> int:
             raise PublisherStageError("POST_PROMOTION_ROUTE_CRAWL", "ERR_ROUTE_HTTP", "public validator failed", **detail)
         if not zero.get("PASS"):
             raise PublisherStageError("POST_PROMOTION_ZERO_ORIGIN", "ERR_ZERO_ORIGIN", "zero-origin validator failed", expected=0, observed=zero)
+        production_env = os.environ.copy()
+        production_env["MAHOON_DISABLE_VERSION_OVERRIDE"] = "1"
+        production_env["MAHOON_CRAWL_OUTPUT"] = "runner-evidence/production-crawl"
+        production_crawl = subprocess.run([sys.executable, "tools/publisher/candidate_override_crawl.py"], text=True, capture_output=True, env=production_env)
+        production_summary_path = Path("runner-evidence/production-crawl/production-override-crawl-summary.json")
+        production_summary = json.loads(production_summary_path.read_text(encoding="utf-8")) if production_summary_path.exists() else {}
+        production_crawl_pass = production_crawl.returncode == 0 and production_summary.get("html_final_200") == production_summary.get("html_routes") and production_summary.get("post_final_200") == production_summary.get("post_routes") and not any(production_summary.get(key, 0) for key in ("broken_critical_links", "orphan_posts", "duplicate_canonicals", "redirect_loops", "remote_reader_media_dependencies", "workers_dev_leaks", "preview_url_leaks", "post_seo_failures"))
+        if not production_crawl_pass:
+            raise PublisherStageError("POST_PROMOTION_ROUTE_CRAWL", "ERR_PRODUCTION_CRAWL", "production crawl failed", expected="all canonical routes and posts PASS", observed=production_summary)
+        Path("runner-evidence/production-validation.json").write_text(json.dumps({"public": public, "zero_origin": zero, "production_crawl": production_summary, "PASS": True}, ensure_ascii=False, indent=2), encoding="utf-8")
         published_state = Path("runner-evidence/published-state")
         published_state.mkdir(parents=True, exist_ok=True)
         (published_state / "production-content-fingerprint.json").write_text(

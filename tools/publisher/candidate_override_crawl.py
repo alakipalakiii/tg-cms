@@ -15,6 +15,7 @@ OUT = ROOT / "production-override-crawl"
 STATE_PATH = OUT / "production-override-crawl-state.json"
 BASE = "https://mahoonartmagazine.ir"
 OVERRIDE = 'mahoon-art-magazine="' + __import__("os").environ.get("MAHOON_CANDIDATE_VERSION", "") + '"'
+USE_OVERRIDE = __import__("os").environ.get("MAHOON_DISABLE_VERSION_OVERRIDE") != "1"
 UA = "MAHOON-M9-FINAL-Override-Crawl/1.0"
 
 
@@ -36,7 +37,10 @@ def fetch(path):
         if delay:
             time.sleep(delay)
         try:
-            req = urllib.request.Request(BASE + path, headers={"User-Agent": UA, "Cloudflare-Workers-Version-Overrides": OVERRIDE})
+            headers = {"User-Agent": UA}
+            if USE_OVERRIDE:
+                headers["Cloudflare-Workers-Version-Overrides"] = OVERRIDE
+            req = urllib.request.Request(BASE + path, headers=headers)
             with urllib.request.urlopen(req, timeout=45) as response:
                 body = response.read()
                 text = body.decode("utf-8", "ignore")
