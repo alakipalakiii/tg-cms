@@ -38,7 +38,7 @@ def main() -> int:
         print("PUBLISHER_MODE_INVALID", file=sys.stderr)
         return 2
     exported, digest = export_content()
-    previous = json.loads(STATE.read_text(encoding="utf-8")).get("fingerprint") if STATE.exists() else None
+    previous = os.environ.get("PUBLISHER_EXPECTED_FINGERPRINT") or (json.loads(STATE.read_text(encoding="utf-8")).get("fingerprint") if STATE.exists() else None)
     unchanged = previous == digest
     print(json.dumps({"mode": mode, "count": exported["count"], "fingerprint": digest,
                       "unchanged": unchanged, "state_present": STATE.exists()}, ensure_ascii=False))
