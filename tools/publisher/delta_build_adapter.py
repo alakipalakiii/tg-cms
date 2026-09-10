@@ -8,9 +8,9 @@ import json
 import urllib.request
 from pathlib import Path
 from urllib.parse import quote
-from content_transport import fetch_json
+from export_v2 import export_complete
 
-API = "https://api.mahoonartmagazine.ir/posts-full-public-v1?limit=2000"
+API = "https://api.mahoonartmagazine.ir/posts-full-public-v2"
 
 
 def sha_cloud(data: bytes, ext: str) -> str:
@@ -55,7 +55,7 @@ def main() -> int:
     media_manifest = json.loads(Path(args.media_manifest).read_text(encoding="utf-8"))
     routes = json.loads(Path(args.route_manifest).read_text(encoding="utf-8"))
     existing_ids = {int(p.parent.name) for p in (output / "post").glob("*/index.html") if p.parent.name.isdigit()}
-    payload, _transport = fetch_json(API)
+    payload, proof = export_complete(API)
     added = [normalize(p) for p in payload["posts"] if int(p.get("id", 0)) not in existing_ids]
     known_ids = {int(p.parent.name) for p in (output / "post").glob("*/index.html") if p.parent.name.isdigit()}
     if any(int(p.get("id", 0)) in known_ids for p in payload["posts"]):
@@ -90,7 +90,7 @@ def main() -> int:
     routes["routes"] = sorted(set(routes["routes"]))
     routes["route_count"] = len(routes["routes"])
     Path(args.route_manifest).write_text(json.dumps(routes, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({"added_posts": [int(p["identity"]["database_id"]) for p in added], "new_media": sum(bool(p["media"].get("current_url")) for p in added)}, ensure_ascii=False))
+    print(json.dumps({"added_posts": [int(p["identity"]["database_id"]) for p in added], "new_media": sum(bool(p["media"].get("current_url")) for p in added), "export": proof}, ensure_ascii=False))
     return 0
 
 

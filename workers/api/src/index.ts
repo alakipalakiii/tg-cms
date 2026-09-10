@@ -2346,6 +2346,108 @@ async function mahoonPublicPostsFullV1(request, env) {
   }
 }
 
+/* mahoon-public-posts-full-v2 — read-only keyset export for the publisher */
+function mahoonPublicPostsFullV2JsonV1(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...mahoonPublicPostsFullCorsV1(),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
+function mahoonPublisherPageSizeV2(url) {
+  const raw = url.searchParams.get("page_size");
+  if (raw === null || raw === "") return 250;
+  if (!/^\d+$/.test(raw)) return null;
+  return Math.max(1, Math.min(Number(raw), 500));
+}
+
+function mahoonPublisherCursorV2(url) {
+  const raw = url.searchParams.get("cursor");
+  if (raw === null || raw === "") return 0;
+  if (!/^\d+$/.test(raw)) return null;
+  return Number(raw);
+}
+
+async function mahoonPublicPostsFullV2(request, env) {
+  try {
+    if (!env.DB) {
+      return mahoonPublicPostsFullV2JsonV1({ ok: false, error: "DB binding is missing" }, 500);
+    }
+
+    const url = new URL(request.url);
+    const pageSize = mahoonPublisherPageSizeV2(url);
+    const cursorId = mahoonPublisherCursorV2(url);
+    if (pageSize === null || cursorId === null) {
+      return mahoonPublicPostsFullV2JsonV1({ ok: false, error: "Invalid page_size or cursor" }, 400);
+    }
+
+    const publicWhere = `(is_published = 1 OR is_published IS NULL)
+      AND (deleted_at IS NULL OR deleted_at = '')`;
+    const suppliedMax = url.searchParams.get("snapshot_max_id");
+    const suppliedTotal = url.searchParams.get("snapshot_total_count");
+    if (suppliedMax !== null && !/^\d+$/.test(suppliedMax)) {
+      return mahoonPublicPostsFullV2JsonV1({ ok: false, error: "Invalid snapshot_max_id" }, 400);
+    }
+    if (suppliedTotal !== null && !/^\d+$/.test(suppliedTotal)) {
+      return mahoonPublicPostsFullV2JsonV1({ ok: false, error: "Invalid snapshot_total_count" }, 400);
+    }
+    if (cursorId > 0 && (suppliedMax === null || suppliedTotal === null)) {
+      return mahoonPublicPostsFullV2JsonV1({ ok: false, error: "Snapshot metadata is required after the first page" }, 400);
+    }
+    let snapshotMaxId = suppliedMax === null ? null : Number(suppliedMax);
+    if (snapshotMaxId === null) {
+      const maxRow = await env.DB.prepare(
+        `SELECT MAX(id) AS snapshot_max_id FROM posts WHERE ${publicWhere}`
+      ).first();
+      snapshotMaxId = Number(maxRow?.snapshot_max_id || 0);
+    }
+    let snapshotTotalCount = suppliedTotal === null ? null : Number(suppliedTotal);
+    if (snapshotTotalCount === null) {
+      const totalRow = await env.DB.prepare(
+        `SELECT COUNT(*) AS snapshot_total_count FROM posts
+         WHERE ${publicWhere} AND id <= ?`
+      ).bind(snapshotMaxId).first();
+      snapshotTotalCount = Number(totalRow?.snapshot_total_count || 0);
+    }
+    const publisherColumns = [
+      "id", "text", "slug", "created_at", "updated_at", "is_published",
+      "media_type", "media_file_id", "media_unique_id", "media_mime_type",
+      "media_file_name", "media_duration", "media_width", "media_height", "media_size",
+      "photo_file_id", "photo_unique_id", "photo_width", "photo_height",
+      "seo_title", "seo_description"
+    ].join(", ");
+    const result = await env.DB.prepare(
+      `SELECT ${publisherColumns} FROM posts
+       WHERE ${publicWhere}
+         AND id > ?
+         AND id <= ?
+       ORDER BY id ASC
+       LIMIT ?`
+    ).bind(cursorId, snapshotMaxId, pageSize).all();
+    const items = Array.isArray(result?.results) ? result.results : [];
+    const hasMore = items.length === pageSize;
+    const nextCursor = hasMore && items.length ? Number(items[items.length - 1].id) : null;
+
+    return mahoonPublicPostsFullV2JsonV1({
+      ok: true,
+      contract: "posts-full-public-v2",
+      snapshot_max_id: snapshotMaxId,
+      snapshot_total_count: snapshotTotalCount,
+      page_size: pageSize,
+      cursor_id: cursorId,
+      items,
+      next_cursor: hasMore ? nextCursor : null,
+      has_more: hasMore
+    });
+  } catch (error) {
+    return mahoonPublicPostsFullV2JsonV1({ ok: false, error: String(error?.message || error) }, 500);
+  }
+}
+
 
 /* mahoon-scale-v1 */
 const MAHOON_SCALE_AUDIO_BOOK_TAGS_V1 = [
@@ -3296,6 +3398,10 @@ export default {
 
     if (url.pathname === "/posts-full-public-v1" && request.method === "GET") {
       return mahoonPublicPostsFullV1(request, env);
+    }
+
+    if (url.pathname === "/posts-full-public-v2" && request.method === "GET") {
+      return mahoonPublicPostsFullV2(request, env);
     }
 
     // mahoon-telegram-webhook-routes-v1

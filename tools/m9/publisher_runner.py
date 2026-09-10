@@ -22,10 +22,10 @@ from publisher import deployment
 from publisher.rollback import automatic_rollback
 from publisher.post_deploy_validator import capture_zero_origin, validate_public, validate_zero_origin
 from publisher.state_machine import promotion_precondition, rollback_anchor, verify_promotion_precondition
-from publisher.content_transport import fetch_json
+from publisher.export_v2 import export_complete
 from publisher.error_contract import PublisherStageError, build_error, safe_details
 
-API = os.environ.get("MAHOON_PUBLIC_CONTENT_API", "https://api.mahoonartmagazine.ir/posts-full-public-v1?limit=2000")
+API = os.environ.get("MAHOON_PUBLIC_CONTENT_API", "https://api.mahoonartmagazine.ir/posts-full-public-v2")
 STATE = Path(os.environ.get("MAHOON_PUBLISHER_STATE", "publisher-state/production-content-fingerprint.json"))
 
 
@@ -63,8 +63,10 @@ def public_path(route: str) -> str:
 
 
 def export_content() -> tuple[dict, str]:
-    payload, _transport = fetch_json(API)
-    posts = payload.get("posts", payload if isinstance(payload, list) else [])
+    exported, proof = export_complete(API)
+    Path("runner-evidence").mkdir(parents=True, exist_ok=True)
+    Path("runner-evidence/v2-export-adapter-proof.json").write_text(json.dumps(proof, ensure_ascii=False, indent=2), encoding="utf-8")
+    posts = exported.get("posts", [])
     stable = [{key: value for key, value in post.items() if key not in {"view_count", "last_viewed_at"}}
               for post in sorted(posts, key=lambda item: int(item.get("id", 0)))]
     exported = {"contract": "PUBLISHED_CONTENT_DELTA_CONTRACT_V2", "count": len(stable), "posts": stable}
