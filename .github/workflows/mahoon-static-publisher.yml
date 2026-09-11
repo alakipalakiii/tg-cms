@@ -35,7 +35,19 @@ concurrency:
   group: mahoon-production-publisher
   cancel-in-progress: false
 
+  
 jobs:
+  ci-auth-probe:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'CHECK_ONLY' && inputs.auth_only == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+    steps:
+      - name: CI Wrangler authentication proof
+        run: npx wrangler@4.83.0 whoami
+
   content-diagnostic:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'CONTENT_DIAGNOSTIC' }}
     runs-on: ubuntu-latest
@@ -64,13 +76,6 @@ jobs:
       MAHOON_PUBLISH_READY: ${{ inputs.ready }}
     steps:
       - uses: actions/checkout@v4
-      - name: CI Wrangler authentication proof
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'CHECK_ONLY' && inputs.auth_only == true }}
-        working-directory: website/dreary-disk
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
-        run: npx wrangler@4.83.0 whoami
       - name: Run shared publisher
         id: execute
         run: python tools/m9/publisher_runner.py
