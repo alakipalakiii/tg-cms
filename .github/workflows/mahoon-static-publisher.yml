@@ -8,12 +8,23 @@ on:
         required: true
         default: CHECK_ONLY
         type: choice
-        options: [CHECK_ONLY, PROOF_ZERO_PERCENT, PUBLISH]
+        options: [CHECK_ONLY, PROOF_ZERO_PERCENT, PUBLISH, FAILURE_INJECTION, CONTENT_DIAGNOSTIC]
       expected_fingerprint:
         description: "Optional reviewed pending-candidate fingerprint for a no-change proof"
         required: false
         default: ""
         type: string
+      auth_only:
+        description: "Run only the CI Wrangler authentication probe"
+        required: false
+        default: false
+        type: boolean
+      ready:
+        description: "Explicitly authorize the already-reviewed production cutover"
+        required: false
+        default: "NO"
+        type: choice
+        options: ["NO", "YES"]
   schedule:
     - cron: "17 * * * *"
 
@@ -24,8 +35,37 @@ concurrency:
   group: mahoon-production-publisher
   cancel-in-progress: false
 
+  
 jobs:
+  ci-auth-probe:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'CHECK_ONLY' && inputs.auth_only == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+    steps:
+      - name: CI Wrangler authentication proof
+        run: npx wrangler@4.83.0 whoami
+
+  content-diagnostic:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'CONTENT_DIAGNOSTIC' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read-only content transport diagnostic
+        run: python tools/publisher/github_content_diagnostic.py
+      - name: Upload diagnostic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahoon-github-content-transport-diagnostic
+          path: runner-evidence/github-content-api-transport-matrix.json
+
   publisher:
+    if: ${{ (github.event_name == 'schedule' || inputs.mode != 'CONTENT_DIAGNOSTIC') && !(github.event_name == 'workflow_dispatch' && inputs.auth_only == true) }}
+    outputs:
+      production_pass: ${{ steps.result.outputs.production_pass }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -33,7 +73,62 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       PUBLISHER_EXPECTED_FINGERPRINT: ${{ inputs.expected_fingerprint }}
+      MAHOON_PUBLISH_READY: ${{ inputs.ready }}
     steps:
       - uses: actions/checkout@v4
       - name: Run shared publisher
+        id: execute
         run: python tools/m9/publisher_runner.py
+
+      - name: Publish result marker
+        id: result
+        if: ${{ always() }}
+        run: |
+          if test -f runner-evidence/production-validation.json && python -c "import json; raise SystemExit(0 if json.load(open('runner-evidence/production-validation.json')).get('PASS') is True else 1)"; then
+            echo "production_pass=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "production_pass=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload validated result
+        if: ${{ steps.result.outputs.production_pass == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahoon-publisher-production-result
+          path: runner-evidence
+
+  persist-state:
+    needs: publisher
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && needs.publisher.result == 'success' && needs.publisher.outputs.production_pass == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: mahoon-publisher-production-result
+          path: runner-evidence
+      - name: Refuse unproven state persistence
+        run: |
+          test -f runner-evidence/production-validation.json
+          python - <<'PY'
+          import json
+          p=json.load(open('runner-evidence/production-validation.json', encoding='utf-8'))
+          assert p.get('PASS') is True
+          PY
+      - name: Install only validated publisher state
+        run: |
+          test -f runner-evidence/published-state/production-content-fingerprint.json
+          test -f runner-evidence/published-state/production-media-manifest.json
+          test -f runner-evidence/published-state/published-route-manifest.json
+          cp runner-evidence/published-state/production-content-fingerprint.json publisher-state/production-content-fingerprint.json
+          cp runner-evidence/published-state/production-media-manifest.json publisher-state/production-media-manifest.json
+          cp runner-evidence/published-state/published-route-manifest.json publisher-state/published-route-manifest.json
+          test -z "$(git diff --name-only -- publisher-state | grep -v -E '^publisher-state/(production-content-fingerprint|production-media-manifest|published-route-manifest)\.json$' || true)"
+      - name: Persist only approved publisher state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add publisher-state/production-content-fingerprint.json publisher-state/production-media-manifest.json publisher-state/published-route-manifest.json
+          git diff --cached --quiet || git commit -m "chore: persist published publisher state"
+          git push
