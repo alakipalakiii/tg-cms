@@ -59,6 +59,13 @@ jobs:
       MAHOON_PUBLISH_READY: ${{ inputs.ready }}
     steps:
       - uses: actions/checkout@v4
+      - name: CI Wrangler authentication proof
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'CHECK_ONLY' }}
+        working-directory: website/dreary-disk
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+        run: npx wrangler@4.83.0 whoami
       - name: Run shared publisher
         id: execute
         run: python tools/m9/publisher_runner.py
