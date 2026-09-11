@@ -14,6 +14,11 @@ on:
         required: false
         default: ""
         type: string
+      auth_only:
+        description: "Run only the CI Wrangler authentication probe"
+        required: false
+        default: false
+        type: boolean
       ready:
         description: "Explicitly authorize the already-reviewed production cutover"
         required: false
@@ -46,7 +51,7 @@ jobs:
           path: runner-evidence/github-content-api-transport-matrix.json
 
   publisher:
-    if: ${{ github.event_name == 'schedule' || inputs.mode != 'CONTENT_DIAGNOSTIC' }}
+    if: ${{ (github.event_name == 'schedule' || inputs.mode != 'CONTENT_DIAGNOSTIC') && !(github.event_name == 'workflow_dispatch' && inputs.auth_only == true) }}
     outputs:
       production_pass: ${{ steps.result.outputs.production_pass }}
     runs-on: ubuntu-latest
@@ -60,7 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: CI Wrangler authentication proof
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'CHECK_ONLY' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'CHECK_ONLY' && inputs.auth_only == true }}
         working-directory: website/dreary-disk
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
