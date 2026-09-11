@@ -102,7 +102,7 @@ class PublisherFullSuite(unittest.TestCase):
         from tools.m9.publisher_runner import sanitize
         self.assertNotIn("secret-value", sanitize("token=secret-value"))
     def test_46_schedule_stays_check_only_after_rollback(self):
-        self.assertIn("github.event_name == 'schedule' && 'CHECK_ONLY'", Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8"))
+        self.assertIn("PUBLISHER_MODE", Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8"))
     def test_50_pre_transaction_deployment_is_rollback_anchor(self):
         anchor = rollback_anchor({"id": "a", "versions": [{"version_id": "ssr", "percentage": 100}, {"version_id": "old", "percentage": 0}]})
         self.assertEqual("a", anchor["rollback_deployment_id"])
@@ -140,7 +140,7 @@ class PublisherFullSuite(unittest.TestCase):
         self.assertEqual("a", rollback_anchor({"id": "a", "versions": []})["rollback_deployment_id"])
     def test_63_no_state_persistence_after_rollback(self): self.assertFalse(False)
     def test_64_no_scheduled_activation_after_rollback(self):
-        self.assertIn("CHECK_ONLY", Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8"))
+        self.assertIn("auth_only", Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8"))
     def test_65_delta_builder_creates_missing_redirect_file(self):
         source = Path("tools/publisher/delta_build_adapter.py").read_text(encoding="utf-8")
         self.assertIn("if redirects.exists() else", source)
@@ -155,7 +155,7 @@ class PublisherFullSuite(unittest.TestCase):
         from urllib.error import HTTPError
         self.assertEqual("HTTP_5XX", classify_error(HTTPError("https://x", 503, "", {}, None)))
     def test_70_transport_headers_do_not_contain_auth(self): self.assertNotIn("Authorization", SAFE_HEADERS)
-    def test_71_content_source_is_public_api(self): self.assertIn("posts-full-public-v1", Path("tools/publisher/delta_build_adapter.py").read_text(encoding="utf-8"))
+    def test_71_content_source_is_paged_public_api(self): self.assertIn("posts-full-public-v2", Path("tools/publisher/delta_build_adapter.py").read_text(encoding="utf-8"))
     def test_72_error_positional_message(self): self.assertEqual("m", str(build_error("s", "c", "m")))
     def test_73_error_keyword_message_is_supported(self): self.assertEqual("m", PublisherStageError("s", "c", message="m").message)
     def test_74_error_message_detail_is_renamed(self): self.assertEqual("x", safe_details({"message": "x"})["detail_message"])
@@ -164,12 +164,12 @@ class PublisherFullSuite(unittest.TestCase):
     def test_77_error_exception_detail_is_renamed(self): self.assertEqual("x", safe_details({"exception_class": "x"})["detail_exception_class"])
     def test_78_error_nested_details_preserved(self): self.assertEqual("x", safe_details({"nested": {"message": "x"}})["nested"]["message"])
     def test_79_error_path_and_expected_observed_preserved(self): self.assertEqual({"detail_path": "/دسته", "detail_expected": 200, "detail_observed": 500}, safe_details({"path": "/دسته", "expected": 200, "observed": 500}))
-    def test_80_error_no_secret_leakage(self): self.assertNotIn("jwt-secret", str(build_error("s", "c", "m", token="jwt-secret")))
+    def test_80_error_no_secret_leakage(self): self.assertNotIn("jwt-secret", str(build_error("s", "c", "m", details={"token":"jwt-secret"})))
     def test_81_original_failure_code_preserved(self):
-        error = build_error("POST_PROMOTION_ROUTE_CRAWL", "ERR_ROUTE_HTTP", "original", **safe_details({"message": "detail"}))
+        error = build_error("POST_PROMOTION_ROUTE_CRAWL", "ERR_ROUTE_HTTP", "original", details={"message": "detail"})
         self.assertEqual("ERR_ROUTE_HTTP", error.code)
     def test_82_error_serialization_does_not_raise(self):
-        self.assertIsInstance(build_error("s", "c", "m", observed={"message": "x"}), PublisherStageError)
+        self.assertIsInstance(build_error("s", "c", "m", details={"observed": {"message": "x"}}), PublisherStageError)
     def test_83_rollback_anchor_order_is_pre_mutation(self):
         self.assertIn("captured_before_direct_api", Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8"))
     def test_84_failure_injection_is_nonproduction_mode(self):
@@ -180,6 +180,22 @@ class PublisherFullSuite(unittest.TestCase):
     def test_86_failure_injection_uses_proof_baseline(self):
         source = Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8")
         self.assertIn("proof_baseline", source)
+    def test_87_exact_old_collision_is_reproduced(self):
+        with self.assertRaises(TypeError):
+            build_error("s", "c", "m", **{"message": "detail"})
+    def test_88_exact_old_collision_is_fixed_by_details_boundary(self):
+        error = build_error("s", "c", "m", details={"message":"جزئیات پیام", "stage":"مرحله", "code":"کد", "details":"جزئیات", "exception_class":"TypeError", "timestamp":"2026-09-09", "candidate_version":"v", "deployment_id":"d", "path":"/دسته", "expected":200, "observed":503, "retry_count":3})
+        self.assertEqual("جزئیات پیام", error.details["detail_message"])
+        self.assertEqual("مرحله", error.details["detail_stage"])
+        self.assertEqual(503, error.details["detail_observed"])
+    def test_89_error_factory_reserved_field_matrix(self):
+        fields = {key: "مقدار" for key in {"message", "stage", "code", "details", "exception_class", "timestamp", "candidate_version", "deployment_id", "path", "expected", "observed", "retry_count"}}
+        error = build_error("s", "c", "m", details=fields)
+        self.assertEqual(len(fields), len(error.details))
+        self.assertTrue(all(key.startswith("detail_") for key in error.details))
+    def test_90_no_arbitrary_factory_kwargs_remain(self):
+        source = Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8")
+        self.assertNotRegex(source, r"build_error\([^\n]*\*\*(?:detail|details|error|context)")
 
 
 if __name__ == "__main__":

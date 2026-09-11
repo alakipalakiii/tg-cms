@@ -18,14 +18,14 @@ from urllib.parse import quote
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from publisher.core import fingerprint
 from publisher import static_build_adapter
-from publisher import deployment
+from publisher import cloudflare_wrangler as deployment
 from publisher.rollback import automatic_rollback
 from publisher.post_deploy_validator import capture_zero_origin, validate_public, validate_zero_origin
 from publisher.state_machine import promotion_precondition, rollback_anchor, verify_promotion_precondition
-from publisher.content_transport import fetch_json
+from publisher.export_v2 import export_complete
 from publisher.error_contract import PublisherStageError, build_error, safe_details
 
-API = os.environ.get("MAHOON_PUBLIC_CONTENT_API", "https://api.mahoonartmagazine.ir/posts-full-public-v1?limit=2000")
+API = os.environ.get("MAHOON_PUBLIC_CONTENT_API", "https://api.mahoonartmagazine.ir/posts-full-public-v2")
 STATE = Path(os.environ.get("MAHOON_PUBLISHER_STATE", "publisher-state/production-content-fingerprint.json"))
 
 
@@ -63,8 +63,10 @@ def public_path(route: str) -> str:
 
 
 def export_content() -> tuple[dict, str]:
-    payload, _transport = fetch_json(API)
-    posts = payload.get("posts", payload if isinstance(payload, list) else [])
+    exported, proof = export_complete(API)
+    Path("runner-evidence").mkdir(parents=True, exist_ok=True)
+    Path("runner-evidence/v2-export-adapter-proof.json").write_text(json.dumps(proof, ensure_ascii=False, indent=2), encoding="utf-8")
+    posts = exported.get("posts", [])
     stable = [{key: value for key, value in post.items() if key not in {"view_count", "last_viewed_at"}}
               for post in sorted(posts, key=lambda item: int(item.get("id", 0)))]
     exported = {"contract": "PUBLISHED_CONTENT_DELTA_CONTRACT_V2", "count": len(stable), "posts": stable}
@@ -84,6 +86,11 @@ def main() -> int:
                       "unchanged": unchanged, "state_present": STATE.exists()}, ensure_ascii=False))
     if mode == "CHECK_ONLY":
         return 0 if unchanged else 3
+    if mode == "PUBLISH" and unchanged:
+        print(json.dumps({"mode": mode, "no_change_detected": True, "upload_performed": False,
+                          "new_version_created": False, "deployment_mutation": False,
+                          "traffic_mutation": False}, ensure_ascii=False))
+        return 0
     out = Path(os.environ.get("MAHOON_BUILD_OUTPUT", "runner-build/static"))
     build = static_build_adapter.build(out)
     media_manifest = Path("runner-build/production-media-manifest.json")
@@ -114,7 +121,6 @@ def main() -> int:
         os.environ["MAHOON_CRAWL_BASE"] = "https://mahoon-static-proof.morentoofficial.workers.dev"
         os.environ["MAHOON_OVERRIDE_WORKER"] = "mahoon-static-proof"
         os.environ["MAHOON_FAILURE_INJECTION_NO_PERSISTED_MEDIA"] = "1"
-    os.environ["MAHOON_CREATE_VERSION_ONLY"] = "1"
     pre_promotion = deployment.active_deployment()
     rollback_state = rollback_anchor(pre_promotion)
     if mode == "FAILURE_INJECTION":
@@ -125,21 +131,27 @@ def main() -> int:
         os.environ["MAHOON_SSR_VERSION"] = proof_baseline
     Path("runner-evidence").mkdir(parents=True, exist_ok=True)
     Path("runner-evidence/rollback-anchor-order.json").write_text(json.dumps({"phase": "PRE_DEPLOYMENT_MUTATION", "rollback_anchor": rollback_state, "captured_before_direct_api": True}, ensure_ascii=False, indent=2), encoding="utf-8")
-    proc = subprocess.run([sys.executable, "tools/publisher/cloudflare_direct_api.py"], text=True, capture_output=True)
-    if proc.returncode != 0:
-        safe_error = " ".join(line for line in proc.stderr.splitlines() if "TOKEN" not in line.upper() and "JWT" not in line.upper())[-1200:]
-        print("PUBLISHER_DIRECT_API_ERROR: " + safe_error, file=sys.stderr)
-        print("PUBLISHER_DIRECT_API_FAILED", file=sys.stderr)
+    route_data = json.loads(route_manifest.read_text(encoding="utf-8"))
+    sealed_root = Path("runner-evidence/publisher-sealed") / digest / "site"
+    sealed_root.parent.mkdir(parents=True, exist_ok=True)
+    if not sealed_root.exists():
+        import shutil
+        shutil.copytree(out, sealed_root)
+    seal_env = os.environ.copy()
+    seal_env.update({"MAHOON_SEALED_SITE": str(sealed_root), "MAHOON_CONTENT_FINGERPRINT": digest,
+                     "MAHOON_ROUTE_HASH": fingerprint(route_data), "MAHOON_MEDIA_HASH": "runtime-media",
+                     "MAHOON_ASSET_HASH": "runtime-assets"})
+    sealed = subprocess.run([sys.executable, "tools/m9/seal_artifact.py"], text=True, capture_output=True, env=seal_env)
+    if sealed.returncode:
+        print("PUBLISHER_SEAL_FAILED", file=sys.stderr)
         return 13
-    version_id = None
-    for line in reversed(proc.stdout.splitlines()):
-        try:
-            value = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        version_id = value.get("version_id") or version_id
-    if not version_id:
-        print("PUBLISHER_VERSION_ID_MISSING", file=sys.stderr)
+    config_path = Path("runner-evidence/publisher-sealed-wrangler.jsonc")
+    config_path.write_text(json.dumps({"name": target_worker, "main": str(Path("runner-evidence/static-version-main.js").resolve()),
+                                       "compatibility_date": "2026-09-08", "assets": {"directory": str(sealed_root.resolve()), "html_handling": "auto-trailing-slash", "not_found_handling": "404-page"}}, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        version_id = deployment.upload_version(target_worker, sealed_root, config_path, "MAHOON-publisher-sealed-candidate")
+    except Exception as exc:
+        print("PUBLISHER_WRANGLER_UPLOAD_FAILED: " + sanitize(str(exc)), file=sys.stderr)
         return 14
     zero_percent_response = deployment.deployment(version_id, os.environ.get("MAHOON_SSR_VERSION", "b660c7ff-9042-4b4e-ab14-63211aa9c1f1"), 0, 100)
     zero_percent_deployment_id = (zero_percent_response.get("result") or {}).get("id") if isinstance(zero_percent_response, dict) else None
@@ -169,7 +181,7 @@ def main() -> int:
         Path("runner-evidence/post-validator-override.json").write_text(json.dumps({"public": override_public, "zero_origin": override_zero, "route_count": len(proof_routes), "post_count": sum(p.startswith('/post/') for p in proof_routes), "PASS": override_public.get("PASS") and override_zero.get("PASS")}, ensure_ascii=False, indent=2), encoding="utf-8")
         if not (override_public.get("PASS") and override_zero.get("PASS")):
             details = (override_public.get("failure_details") or [{}])[0]
-            error = build_error("POST_PROMOTION_ROUTE_CRAWL", "ERR_ROUTE_HTTP", "override validator failed", **details)
+            error = build_error("POST_PROMOTION_ROUTE_CRAWL", "ERR_ROUTE_HTTP", "override validator failed", details=details)
             write_safe_error(error.stage, error.code, error, version_id, zero_percent_deployment_id, expected="all canonical routes HTTP 200", observed=details)
             print("PUBLISHER_OVERRIDE_VALIDATOR_FAILED", file=sys.stderr)
             return 17
@@ -182,7 +194,7 @@ def main() -> int:
     guard_pass, guard_diagnostics = verify_promotion_precondition(current_before, promotion_anchor, os.environ.get("MAHOON_WORKER", "mahoon-art-magazine"))
     Path("runner-evidence/promotion-precondition.json").write_text(json.dumps({"rollback_anchor": rollback_state, "promotion_precondition_anchor": promotion_anchor, "diagnostics": guard_diagnostics, "PASS": guard_pass}, ensure_ascii=False, indent=2), encoding="utf-8")
     if not guard_pass:
-        error = build_error("DEPLOYMENT_STATE_VERIFICATION", "ERR_DEPLOYMENT_STATE_DRIFT", "promotion precondition changed after intentional zero-percent deployment", expected=guard_diagnostics.get("expected"), observed=guard_diagnostics.get("observed"), state_machine_phase="STATE_3_IMMEDIATE_PRE_PROMOTION_READ")
+        error = build_error("DEPLOYMENT_STATE_VERIFICATION", "ERR_DEPLOYMENT_STATE_DRIFT", "promotion precondition changed after intentional zero-percent deployment", details={"expected": guard_diagnostics.get("expected"), "observed": guard_diagnostics.get("observed"), "state_machine_phase":"STATE_3_IMMEDIATE_PRE_PROMOTION_READ"})
         write_safe_error(error.stage, error.code, error, version_id, current_before.get("id"), **getattr(error, "details", {}))
         return 18
     previous = rollback_state["deployment"]
@@ -195,10 +207,10 @@ def main() -> int:
         try:
             promoted = deployment.wait_for_active(version_id, 100, 0)
         except Exception as exc:
-            raise build_error("DEPLOYMENT_STATE_VERIFICATION", "ERR_DEPLOYMENT_PROPAGATION_TIMEOUT", str(exc), expected={version_id: 100}, observed=None) from exc
+            raise build_error("DEPLOYMENT_STATE_VERIFICATION", "ERR_DEPLOYMENT_PROPAGATION_TIMEOUT", str(exc), details={"expected": {version_id: 100}, "observed": None}) from exc
         promoted_deployment_id = promoted.get("id") or promoted_deployment_id
         if mode == "FAILURE_INJECTION":
-            raise build_error("POST_PROMOTION_FAILURE_INJECTION", "ERR_TEST_POST_PROMOTION", "controlled post-promotion failure", candidate_version=version_id, deployment_id=promoted_deployment_id)
+            raise build_error("POST_PROMOTION_FAILURE_INJECTION", "ERR_TEST_POST_PROMOTION", "controlled post-promotion failure", details={"candidate_version": version_id, "deployment_id": promoted_deployment_id})
         route_data = json.loads(Path("publisher-state/published-route-manifest.json").read_text(encoding="utf-8"))
         routes = [public_path(route) for route in route_data.get("routes", [])]
         public = validate_public(os.environ.get("MAHOON_PRODUCTION_ORIGIN", "https://mahoonartmagazine.ir"), routes)
@@ -210,9 +222,9 @@ def main() -> int:
         Path("runner-evidence/production-validation.json").write_text(json.dumps({"public": public, "zero_origin": zero, "PASS": production_pass}, ensure_ascii=False, indent=2), encoding="utf-8")
         if not public.get("PASS"):
             detail = (public.get("failure_details") or [{}])[0]
-            raise build_error("POST_PROMOTION_ROUTE_CRAWL", "ERR_ROUTE_HTTP", "public validator failed", **detail)
+            raise build_error("POST_PROMOTION_ROUTE_CRAWL", "ERR_ROUTE_HTTP", "public validator failed", details=detail)
         if not zero.get("PASS"):
-            raise build_error("POST_PROMOTION_ZERO_ORIGIN", "ERR_ZERO_ORIGIN", "zero-origin validator failed", expected=0, observed=zero)
+            raise build_error("POST_PROMOTION_ZERO_ORIGIN", "ERR_ZERO_ORIGIN", "zero-origin validator failed", details={"expected": 0, "observed": zero})
         production_env = os.environ.copy()
         production_env["MAHOON_DISABLE_VERSION_OVERRIDE"] = "1"
         production_env["MAHOON_CRAWL_OUTPUT"] = "runner-evidence/production-crawl"
@@ -221,7 +233,7 @@ def main() -> int:
         production_summary = json.loads(production_summary_path.read_text(encoding="utf-8")) if production_summary_path.exists() else {}
         production_crawl_pass = production_crawl.returncode == 0 and production_summary.get("html_final_200") == production_summary.get("html_routes") and production_summary.get("post_final_200") == production_summary.get("post_routes") and not any(production_summary.get(key, 0) for key in ("broken_critical_links", "orphan_posts", "duplicate_canonicals", "redirect_loops", "remote_reader_media_dependencies", "workers_dev_leaks", "preview_url_leaks", "post_seo_failures"))
         if not production_crawl_pass:
-            raise build_error("POST_PROMOTION_ROUTE_CRAWL", "ERR_PRODUCTION_CRAWL", "production crawl failed", expected="all canonical routes and posts PASS", observed=production_summary)
+            raise build_error("POST_PROMOTION_ROUTE_CRAWL", "ERR_PRODUCTION_CRAWL", "production crawl failed", details={"expected": "all canonical routes and posts PASS", "observed": production_summary})
         Path("runner-evidence/production-validation.json").write_text(json.dumps({"public": public, "zero_origin": zero, "production_crawl": production_summary, "PASS": True}, ensure_ascii=False, indent=2), encoding="utf-8")
         published_state = Path("runner-evidence/published-state")
         published_state.mkdir(parents=True, exist_ok=True)
