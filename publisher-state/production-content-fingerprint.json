@@ -1,8 +1,8 @@
 {
   "contract": "PUBLISHED_CONTENT_DELTA_CONTRACT_V2",
-  "fingerprint": "87a4a1f4518de3f5e04835912a78463259295c937ca73f67dd84fa4c25106389",
-  "post_count": 820,
-  "source": "approved read-only posts-full-public-v1 export",
-  "state_origin": "existing approved production content",
+  "fingerprint": "9a432cb77b8bf5af0dbd8d6363c4a82af633481975628ead1aad44140a7134bb",
+  "post_count": 1327,
+  "source": "locked cutover V2 snapshot",
+  "state_origin": "M9-FINAL sealed Static production cutover",
   "published": true
 }
