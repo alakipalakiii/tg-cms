@@ -9,6 +9,7 @@ import {
 } from "../../lib/taxonomy";
 
 import AudioPostLayout from "../../components/audio/AudioPostLayout.astro";
+import { dedupePublicListingPosts } from "../../lib/publicListingDedupe";
 
 export const prerender = false;
 
@@ -439,7 +440,7 @@ const displayTextBlocks =
     : textBlocks;
 
 const relatedPosts = post
-  ? relatedCandidates
+  ? dedupePublicListingPosts(relatedCandidates)
       .filter((item) => item.id !== post.id && item.slug !== post.slug)
       .slice(0, 5)
   : [];
