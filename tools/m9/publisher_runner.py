@@ -23,6 +23,7 @@ from publisher.rollback import automatic_rollback
 from publisher.post_deploy_validator import capture_zero_origin, validate_public, validate_zero_origin
 from publisher.state_machine import promotion_precondition, rollback_anchor, verify_promotion_precondition
 from publisher.export_v2 import export_complete
+from publisher.content_revision import DEFAULT_ENDPOINT, fetch_public_content_revision
 from publisher.error_contract import PublisherStageError, build_error, safe_details
 
 API = os.environ.get("MAHOON_PUBLIC_CONTENT_API", "https://api.mahoonartmagazine.ir/posts-full-public-v2")
@@ -62,13 +63,20 @@ def public_path(route: str) -> str:
     return quote(logical, safe="/%:@!$&'()*+,;=-._~")
 
 
-def export_content() -> tuple[dict, str]:
+def export_content(snapshot_path: Path | None = None) -> tuple[dict, str]:
     exported, proof = export_complete(API)
     Path("runner-evidence").mkdir(parents=True, exist_ok=True)
     Path("runner-evidence/v2-export-adapter-proof.json").write_text(json.dumps(proof, ensure_ascii=False, indent=2), encoding="utf-8")
     posts = exported.get("posts", [])
     stable = [{key: value for key, value in post.items() if key not in {"view_count", "last_viewed_at"}}
               for post in sorted(posts, key=lambda item: int(item.get("id", 0)))]
+    if snapshot_path is not None:
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        snapshot_path.write_text(json.dumps({
+            "contract": "POSTS_FULL_PUBLIC_SNAPSHOT_V2",
+            "snapshot_total_count": len(stable),
+            "payload": {"posts": stable}
+        }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     exported = {"contract": "PUBLISHED_CONTENT_DELTA_CONTRACT_V2", "count": len(stable), "posts": stable}
     return exported, fingerprint(exported)
 
@@ -78,31 +86,81 @@ def main() -> int:
     if mode not in {"CHECK_ONLY", "PROOF_ZERO_PERCENT", "PUBLISH", "FAILURE_INJECTION"}:
         print("PUBLISHER_MODE_INVALID", file=sys.stderr)
         return 2
-    exported, digest = export_content()
-    state_fingerprint = json.loads(STATE.read_text(encoding="utf-8")).get("fingerprint") if STATE.exists() else None
-    previous = (os.environ.get("PUBLISHER_EXPECTED_FINGERPRINT") or state_fingerprint) if mode == "CHECK_ONLY" else state_fingerprint
-    unchanged = previous == digest
-    print(json.dumps({"mode": mode, "count": exported["count"], "fingerprint": digest,
-                      "unchanged": unchanged, "state_present": STATE.exists()}, ensure_ascii=False))
-    if mode == "CHECK_ONLY":
-        return 0 if unchanged else 3
-    if mode == "PUBLISH" and unchanged:
+    if not STATE.exists():
+        print("PUBLISHED_REVISION_STATE_MISSING", file=sys.stderr)
+        return 4
+    state = json.loads(STATE.read_text(encoding="utf-8"))
+    published_revision = state.get("published_content_revision")
+    if not isinstance(published_revision, int) or published_revision < 1:
+        print("PUBLISHED_REVISION_STATE_INVALID", file=sys.stderr)
+        return 4
+
+    try:
+        current_revision, changed_at, revision_meta = fetch_public_content_revision()
+    except Exception as exc:
+        print("PUBLIC_CONTENT_REVISION_LOOKUP_FAILED: " + sanitize(str(exc)), file=sys.stderr)
+        return 5
+
+    revision_evidence = {
+        "endpoint": os.environ.get(
+            "MAHOON_PUBLIC_CONTENT_REVISION_API",
+            DEFAULT_ENDPOINT
+        ),
+        "request_count": 1,
+        "current_revision": current_revision,
+        "changed_at": changed_at,
+        "published_content_revision": published_revision,
+        "NO_CHANGE_DETECTED": current_revision == published_revision,
+        "PASS": True
+    }
+    Path("runner-evidence").mkdir(parents=True, exist_ok=True)
+    Path("runner-evidence/public-content-revision-lookup.json").write_text(
+        json.dumps(revision_evidence, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    unchanged = current_revision == published_revision
+    print(json.dumps({
+        "mode": mode,
+        "current_revision": current_revision,
+        "published_content_revision": published_revision,
+        "unchanged": unchanged,
+        "revision_request_count": 1,
+        "state_present": True
+    }, ensure_ascii=False))
+    if unchanged:
         print(json.dumps({"mode": mode, "no_change_detected": True, "upload_performed": False,
-                          "new_version_created": False, "deployment_mutation": False,
-                          "traffic_mutation": False}, ensure_ascii=False))
+                          "full_v2_exports": 0, "build": False, "media_processing": False,
+                          "seal": False, "upload_performed": False, "version_created": False,
+                          "deployment_mutation": False, "traffic_mutation": False,
+                          "published_state_mutation": False}, ensure_ascii=False))
         return 0
+    if mode == "CHECK_ONLY":
+        print("CHANGED_REVISION_DETECTED_CHECK_ONLY", file=sys.stderr)
+        return 3
+
+    if mode == "PUBLISH":
+        # Changed-revision PUBLISH continues into the single transaction below.
+        pass
+
+    snapshot_path = Path(os.environ.get(
+        "MAHOON_PUBLISHED_CONTENT_SNAPSHOT",
+        "runner-evidence/current-v2-snapshot.json"
+    ))
+    exported, digest = export_content(snapshot_path)
+    os.environ["MAHOON_PUBLISHED_CONTENT_SNAPSHOT"] = str(snapshot_path)
+    os.environ["MAHOON_SNAPSHOT_REVISION"] = str(current_revision)
     out = Path(os.environ.get("MAHOON_BUILD_OUTPUT", "runner-build/static"))
-    build = static_build_adapter.build(out)
+    build = static_build_adapter.build(out, snapshot_path)
     media_manifest = Path("runner-build/production-media-manifest.json")
     route_manifest = Path("runner-build/published-route-manifest.json")
     media_manifest.parent.mkdir(parents=True, exist_ok=True)
     media_manifest.write_text(Path("publisher-state/production-media-manifest.json").read_text(encoding="utf-8"), encoding="utf-8")
-    route_manifest.write_text(Path("publisher-state/published-route-manifest.json").read_text(encoding="utf-8"), encoding="utf-8")
-    if not unchanged:
-        delta = subprocess.run([sys.executable, "tools/publisher/delta_build_adapter.py", "--output", str(out), "--media-manifest", str(media_manifest), "--route-manifest", str(route_manifest)], text=True, capture_output=True)
-        if delta.returncode != 0:
-            print("PUBLISHER_DELTA_BUILD_FAILED: " + sanitize(delta.stderr), file=sys.stderr)
-            return 11
+    route_source = Path(os.environ.get(
+        "MAHOON_ROUTE_MANIFEST",
+        "publisher-state/current-accepted-route-manifest.json"
+    ))
+    route_manifest.write_text(route_source.read_text(encoding="utf-8"), encoding="utf-8")
+    # The immutable snapshot written above is the only V2 input for every downstream gate.
+    # In particular, do not invoke delta_build_adapter: it used to perform a second V2 export.
     os.environ["MAHOON_MEDIA_MANIFEST"] = str(media_manifest)
     os.environ["MAHOON_ROUTE_MANIFEST"] = str(route_manifest)
     gate = static_build_adapter.validate(out)
@@ -175,7 +233,7 @@ def main() -> int:
         print("PUBLISHER_CANDIDATE_VALIDATION_FAILED", file=sys.stderr)
         return 16
     if mode == "PROOF_ZERO_PERCENT":
-        proof_routes = [public_path(route) for route in json.loads(Path("publisher-state/published-route-manifest.json").read_text(encoding="utf-8")).get("routes", [])]
+        proof_routes = [public_path(route) for route in json.loads(route_source.read_text(encoding="utf-8")).get("routes", [])]
         override_public = validate_public(os.environ.get("MAHOON_PRODUCTION_ORIGIN", "https://mahoonartmagazine.ir"), proof_routes, version_id)
         override_zero = capture_zero_origin(os.environ.get("MAHOON_PRODUCTION_ORIGIN", "https://mahoonartmagazine.ir"), proof_routes, version_id)
         Path("runner-evidence/post-validator-override.json").write_text(json.dumps({"public": override_public, "zero_origin": override_zero, "route_count": len(proof_routes), "post_count": sum(p.startswith('/post/') for p in proof_routes), "PASS": override_public.get("PASS") and override_zero.get("PASS")}, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -211,7 +269,7 @@ def main() -> int:
         promoted_deployment_id = promoted.get("id") or promoted_deployment_id
         if mode == "FAILURE_INJECTION":
             raise build_error("POST_PROMOTION_FAILURE_INJECTION", "ERR_TEST_POST_PROMOTION", "controlled post-promotion failure", details={"candidate_version": version_id, "deployment_id": promoted_deployment_id})
-        route_data = json.loads(Path("publisher-state/published-route-manifest.json").read_text(encoding="utf-8"))
+        route_data = json.loads(route_source.read_text(encoding="utf-8"))
         routes = [public_path(route) for route in route_data.get("routes", [])]
         public = validate_public(os.environ.get("MAHOON_PRODUCTION_ORIGIN", "https://mahoonartmagazine.ir"), routes)
         zero_evidence = capture_zero_origin(os.environ.get("MAHOON_PRODUCTION_ORIGIN", "https://mahoonartmagazine.ir"), routes)
@@ -238,7 +296,11 @@ def main() -> int:
         published_state = Path("runner-evidence/published-state")
         published_state.mkdir(parents=True, exist_ok=True)
         (published_state / "production-content-fingerprint.json").write_text(
-            json.dumps({"fingerprint": digest, "count": exported["count"]}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            json.dumps({
+                "fingerprint": digest,
+                "count": exported["count"],
+                "published_content_revision": current_revision
+            }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         for name in ("production-media-manifest.json", "published-route-manifest.json"):
             source = Path("runner-build") / name
             (published_state / name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")

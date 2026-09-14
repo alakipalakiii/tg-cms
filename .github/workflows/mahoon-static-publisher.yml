@@ -74,8 +74,17 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       PUBLISHER_EXPECTED_FINGERPRINT: ${{ inputs.expected_fingerprint }}
       MAHOON_PUBLISH_READY: ${{ inputs.ready }}
+      MAHOON_PUBLIC_CONTENT_REVISION_API: https://mahoon-content-revision.morentoofficial.workers.dev/public/content-revision-v1
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Node for changed-revision builds
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/dreary-disk/package-lock.json
+      - name: Install static site dependencies
+        run: npm ci --prefix website/dreary-disk
       - name: Run shared publisher
         id: execute
         run: python tools/m9/publisher_runner.py
@@ -124,11 +133,13 @@ jobs:
           cp runner-evidence/published-state/production-content-fingerprint.json publisher-state/production-content-fingerprint.json
           cp runner-evidence/published-state/production-media-manifest.json publisher-state/production-media-manifest.json
           cp runner-evidence/published-state/published-route-manifest.json publisher-state/published-route-manifest.json
-          test -z "$(git diff --name-only -- publisher-state | grep -v -E '^publisher-state/(production-content-fingerprint|production-media-manifest|published-route-manifest)\.json$' || true)"
+          cp runner-evidence/published-state/published-route-manifest.json publisher-state/current-accepted-route-manifest.json
+          test -z "$(git diff --name-only -- publisher-state | grep -v -E '^publisher-state/(production-content-fingerprint|production-media-manifest|published-route-manifest|current-accepted-route-manifest)\.json$' || true)"
       - name: Persist only approved publisher state
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add publisher-state/production-content-fingerprint.json publisher-state/production-media-manifest.json publisher-state/published-route-manifest.json
+          git add publisher-state/current-accepted-route-manifest.json
           git diff --cached --quiet || git commit -m "chore: persist published publisher state"
           git push

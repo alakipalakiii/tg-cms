@@ -16,14 +16,23 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from content_taxonomy import canonical_category, exact_hashtags
-from public_listing_dedupe import dedupe_public_listing_posts
-from static_media_resolver import PublishedMediaResolver
+try:
+    from .content_taxonomy import canonical_category, exact_hashtags
+except ImportError:
+    from publisher.content_taxonomy import canonical_category, exact_hashtags
+try:
+    from .public_listing_dedupe import dedupe_public_listing_posts
+except ImportError:
+    from publisher.public_listing_dedupe import dedupe_public_listing_posts
+try:
+    from .static_media_resolver import PublishedMediaResolver
+except ImportError:
+    from publisher.static_media_resolver import PublishedMediaResolver
 
 ROOT = Path(__file__).resolve().parents[2]
 PROJECT = ROOT / "website" / "dreary-disk"
 BASE = ROOT / "publisher-base"
-STATE = ROOT / os.environ.get("MAHOON_ROUTE_MANIFEST", "publisher-state/published-route-manifest.json")
+STATE = ROOT / os.environ.get("MAHOON_ROUTE_MANIFEST", "publisher-state/current-accepted-route-manifest.json")
 API_MEDIA_ATTRIBUTE = re.compile(
     r"(?P<attr>\b(?:src|href))(?P<eq>\s*=\s*)(?P<q>[\"'])"
     r"(?P<url>https?://(?:api\.mahoonartmagazine\.ir|localhost|127\.0\.0\.1)(?::\d+)?/media/[^\"'<>\s?]+)"
@@ -222,7 +231,7 @@ def build(out: Path) -> dict:
     snapshot_path = ROOT / os.environ.get(
         "MAHOON_PUBLISHED_CONTENT_SNAPSHOT", "runner-evidence/cutover-current-v2-snapshot.json"
     )
-    state_path = ROOT / os.environ.get("MAHOON_ROUTE_MANIFEST", "publisher-state/published-route-manifest.json")
+    state_path = ROOT / os.environ.get("MAHOON_ROUTE_MANIFEST", "publisher-state/current-accepted-route-manifest.json")
     if snapshot_path.is_file() and os.environ.get("MAHOON_SNAPSHOT_API", "1") == "1":
         _write_locked_snapshot_module(snapshot_path)
         build_env["PUBLIC_MAHOON_SNAPSHOT_BINDING"] = "1"

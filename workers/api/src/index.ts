@@ -541,6 +541,37 @@ const SITE_SETTING_KEYS = [
 
 const SITE_SETTING_KEY_SET = new Set(SITE_SETTING_KEYS);
 
+const PUBLIC_CONTENT_REVISION_KEY = "public_content_revision";
+
+function parsePublicContentRevision(value) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(value || ""));
+  } catch {
+    throw new Error("public_content_revision is invalid");
+  }
+
+  const revision = Number(parsed?.revision);
+  const changedAt = cleanText(parsed?.changed_at);
+  if (!Number.isSafeInteger(revision) || revision < 1 || !changedAt) {
+    throw new Error("public_content_revision is invalid");
+  }
+
+  return { revision, changed_at: changedAt };
+}
+
+async function readPublicContentRevision(env) {
+  const row = await env.DB.prepare(
+    "SELECT value FROM site_settings WHERE key = ? LIMIT 1"
+  ).bind(PUBLIC_CONTENT_REVISION_KEY).first();
+
+  if (!row) {
+    throw new Error("public_content_revision is unavailable");
+  }
+
+  return parsePublicContentRevision(row.value);
+}
+
 function isMissingSiteSettingsTable(error) {
   const message = String(error?.message || error || "").toLowerCase();
   return message.includes("site_settings") && (
@@ -3370,6 +3401,18 @@ export default {
           ok: true,
           settings
         });
+      }
+
+      if (request.method === "GET" && url.pathname === "/public/content-revision-v1") {
+        try {
+          const revision = await readPublicContentRevision(env);
+          return json(revision);
+        } catch {
+          // A missing or malformed control row must fail closed; it is never NO_CHANGE.
+          return json({
+            error: "Public content revision unavailable"
+          }, 503);
+        }
       }
 
       if (url.pathname.startsWith("/admin")) {

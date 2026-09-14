@@ -1,4 +1,5 @@
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -17,16 +18,19 @@ class PublisherAdapterTests(unittest.TestCase):
     def test_metadata_manifest_has_immutable_media_proof(self):
         data = json.loads(Path("publisher-state/production-media-manifest.json").read_text(encoding="utf-8"))
         media = {k: v for k, v in data.items() if k.startswith("/media/")}
-        self.assertEqual(len(media), 489)
+        # The accepted P0-closed media manifest contains six additional immutable
+        # entries compared with the older 489-entry fixture.
+        self.assertEqual(len(media), 495)
         self.assertTrue(all(len(v["mahoon_sha256"]) == 64 and len(v["cloudflare_hash"]) == 32 for v in media.values()))
 
     def test_local_build_route_and_unicode_gate(self):
-        out = Path("publisher-test-adapter-build")
-        build(out)
-        result = validate(out)
-        self.assertTrue(result["PASS"])
-        self.assertEqual(result["missing_html"], 0)
-        self.assertEqual(result["post_jsonld_missing"], 0)
+        with tempfile.TemporaryDirectory(prefix="mahoon-adapter-") as directory:
+            out = Path(directory) / "build"
+            build(out)
+            result = validate(out)
+            self.assertTrue(result["PASS"])
+            self.assertEqual(result["missing_html"], 0)
+            self.assertEqual(result["post_jsonld_missing"], 0)
 
     def test_state_persistence_requires_public_pass(self):
         with self.assertRaises(RuntimeError):

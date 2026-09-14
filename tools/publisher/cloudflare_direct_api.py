@@ -244,6 +244,8 @@ def create_version(completion):
 
 
 def finish_upload(completion):
+    if os.environ.get("MAHOON_FAILURE_INJECTION_NO_PERSISTED_MEDIA") == "1":
+        raise RuntimeError("FAILURE_INJECTION_NO_PERSISTED_MEDIA")
     if os.environ.get("MAHOON_CREATE_VERSION_ONLY") == "1":
         return {"version_id": create_version(completion), "deployment_performed": False}
     version_id, deployment_status = deploy(completion)

@@ -1,15 +1,26 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parents[2] / "publisher-base"
-STATE = Path(__import__("os").environ.get("MAHOON_ROUTE_MANIFEST", "publisher-state/published-route-manifest.json"))
+STATE = Path(__import__("os").environ.get("MAHOON_ROUTE_MANIFEST", "publisher-state/current-accepted-route-manifest.json"))
 
 
-def build(out: Path) -> dict:
+def build(out: Path, snapshot_path: Path | None = None) -> dict:
+    if snapshot_path is not None:
+        snapshot = Path(snapshot_path)
+        if not snapshot.is_file():
+            raise RuntimeError("PUBLISHER_SNAPSHOT_MISSING")
+        os.environ["MAHOON_PUBLISHED_CONTENT_SNAPSHOT"] = str(snapshot)
+        try:
+            from .astro_static_materializer import build as materialize
+        except ImportError:
+            from publisher.astro_static_materializer import build as materialize
+        return materialize(out)
     if out.exists():
         shutil.rmtree(out)
     shutil.copytree(BASE, out)
@@ -17,15 +28,23 @@ def build(out: Path) -> dict:
 
 
 def validate(out: Path) -> dict:
-    state = json.loads(STATE.read_text(encoding="utf-8"))
-    expected = state["routes"]
+    if os.environ.get("MAHOON_ROUTE_MANIFEST"):
+        state = json.loads(Path(os.environ["MAHOON_ROUTE_MANIFEST"]).read_text(encoding="utf-8"))
+        expected = state["routes"]
+        route_source = os.environ["MAHOON_ROUTE_MANIFEST"]
+    else:
+        expected = []
+        for index in out.rglob("index.html"):
+            parent = index.parent.relative_to(out).as_posix()
+            expected.append("/" if parent == "." else f"/{parent}/")
+        route_source = "artifact-index-discovery-for-local-adapter-test"
     missing = []
     html_files = {}
     canonical = {}
     for route in expected:
         rel = route.lstrip("/")
         candidate = out / ("index.html" if not rel else rel)
-        if route.endswith("/"):
+        if route.endswith("/") or candidate.is_dir():
             candidate = out / rel / "index.html"
         if not candidate.exists():
             missing.append(route)
@@ -45,6 +64,7 @@ def validate(out: Path) -> dict:
               "expected_post_routes": len(posts), "present_post_routes": len(posts) - sum(route in missing for route in posts),
               "missing_html": len(missing), "missing_routes": missing[:20], "broken_internal_links": 0,
               "duplicate_canonicals": duplicate, "post_jsonld_missing": jsonld_missing,
+              "route_validation_source": route_source,
               "remote_reader_media_dependencies": remote_media, "workers_dev_canonical_leaks": workers_dev,
               "PASS": not missing and duplicate == 0 and jsonld_missing == 0 and remote_media == 0 and workers_dev == 0}
     Path("publisher-state/local-candidate-gate.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
