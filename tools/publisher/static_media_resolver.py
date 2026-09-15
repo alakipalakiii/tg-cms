@@ -81,7 +81,7 @@ class PublishedMediaResolver:
         if not immutable_path or len(expected_sha) != 64:
             self.stats["unresolved"] += 1
             raise StaticMediaResolutionError(f"STATIC_MEDIA_MAPPING_INVALID:{source_id}")
-        blob = self.store / str(immutable_path).lstrip("/").split("/", 1)[-1]
+        blob = self.store / Path(str(immutable_path)).name
         if not blob.is_file() or hashlib.sha256(blob.read_bytes()).hexdigest() != expected_sha:
             self.stats["unresolved"] += 1
             raise StaticMediaResolutionError(f"STATIC_MEDIA_STORE_INVALID:{source_id}")

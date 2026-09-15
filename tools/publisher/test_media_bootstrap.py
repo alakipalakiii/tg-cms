@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import media_bootstrap
+from static_media_resolver import PublishedMediaResolver
 
 
 JPEG = b"\xff\xd8\xff\xe0" + b"fixture-media"
@@ -69,6 +70,20 @@ class MediaBootstrapTests(unittest.TestCase):
         index = {"entries": [{"source_identifier": "media-1", "immutable_path": f"/media/{digest[:2]}/{digest}.jpg", "sha256": digest, "mime": "image/jpeg"}]}
         result, _manifest, _next = self.run_bootstrap([post(1)], index, lambda _url: (JPEG, "image/jpeg"))
         self.assertEqual(result["unresolved"], 0)
+
+    def test_hydrated_media_resolves_from_the_flat_hash_store(self):
+        digest = hashlib.sha256(JPEG).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            index = root / "index.json"
+            index.write_text(json.dumps({"entries": [{"source_identifier": "media-1", "immutable_path": f"/media/{digest[:2]}/{digest}.jpg", "sha256": digest, "mime": "image/jpeg"}]}), encoding="utf-8")
+            manifest = root / "manifest.json"
+            store = root / "store"
+            with patch.object(media_bootstrap, "_fetch", return_value=(JPEG, "image/jpeg")):
+                media_bootstrap.bootstrap([post(1)], index_path=index, store=store, output_manifest=manifest, output_index=root / "next.json")
+            with patch.dict("os.environ", {"MAHOON_CURRENT_MEDIA_MANIFEST": str(manifest), "MAHOON_IMMUTABLE_MEDIA_INDEX": str(root / "next.json"), "MAHOON_IMMUTABLE_MEDIA_STORE": str(store)}, clear=False):
+                result = PublishedMediaResolver().resolve_public_media("https://api.mahoonartmagazine.ir/media/media-1")
+            self.assertEqual(result["status"], "IMMUTABLE")
 
 
 if __name__ == "__main__":
