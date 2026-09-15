@@ -68,6 +68,14 @@ def _wait_for_preview(port: int, process: subprocess.Popen) -> None:
 def _stop_process(process: subprocess.Popen | None) -> None:
     if process is None or process.poll() is not None:
         return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return
     process.terminate()
     try:
         process.wait(timeout=10)
@@ -259,6 +267,7 @@ def build(out: Path) -> dict:
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        start_new_session=os.name != "nt",
     )
     media_manifest: dict[str, dict] = {}
     prior_media = ROOT / os.environ.get("MAHOON_MEDIA_MANIFEST", "publisher-state/production-media-manifest.json")
