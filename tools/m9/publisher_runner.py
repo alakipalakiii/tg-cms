@@ -23,6 +23,7 @@ from publisher.rollback import automatic_rollback
 from publisher.post_deploy_validator import capture_zero_origin, validate_public, validate_zero_origin
 from publisher.state_machine import promotion_precondition, rollback_anchor, verify_promotion_precondition
 from publisher.export_v2 import export_complete
+from publisher.media_bootstrap import bootstrap as bootstrap_media
 from publisher.content_revision import DEFAULT_ENDPOINT, fetch_public_content_revision
 from publisher.error_contract import PublisherStageError, build_error, safe_details
 
@@ -149,11 +150,17 @@ def main() -> int:
     os.environ["MAHOON_PUBLISHED_CONTENT_SNAPSHOT"] = str(snapshot_path)
     os.environ["MAHOON_SNAPSHOT_REVISION"] = str(current_revision)
     out = Path(os.environ.get("MAHOON_BUILD_OUTPUT", "runner-build/static"))
+    media_bootstrap = bootstrap_media(exported["posts"])
+    os.environ["MAHOON_CURRENT_MEDIA_MANIFEST"] = str(media_bootstrap["manifest"])
+    os.environ["MAHOON_IMMUTABLE_MEDIA_INDEX"] = str(media_bootstrap["index"])
+    os.environ["MAHOON_IMMUTABLE_MEDIA_STORE"] = str(media_bootstrap["store"])
     build = static_build_adapter.build(out, snapshot_path)
     media_manifest = Path("runner-build/production-media-manifest.json")
     route_manifest = Path("runner-build/published-route-manifest.json")
     media_manifest.parent.mkdir(parents=True, exist_ok=True)
-    media_manifest.write_text(Path("publisher-state/production-media-manifest.json").read_text(encoding="utf-8"), encoding="utf-8")
+    if not media_manifest.is_file():
+        print("PUBLISHER_MEDIA_MANIFEST_MISSING", file=sys.stderr)
+        return 12
     route_source = Path(os.environ.get(
         "MAHOON_ROUTE_MANIFEST",
         "publisher-state/current-accepted-route-manifest.json"
@@ -304,6 +311,9 @@ def main() -> int:
         for name in ("production-media-manifest.json", "published-route-manifest.json"):
             source = Path("runner-build") / name
             (published_state / name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        (published_state / "immutable-media-index.json").write_text(
+            Path(media_bootstrap["index"]).read_text(encoding="utf-8"), encoding="utf-8"
+        )
         print(json.dumps({"mode": mode, "promotion": "PASS", "candidate_version": version_id,
                           "validated_version": version_id, "fingerprint": digest,
                           "validated_fingerprint": digest, "production_validation": "PASS",

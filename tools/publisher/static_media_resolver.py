@@ -43,7 +43,13 @@ class PublishedMediaResolver:
             for record in payload.get("records", [])
             if record.get("source_identifier")
         }
-        self.index = json.loads(self.index_path.read_text(encoding="utf-8"))
+        index_payload = json.loads(self.index_path.read_text(encoding="utf-8"))
+        entries = index_payload.get("entries", []) if isinstance(index_payload, dict) else []
+        self.index = {
+            str(item["source_identifier"]): item
+            for item in entries
+            if isinstance(item, dict) and item.get("source_identifier")
+        }
         self.loaded = True
 
     @staticmethod
