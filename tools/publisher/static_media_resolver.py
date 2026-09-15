@@ -64,6 +64,14 @@ class PublishedMediaResolver:
         self._load()
         source_id = self.source_identifier(source_reference)
         record = self.records.get(source_id)
+        if record and record.get("fallback"):
+            self.stats["fallback"] += 1
+            return {
+                "status": "FALLBACK",
+                "fallback_reason": record.get("fallback_reason"),
+                "source_identifier": source_id,
+                "post_ids": record.get("post_ids", []),
+            }
         if record is None or not record.get("sha256"):
             self.stats["unresolved"] += 1
             suffix = f":POST_{post_id}" if post_id is not None else ""
