@@ -20,6 +20,9 @@ export type LockedSnapshotPost = PublicListingPost & {
   canonical_category?: string | null;
 };
 
+export const IS_LOCKED_SNAPSHOT_BUILD =
+  import.meta.env.PUBLIC_MAHOON_SNAPSHOT_BINDING === "1";
+
 export function sortLockedSnapshotPosts(posts: LockedSnapshotPost[]): LockedSnapshotPost[] {
   return sortPublicListingPosts(posts);
 }
@@ -35,4 +38,11 @@ export function lockedSnapshotPosts(category?: string): LockedSnapshotPost[] {
   return category
     ? LOCKED_PUBLIC_LISTING_POSTS.filter((post) => post.canonical_category === category)
     : LOCKED_PUBLIC_LISTING_POSTS;
+}
+
+export function lockedSnapshotPost(slugOrId: string): LockedSnapshotPost | null {
+  const value = String(slugOrId || "");
+  return LOCKED_SNAPSHOT_POSTS.find((post) =>
+    String(post.slug || "") === value || String(post.id) === value
+  ) || null;
 }

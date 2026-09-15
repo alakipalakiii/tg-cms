@@ -1,5 +1,6 @@
 import { escapeXml } from "../lib/posts";
 import { SITE } from "../config";
+import { IS_LOCKED_SNAPSHOT_BUILD, LOCKED_SNAPSHOT_POSTS } from "../lib/lockedSnapshot";
 
 type SitemapPost = {
   id?: number;
@@ -25,6 +26,7 @@ function validDate(value: string | null | undefined): string | null {
 }
 
 async function getSitemapPosts(): Promise<SitemapPost[]> {
+  if (IS_LOCKED_SNAPSHOT_BUILD) return LOCKED_SNAPSHOT_POSTS;
   try {
     const response = await fetch(sitemapPostsEndpoint, {
       method: "GET",

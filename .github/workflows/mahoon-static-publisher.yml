@@ -85,6 +85,8 @@ jobs:
           cache-dependency-path: website/dreary-disk/package-lock.json
       - name: Install static site dependencies
         run: npm ci --prefix website/dreary-disk
+      - name: Run publisher regression tests
+        run: PYTHONPATH=tools/publisher:. python -m unittest discover -s tools/publisher -p 'test_*.py'
       - name: Run shared publisher
         id: execute
         run: python tools/m9/publisher_runner.py

@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { SITE } from "../config";
+import { IS_LOCKED_SNAPSHOT_BUILD } from "../lib/lockedSnapshot";
 
 const DEFAULT_ABOUT_BODY = `ماهون جایی برای مکث، خواندن و دیدن است؛ جایی برای روایت‌هایی که از دل هنر، فرهنگ، تصویر، صدا و نوشتار می‌آیند و با زبانی آرام و دقیق کنار هم قرار می‌گیرند.
 
@@ -27,6 +28,7 @@ async function fetchJsonWithTimeout(url: string, timeoutMs = 1500) {
 }
 
 async function loadSiteSettings() {
+  if (IS_LOCKED_SNAPSHOT_BUILD) return {};
   const payload = await fetchJsonWithTimeout(`${SITE.workerUrl.replace(/\/+$/, "")}/site-settings`);
   return payload?.settings || {};
 }

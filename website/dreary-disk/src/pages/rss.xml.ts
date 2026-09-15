@@ -1,5 +1,6 @@
 import { escapeXml } from "../lib/posts";
 import { SITE } from "../config";
+import { IS_LOCKED_SNAPSHOT_BUILD, lockedSnapshotPosts } from "../lib/lockedSnapshot";
 
 type RssPost = {
   id?: number | null;
@@ -69,6 +70,7 @@ function parseDbDate(value: string | null | undefined): Date | null {
 }
 
 async function getRssPosts(): Promise<RssPost[]> {
+  if (IS_LOCKED_SNAPSHOT_BUILD) return lockedSnapshotPosts().slice(0, 50);
   try {
     const response = await fetch(rssPostsEndpoint, {
       method: "GET",

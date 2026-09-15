@@ -1,4 +1,5 @@
 import { SITE } from "../config";
+import { IS_LOCKED_SNAPSHOT_BUILD, LOCKED_SNAPSHOT_POSTS, lockedSnapshotPost } from "./lockedSnapshot";
 
 export type Post = {
   id: number;
@@ -151,6 +152,10 @@ async function fetchJson(url: string): Promise<any> {
 }
 
 export async function getPosts(limit?: number): Promise<Post[]> {
+  if (IS_LOCKED_SNAPSHOT_BUILD) {
+    const posts = LOCKED_SNAPSHOT_POSTS.map(normalizePost).filter((post) => !post.deleted_at);
+    return typeof limit === "number" && limit > 0 ? posts.slice(0, limit) : posts;
+  }
   try {
     const payload = await fetchJson(`${API_BASE}/`);
     const posts = extractPosts(payload)
@@ -173,6 +178,10 @@ export async function getPosts(limit?: number): Promise<Post[]> {
 }
 
 export async function getPostBySlug(slug: string): Promise<Post | null> {
+  if (IS_LOCKED_SNAPSHOT_BUILD) {
+    const post = lockedSnapshotPost(slug);
+    return post ? normalizePost(post) : null;
+  }
   try {
     const payload = await fetchJson(`${API_BASE}/post/${encodeURIComponent(slug)}`);
     const posts = extractPosts(payload);

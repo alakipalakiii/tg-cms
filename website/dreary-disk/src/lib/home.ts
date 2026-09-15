@@ -69,6 +69,8 @@ export type HomeAdRenderResult = {
   count: number;
 };
 
+import { IS_LOCKED_SNAPSHOT_BUILD, lockedSnapshotPosts } from "./lockedSnapshot";
+
 type NormalizedHomePost = HomePost & {
   id: number | string;
   text: string;
@@ -398,6 +400,27 @@ export async function fetchHomeSnapshot(options: {
   categories: HomeCategory[];
   timeoutMs?: number;
 }): Promise<HomeSnapshot> {
+  if (IS_LOCKED_SNAPSHOT_BUILD) {
+    const allPosts = lockedSnapshotPosts() as HomePost[];
+    const categories = Array.isArray(options.categories) ? options.categories : [];
+    const categoryResults = categories.map((category) => {
+      const posts = lockedSnapshotPosts(category.title) as HomePost[];
+      return { category, posts: posts.slice(0, 10), total: posts.length, ok: true };
+    });
+    return {
+      ok: allPosts.length > 0,
+      status: allPosts.length > 0 ? 200 : 503,
+      posts: allPosts.slice(0, 20),
+      stats: {
+        visible_posts: allPosts.length,
+        active_categories: categoryResults.filter((item) => item.total > 0).length,
+        latest_id: Number(allPosts[0]?.id || 0),
+        text_posts: allPosts.filter((post) => !post.media_type).length
+      },
+      categories: categoryResults,
+      error: allPosts.length ? "" : "No public posts"
+    };
+  }
   // MAHOON_STAGE18E_R5_R4_AUTHORITATIVE_TIMING
   const __mahoonStage18ER5R4StartedAt = Date.now();
   const __mahoonStage18ER5R4Timing = {

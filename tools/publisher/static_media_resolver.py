@@ -27,14 +27,24 @@ class PublishedMediaResolver:
             "MAHOON_IMMUTABLE_MEDIA_STORE", "runner-evidence/immutable-media-store"
         )
         self.store = store
-        payload = json.loads(manifest.read_text(encoding="utf-8"))
+        self.manifest = manifest
+        self.index_path = index_path
+        self.records: dict[str, dict] = {}
+        self.index: dict[str, dict] = {}
+        self.loaded = False
+        self.stats = {"total": 0, "immutable": 0, "fallback": 0, "unresolved": 0}
+
+    def _load(self) -> None:
+        if self.loaded:
+            return
+        payload = json.loads(self.manifest.read_text(encoding="utf-8"))
         self.records = {
             str(record["source_identifier"]): record
             for record in payload.get("records", [])
             if record.get("source_identifier")
         }
-        self.index = json.loads(index_path.read_text(encoding="utf-8"))
-        self.stats = {"total": 0, "immutable": 0, "fallback": 0, "unresolved": 0}
+        self.index = json.loads(self.index_path.read_text(encoding="utf-8"))
+        self.loaded = True
 
     @staticmethod
     def source_identifier(source_reference: str) -> str:
@@ -45,6 +55,7 @@ class PublishedMediaResolver:
 
     def resolve_public_media(self, source_reference: str, *, post_id: int | None = None) -> dict:
         self.stats["total"] += 1
+        self._load()
         source_id = self.source_identifier(source_reference)
         record = self.records.get(source_id)
         if record is None or not record.get("sha256"):

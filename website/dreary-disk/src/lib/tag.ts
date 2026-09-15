@@ -29,6 +29,8 @@ export type TagPageResult = {
   error: string;
 };
 
+import { IS_LOCKED_SNAPSHOT_BUILD, lockedSnapshotPosts } from "./lockedSnapshot";
+
 type CardKind =
   | "book"
   | "dialogue"
@@ -353,6 +355,26 @@ export async function fetchPublicTagPage(options: {
   const apiBase = String(options.apiBase || "").replace(/\/+$/, "");
   const limit = Math.max(1, Math.min(Number(options.limit || 20), 120));
   const offset = Math.max(0, Number(options.offset || 0));
+  if (IS_LOCKED_SNAPSHOT_BUILD) {
+    const tag = normalizeTagValue(options.tag);
+    const query = normalizeTagValue(options.query);
+    const posts = lockedSnapshotPosts().filter((post) => {
+      const tags = getRawHashTags(post.text).map(normalizeTagValue);
+      return tags.includes(tag) && (!query || searchText(post).includes(query));
+    });
+    const page = posts.slice(offset, offset + limit);
+    return {
+      ok: true,
+      status: 200,
+      posts: page,
+      total: posts.length,
+      limit,
+      offset,
+      nextOffset: offset + page.length,
+      hasMore: offset + page.length < posts.length,
+      error: ""
+    };
+  }
   const url = new URL(`${apiBase}/public/tag-posts-v1`);
 
   url.searchParams.set("tag", options.tag);

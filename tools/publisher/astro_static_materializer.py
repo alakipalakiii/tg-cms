@@ -8,7 +8,6 @@ import re
 import shutil
 import socket
 import subprocess
-import sys
 import threading
 import time
 import urllib.error
@@ -48,9 +47,12 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _wait_for_preview(port: int) -> None:
+def _wait_for_preview(port: int, process: subprocess.Popen) -> None:
     deadline = time.time() + 120
     while time.time() < deadline:
+        if process.poll() is not None:
+            _stdout, stderr = process.communicate(timeout=1)
+            raise RuntimeError(f"ASTRO_PREVIEW_EXITED:{process.returncode}:{stderr[-1000:]}")
         try:
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=3) as response:
                 if response.status < 600:
@@ -61,18 +63,6 @@ def _wait_for_preview(port: int) -> None:
         except Exception:
             time.sleep(1)
     raise RuntimeError("ASTRO_PREVIEW_START_TIMEOUT")
-
-
-def _wait_for_snapshot_api(port: int) -> None:
-    deadline = time.time() + 30
-    while time.time() < deadline:
-        try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=3) as response:
-                if response.status == 200:
-                    return
-        except Exception:
-            time.sleep(0.25)
-    raise RuntimeError("SNAPSHOT_API_START_TIMEOUT")
 
 
 def _stop_process(process: subprocess.Popen | None) -> None:
@@ -227,28 +217,14 @@ def _write_locked_snapshot_module(snapshot_path: Path) -> None:
 def build(out: Path) -> dict:
     build_env = os.environ.copy()
     npm = "npm.cmd" if os.name == "nt" else "npm"
-    snapshot_api_process = None
     snapshot_path = ROOT / os.environ.get(
         "MAHOON_PUBLISHED_CONTENT_SNAPSHOT", "runner-evidence/cutover-current-v2-snapshot.json"
     )
     state_path = ROOT / os.environ.get("MAHOON_ROUTE_MANIFEST", "publisher-state/current-accepted-route-manifest.json")
-    if snapshot_path.is_file() and os.environ.get("MAHOON_SNAPSHOT_API", "1") == "1":
-        _write_locked_snapshot_module(snapshot_path)
-        build_env["PUBLIC_MAHOON_SNAPSHOT_BINDING"] = "1"
-        api_port = _free_port()
-        snapshot_command = [
-            sys.executable,
-            str(ROOT / "tools" / "publisher" / "snapshot_api.py"),
-            "--snapshot",
-            str(snapshot_path),
-            "--port",
-            str(api_port),
-        ]
-        if os.environ.get("MAHOON_ROUTE_MANIFEST"):
-            snapshot_command.extend(["--route-manifest", str(state_path)])
-        snapshot_api_process = subprocess.Popen(snapshot_command, cwd=ROOT, env=build_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        _wait_for_snapshot_api(api_port)
-        build_env["PUBLIC_WORKER_URL"] = f"http://127.0.0.1:{api_port}"
+    if not snapshot_path.is_file():
+        raise RuntimeError("PUBLISHER_SNAPSHOT_MISSING")
+    _write_locked_snapshot_module(snapshot_path)
+    build_env["PUBLIC_MAHOON_SNAPSHOT_BINDING"] = "1"
     astro_out_dir = os.environ.get("MAHOON_ASTRO_OUT_DIR", "").strip()
     build_command = [npm, "run", "build"]
     if astro_out_dir:
@@ -256,7 +232,6 @@ def build(out: Path) -> dict:
     if build_env.get("MAHOON_SKIP_ASTRO_BUILD") != "1":
         result = subprocess.run(build_command, cwd=PROJECT, env=build_env, text=True, capture_output=True, timeout=1200)
         if result.returncode:
-            _stop_process(snapshot_api_process)
             raise RuntimeError("ASTRO_BUILD_FAILED:" + result.stderr[-1000:])
     client = Path(astro_out_dir or (PROJECT / "dist")) / "client"
     if not client.is_dir():
@@ -280,16 +255,23 @@ def build(out: Path) -> dict:
     if route_limit > 0:
         routes = routes[:route_limit]
     port = _free_port()
-    process = subprocess.Popen([npm, "run", "preview", "--", "--host", "127.0.0.1", "--port", str(port)], cwd=PROJECT, env=build_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    process = subprocess.Popen(
+        [npm, "run", "preview", "--", "--host", "127.0.0.1", "--port", str(port)],
+        cwd=PROJECT,
+        env=build_env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
     media_manifest: dict[str, dict] = {}
     prior_media = ROOT / os.environ.get("MAHOON_MEDIA_MANIFEST", "publisher-state/production-media-manifest.json")
     if prior_media.is_file():
         media_manifest.update(json.loads(prior_media.read_text(encoding="utf-8")))
-    media_cache: dict[str, dict] = {}
-    media_lock = threading.Lock()
-    resolver = PublishedMediaResolver()
     try:
-        _wait_for_preview(port)
+        media_cache: dict[str, dict] = {}
+        media_lock = threading.Lock()
+        resolver = PublishedMediaResolver()
+        _wait_for_preview(port, process)
         def materialize(route: str) -> tuple[str, str]:
             html = _rewrite_canonical(_strip_runtime_api_scripts(_fetch_html(port, route), route), route)
             return route, _materialize_media(html, out, media_manifest, media_cache, media_lock, resolver)
@@ -303,7 +285,6 @@ def build(out: Path) -> dict:
                 target.write_text(html, encoding="utf-8")
     finally:
         _stop_process(process)
-        _stop_process(snapshot_api_process)
     _write_search_index(out, snapshot_path)
     media_path = out.parent / "production-media-manifest.json"
     media_path.write_text(json.dumps(media_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -314,6 +295,8 @@ def build(out: Path) -> dict:
         "routes": len(routes),
         "media_entries": len(media_manifest),
         "source": "existing Astro frontend",
+        "snapshot_api_starts": 0,
+        "snapshot_binding": "DIRECT_LOCKED_SNAPSHOT",
         "media_manifest": str(media_path),
         "route_manifest": str(state_path),
         "media_resolution": resolver.stats,

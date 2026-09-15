@@ -4,6 +4,7 @@ import {
   normalizeMahoonTaxonomyToken,
   type MahoonCategory
 } from "./taxonomy";
+import { IS_LOCKED_SNAPSHOT_BUILD, lockedSnapshotPosts } from "./lockedSnapshot";
 
 export type ArchivePost = {
   id?: number | string;
@@ -446,6 +447,24 @@ export async function fetchPublicArchivePage(options: {
   const apiBase = String(options.apiBase || "").replace(/\/+$/, "");
   const limit = Math.max(1, Math.min(Number(options.limit || 20), 120));
   const offset = Math.max(0, Number(options.offset || 0));
+  if (IS_LOCKED_SNAPSHOT_BUILD) {
+    const query = normalizeArchiveToken(options.query);
+    const matched = lockedSnapshotPosts(options.category).filter((post) => !query ||
+      normalizeArchiveToken([post.text, post.seo_title, post.seo_description, post.slug].join(" ")).includes(query)
+    );
+    const page = matched.slice(offset, offset + limit);
+    return {
+      ok: true,
+      status: 200,
+      posts: page,
+      total: matched.length,
+      limit,
+      offset,
+      nextOffset: offset + page.length,
+      hasMore: offset + page.length < matched.length,
+      error: ""
+    };
+  }
   const url = new URL(`${apiBase}/public/posts-v1`);
 
   url.searchParams.set("limit", String(limit));

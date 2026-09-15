@@ -2,6 +2,7 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { SITE } from "../config";
 import { MAHOON_CATEGORIES } from "../lib/taxonomy";
+import { IS_LOCKED_SNAPSHOT_BUILD } from "../lib/lockedSnapshot";
 import {
   fetchHomeSnapshot,
   renderHomeAdsHtml,
@@ -29,6 +30,7 @@ async function fetchJsonWithTimeout(url: string, timeoutMs = 1200) {
 }
 
 async function loadSiteSettings() {
+  if (IS_LOCKED_SNAPSHOT_BUILD) return {};
   const settingsUrl = SITE.workerUrl.replace(/\/+$/, "") + "/site-settings";
   const payload = await fetchJsonWithTimeout(settingsUrl);
   return payload?.settings || {};

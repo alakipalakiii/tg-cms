@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { SITE } from "../config";
+import { IS_LOCKED_SNAPSHOT_BUILD } from "../lib/lockedSnapshot";
 
 const DEFAULT_CONTACT_BODY = `برای ارسال پیشنهاد، معرفی رویداد، همکاری هنری، معرفی اثر یا گفت‌وگو درباره موضوعات مرتبط با هنر و فرهنگ، می‌توانید از مسیر رسمی ماهون با ما در ارتباط باشید.
 
@@ -25,6 +26,7 @@ async function fetchJsonWithTimeout(url: string, timeoutMs = 1500) {
 }
 
 async function loadSiteSettings() {
+  if (IS_LOCKED_SNAPSHOT_BUILD) return {};
   const payload = await fetchJsonWithTimeout(`${SITE.workerUrl.replace(/\/+$/, "")}/site-settings`);
   return payload?.settings || {};
 }
