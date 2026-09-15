@@ -25,7 +25,6 @@ class AstroStaticMaterializerTests(unittest.TestCase):
                 snapshot = root / "snapshot.json"
                 routes = root / "routes.json"
                 output = root / "site"
-                astro_output = root / "astro"
                 snapshot.write_text(json.dumps({
                     "contract": "POSTS_FULL_PUBLIC_SNAPSHOT_V2",
                     "snapshot_total_count": 1,
@@ -43,7 +42,6 @@ class AstroStaticMaterializerTests(unittest.TestCase):
                 os.environ.update({
                     "MAHOON_PUBLISHED_CONTENT_SNAPSHOT": str(snapshot),
                     "MAHOON_ROUTE_MANIFEST": str(routes),
-                    "MAHOON_ASTRO_OUT_DIR": str(astro_output),
                 })
                 result = materializer.build(output)
                 self.assertEqual(result["snapshot_api_starts"], 0)

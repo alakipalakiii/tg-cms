@@ -225,15 +225,12 @@ def build(out: Path) -> dict:
         raise RuntimeError("PUBLISHER_SNAPSHOT_MISSING")
     _write_locked_snapshot_module(snapshot_path)
     build_env["PUBLIC_MAHOON_SNAPSHOT_BINDING"] = "1"
-    astro_out_dir = os.environ.get("MAHOON_ASTRO_OUT_DIR", "").strip()
     build_command = [npm, "run", "build"]
-    if astro_out_dir:
-        build_command.extend(["--", "--outDir", astro_out_dir])
     if build_env.get("MAHOON_SKIP_ASTRO_BUILD") != "1":
         result = subprocess.run(build_command, cwd=PROJECT, env=build_env, text=True, capture_output=True, timeout=1200)
         if result.returncode:
             raise RuntimeError("ASTRO_BUILD_FAILED:" + result.stderr[-1000:])
-    client = Path(astro_out_dir or (PROJECT / "dist")) / "client"
+    client = PROJECT / "dist" / "client"
     if not client.is_dir():
         raise RuntimeError("ASTRO_CLIENT_OUTPUT_MISSING")
     if out.exists():
