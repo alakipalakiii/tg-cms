@@ -172,6 +172,7 @@ def main() -> int:
     os.environ["MAHOON_ROUTE_MANIFEST"] = str(route_manifest)
     gate = static_build_adapter.validate(out)
     if not gate["PASS"]:
+        print(json.dumps({"failure_code": "PUBLISHER_LOCAL_GATE_FAILED", "gate": gate}, ensure_ascii=False), file=sys.stderr)
         print("PUBLISHER_LOCAL_GATE_FAILED", file=sys.stderr)
         return 12
     os.environ["MAHOON_ASSETS_DIRECTORY"] = str(out)
