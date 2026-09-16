@@ -77,7 +77,7 @@ def validate(out: Path) -> dict:
         public_api += int(not route.startswith("/admin") and "api.mahoonartmagazine.ir" in text)
         if route.startswith("/post/") and re.search(r"<title[^>]*>[^<]*(?:404|not found|یافت نشد)", text, re.I):
             partial_fallback_pages += 1
-        media_urls.extend(re.findall(r"(?<![A-Za-z0-9._-])(/media/[^\"'<>\s?]+)", text, re.I))
+        media_urls.extend(re.findall(r"(?<![A-Za-z0-9._-])(/media/[A-Za-z0-9._/-]+)", text, re.I))
         css_urls = re.findall(r'<link[^>]+href=["\']([^"\']+\.css(?:\?[^"\']*)?)["\']', text, re.I)
         js_urls = re.findall(r'<script[^>]+src=["\']([^"\']+\.js(?:\?[^"\']*)?)["\']', text, re.I)
         for asset_url in css_urls:
