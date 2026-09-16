@@ -20,8 +20,22 @@ class MediaBootstrapError(RuntimeError):
 
 
 def source_identifier(post: dict) -> str | None:
-    value = post.get("photo_file_id") or post.get("media_file_id")
-    return str(value).strip() if value else None
+    values = source_identifiers(post)
+    return values[0][0] if values else None
+
+
+def source_identifiers(post: dict) -> list[tuple[str, str]]:
+    """Return every public media identity the locked Astro snapshot may render."""
+    values: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for key, kind in (("media_file_id", media_type(post)), ("photo_file_id", "photo"),
+                      ("thumbnail_file_id", "photo"), ("thumb_file_id", "photo"),
+                      ("file_id", media_type(post)), ("telegram_file_id", media_type(post))):
+        value = str(post.get(key) or "").strip()
+        if value and value not in seen:
+            seen.add(value)
+            values.append((value, kind))
+    return values
 
 
 def media_type(post: dict) -> str:
@@ -100,9 +114,9 @@ def bootstrap(posts: list[dict], *, index_path: Path | None = None, store: Path 
     known = load_index(index_path)
     required: dict[str, dict] = {}
     for post in posts:
-        identity = source_identifier(post)
-        if identity:
-            required.setdefault(identity, {"source_identifier": identity, "post_ids": []})["post_ids"].append(int(post["id"]))
+        for identity, kind in source_identifiers(post):
+            record = required.setdefault(identity, {"source_identifier": identity, "post_ids": [], "media_type": kind})
+            record["post_ids"].append(int(post["id"]))
     stats = {"mode": "REQUIRED_SET_ONLY", "required_distinct": len(required), "published": 0, "new": 0, "fallback": 0, "unresolved": 0, "source_redownloads": 0, "hash_mismatches": 0, "invalid_payloads": 0}
     records: list[dict] = []
     store.mkdir(parents=True, exist_ok=True)
@@ -124,7 +138,7 @@ def bootstrap(posts: list[dict], *, index_path: Path | None = None, store: Path 
                     stats["fallback"] += 1
                     continue
                 digest, detected = _verify(data, None, None)
-                item = {"source_identifier": identity, "immutable_path": f"/media/{digest[:2]}/{digest}{_extension(detected)}", "sha256": digest, "mime": detected, "media_type": media_type(next(post for post in posts if source_identifier(post) == identity)), "fallback": False}
+                item = {"source_identifier": identity, "immutable_path": f"/media/{digest[:2]}/{digest}{_extension(detected)}", "sha256": digest, "mime": detected, "media_type": required[identity]["media_type"], "fallback": False}
                 known[identity] = item
                 stats["new"] += 1
             target = store / Path(str(item["immutable_path"])).name

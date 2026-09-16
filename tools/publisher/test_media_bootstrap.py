@@ -58,6 +58,21 @@ class MediaBootstrapTests(unittest.TestCase):
         self.assertEqual(manifest["records"][0]["post_ids"], [1, 2])
         self.assertEqual(len(next_index["entries"]), 1)
 
+    def test_audio_post_hydrates_its_media_and_cover_once_each(self):
+        calls = []
+        payloads = {"audio-1": b"OggSfixture-audio", "cover-1": JPEG}
+        def fetch(url):
+            calls.append(url)
+            return payloads[url.rsplit("/", 1)[-1]], "application/octet-stream"
+        result, manifest, _next = self.run_bootstrap(
+            [{"id": 1, "media_file_id": "audio-1", "photo_file_id": "cover-1", "media_type": "audio"}],
+            {"entries": []}, fetch,
+        )
+        self.assertEqual(result["required_distinct"], 2)
+        self.assertEqual(result["new"], 2)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual({record["source_identifier"] for record in manifest["records"]}, {"audio-1", "cover-1"})
+
     def test_permanent_new_source_unavailability_uses_fallback(self):
         from urllib.error import HTTPError
         def fetch(url): raise HTTPError(url, 404, "missing", {}, None)
