@@ -24,6 +24,7 @@ from publisher.post_deploy_validator import capture_zero_origin, validate_public
 from publisher.state_machine import promotion_precondition, rollback_anchor, verify_promotion_precondition
 from publisher.export_v2 import export_complete
 from publisher.media_bootstrap import bootstrap as bootstrap_media
+from publisher.candidate_route_manifest import build_candidate_route_manifest
 from publisher.content_revision import DEFAULT_ENDPOINT, fetch_public_content_revision
 from publisher.error_contract import PublisherStageError, build_error, safe_details
 
@@ -154,18 +155,19 @@ def main() -> int:
     os.environ["MAHOON_CURRENT_MEDIA_MANIFEST"] = str(media_bootstrap["manifest"])
     os.environ["MAHOON_IMMUTABLE_MEDIA_INDEX"] = str(media_bootstrap["index"])
     os.environ["MAHOON_IMMUTABLE_MEDIA_STORE"] = str(media_bootstrap["store"])
-    build = static_build_adapter.build(out, snapshot_path)
-    media_manifest = Path("runner-build/production-media-manifest.json")
-    route_manifest = Path("runner-build/published-route-manifest.json")
-    media_manifest.parent.mkdir(parents=True, exist_ok=True)
-    if not media_manifest.is_file():
-        print("PUBLISHER_MEDIA_MANIFEST_MISSING", file=sys.stderr)
-        return 12
     route_source = Path(os.environ.get(
         "MAHOON_ROUTE_MANIFEST",
         "publisher-state/current-accepted-route-manifest.json"
     ))
-    route_manifest.write_text(route_source.read_text(encoding="utf-8"), encoding="utf-8")
+    route_manifest = Path("runner-build/published-route-manifest.json")
+    candidate_routes = build_candidate_route_manifest(exported["posts"], route_source, route_manifest)
+    os.environ["MAHOON_ROUTE_MANIFEST"] = str(route_manifest)
+    build = static_build_adapter.build(out, snapshot_path)
+    media_manifest = Path("runner-build/production-media-manifest.json")
+    media_manifest.parent.mkdir(parents=True, exist_ok=True)
+    if not media_manifest.is_file():
+        print("PUBLISHER_MEDIA_MANIFEST_MISSING", file=sys.stderr)
+        return 12
     # The immutable snapshot written above is the only V2 input for every downstream gate.
     # In particular, do not invoke delta_build_adapter: it used to perform a second V2 export.
     os.environ["MAHOON_MEDIA_MANIFEST"] = str(media_manifest)
@@ -233,7 +235,11 @@ def main() -> int:
     summary = json.loads(summary_path.read_text(encoding="utf-8")) if summary_path.exists() else {}
     route_data = json.loads(route_manifest.read_text(encoding="utf-8"))
     expected_post_routes = sum(route.startswith("/post/") for route in route_data.get("routes", []))
-    route_binding = (route_data.get("route_count") == len(route_data.get("routes", [])) and expected_post_routes == exported["count"])
+    route_binding = (route_data.get("route_count") == len(route_data.get("routes", []))
+                     and not route_data.get("old_routes_missing_from_candidate")
+                     and not route_data.get("new_snapshot_routes_missing_from_candidate")
+                     and route_data.get("snapshot_derived_route_count") == expected_post_routes
+                     and expected_post_routes == 2 * exported["count"])
     validated = route_binding and summary.get("html_final_200") == summary.get("html_routes") and summary.get("post_final_200") == summary.get("post_routes") and not any(summary.get(key, 0) for key in ("broken_critical_links", "orphan_posts", "duplicate_canonicals", "redirect_loops", "remote_reader_media_dependencies", "workers_dev_leaks", "preview_url_leaks", "post_seo_failures"))
     Path("runner-evidence/candidate-validation.json").parent.mkdir(parents=True, exist_ok=True)
     Path("runner-evidence/candidate-validation.json").write_text(json.dumps({"candidate_version": version_id, "fingerprint": digest, "build": build, "local_gate": gate, "override": summary, "route_binding": {"route_count": route_data.get("route_count"), "post_routes": expected_post_routes, "content_posts": exported["count"], "PASS": route_binding}, "PASS": validated}, ensure_ascii=False, indent=2), encoding="utf-8")

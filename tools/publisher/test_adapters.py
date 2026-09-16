@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,45 @@ from state import persist_after_public_pass
 
 
 class PublisherAdapterTests(unittest.TestCase):
+    def filesystem_gate(self, body: str, routes: list[str] | None = None):
+        with tempfile.TemporaryDirectory(prefix="mahoon-filesystem-gate-") as directory:
+            root = Path(directory)
+            manifest = root / "routes.json"
+            route = "/post/1"
+            manifest.write_text(json.dumps({"routes": routes or [route]}), encoding="utf-8")
+            target = root / "post" / "1" / "index.html"
+            target.parent.mkdir(parents=True)
+            target.write_text(body, encoding="utf-8")
+            previous = os.environ.get("MAHOON_ROUTE_MANIFEST")
+            os.environ["MAHOON_ROUTE_MANIFEST"] = str(manifest)
+            try:
+                return validate(root)
+            finally:
+                if previous is None:
+                    os.environ.pop("MAHOON_ROUTE_MANIFEST", None)
+                else:
+                    os.environ["MAHOON_ROUTE_MANIFEST"] = previous
+
+    def test_filesystem_gate_catches_missing_html(self):
+        result = self.filesystem_gate('<link rel="canonical" href="https://mahoonartmagazine.ir/post/1"><script type="application/ld+json">{}</script>', ["/post/1", "/post/missing"])
+        self.assertFalse(result["PASS"])
+        self.assertEqual(result["missing_html"], 1)
+
+    def test_filesystem_gate_catches_missing_jsonld(self):
+        result = self.filesystem_gate('<link rel="canonical" href="https://mahoonartmagazine.ir/post/1">')
+        self.assertFalse(result["PASS"])
+        self.assertEqual(result["post_jsonld_missing"], 1)
+
+    def test_filesystem_gate_catches_api_media_dependency(self):
+        result = self.filesystem_gate('<link rel="canonical" href="https://mahoonartmagazine.ir/post/1"><script type="application/ld+json">{"image":"https://api.mahoonartmagazine.ir/media/x"}</script>')
+        self.assertFalse(result["PASS"])
+        self.assertGreater(result["remote_reader_media_dependencies"], 0)
+
+    def test_filesystem_gate_catches_workers_dev_canonical_leak(self):
+        result = self.filesystem_gate('<link rel="canonical" href="https://example.workers.dev/post/1"><script type="application/ld+json">{}</script>')
+        self.assertFalse(result["PASS"])
+        self.assertEqual(result["workers_dev_canonical_leaks"], 1)
+
     def test_approved_text_contract_is_self_contained(self):
         base = Path("publisher-base")
         self.assertTrue((base / "_headers").exists())

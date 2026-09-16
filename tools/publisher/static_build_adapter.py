@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from urllib.parse import quote
 import shutil
 from pathlib import Path
 
@@ -28,8 +29,10 @@ def build(out: Path, snapshot_path: Path | None = None) -> dict:
 
 
 def validate(out: Path) -> dict:
+    manifest_payload = None
     if os.environ.get("MAHOON_ROUTE_MANIFEST"):
-        state = json.loads(Path(os.environ["MAHOON_ROUTE_MANIFEST"]).read_text(encoding="utf-8"))
+        manifest_payload = json.loads(Path(os.environ["MAHOON_ROUTE_MANIFEST"]).read_text(encoding="utf-8"))
+        state = manifest_payload
         expected = state["routes"]
         route_source = os.environ["MAHOON_ROUTE_MANIFEST"]
     else:
@@ -41,6 +44,8 @@ def validate(out: Path) -> dict:
     missing = []
     html_files = {}
     canonical = {}
+    canonical_mismatches = []
+    strict_candidate = manifest_payload and manifest_payload.get("contract") == "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1"
     for route in expected:
         rel = route.lstrip("/")
         candidate = out / ("index.html" if not rel else rel)
@@ -54,18 +59,35 @@ def validate(out: Path) -> dict:
         match = re.search(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)', text, re.I)
         if match:
             canonical[route] = match.group(1)
+        expected_canonical = "https://mahoonartmagazine.ir" + quote(
+            route.rstrip("/") or "/",
+            safe="/%:@!$&'()*+,;=-._~",
+        )
+        if strict_candidate and match and match.group(1) != expected_canonical:
+            canonical_mismatches.append(route)
     posts = [route for route in expected if route.startswith("/post/")]
     jsonld_missing = sum("application/ld+json" not in html_files.get(route, "") for route in posts)
     remote_media = sum("https://api.mahoonartmagazine.ir/media/" in text for text in html_files.values())
     workers_dev = sum("workers.dev" in text for text in html_files.values())
-    logical_canonical = {route: value for route, value in canonical.items() if not route.startswith("/post/")}
-    duplicate = len(logical_canonical) - len(set(logical_canonical.values()))
+    canonical_for_duplicate = canonical if strict_candidate else {route: value for route, value in canonical.items() if not route.startswith("/post/")}
+    duplicate = len(canonical_for_duplicate) - len(set(canonical_for_duplicate.values()))
+    static_media_missing = []
+    media_urls = re.findall(r"(?<!https:)\s(?:src|href|content)=[\"'](/media/[^\"'\s?]+)", "\n".join(html_files.values()), re.I)
+    if strict_candidate:
+        for media_url in sorted(set(media_urls)):
+            if not (out / media_url.lstrip("/")).is_file():
+                static_media_missing.append(media_url)
+    public_html = {route: text for route, text in html_files.items() if not route.startswith("/admin")}
+    public_api = sum("api.mahoonartmagazine.ir" in text for text in public_html.values())
     result = {"expected_html_routes": len(expected), "present_html_routes": len(expected) - len(missing),
               "expected_post_routes": len(posts), "present_post_routes": len(posts) - sum(route in missing for route in posts),
               "missing_html": len(missing), "missing_routes": missing[:20], "broken_internal_links": 0,
-              "duplicate_canonicals": duplicate, "post_jsonld_missing": jsonld_missing,
+              "canonical_mismatches": len(canonical_mismatches), "duplicate_canonicals": duplicate, "post_jsonld_missing": jsonld_missing,
               "route_validation_source": route_source,
-              "remote_reader_media_dependencies": remote_media, "workers_dev_canonical_leaks": workers_dev,
-              "PASS": not missing and duplicate == 0 and jsonld_missing == 0 and remote_media == 0 and workers_dev == 0}
+              "local_full_route_proof_mode": "STATIC_ARTIFACT_FILESYSTEM" if strict_candidate else "BASELINE_FIXTURE_FILESYSTEM",
+              "local_preview_full_crawl_required": False,
+              "remote_reader_media_dependencies": remote_media, "public_content_api_dependencies": public_api,
+              "static_media_missing": len(static_media_missing), "workers_dev_canonical_leaks": workers_dev,
+              "PASS": not missing and duplicate == 0 and len(canonical_mismatches) == 0 and jsonld_missing == 0 and remote_media == 0 and (public_api == 0 if strict_candidate else True) and len(static_media_missing) == 0 and workers_dev == 0}
     Path("publisher-state/local-candidate-gate.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result
