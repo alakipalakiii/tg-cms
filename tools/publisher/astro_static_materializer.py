@@ -32,10 +32,9 @@ ROOT = Path(__file__).resolve().parents[2]
 PROJECT = ROOT / "website" / "dreary-disk"
 BASE = ROOT / "publisher-base"
 STATE = ROOT / os.environ.get("MAHOON_ROUTE_MANIFEST", "publisher-state/current-accepted-route-manifest.json")
-API_MEDIA_ATTRIBUTE = re.compile(
-    r"(?P<attr>\b(?:src|href))(?P<eq>\s*=\s*)(?P<q>[\"'])"
-    r"(?P<url>https?://(?:api\.mahoonartmagazine\.ir|localhost|127\.0\.0\.1)(?::\d+)?/media/[^\"'<>\s?]+)"
-    r"(?:\?[^\"'<>\s]*)?(?P=q)",
+API_MEDIA_URL = re.compile(
+    r"https?://(?:api\.mahoonartmagazine\.ir|localhost|127\.0\.0\.1)(?::\d+)?/media/[^\"'<>)\s?]+"
+    r"(?:\?[^\"'<>)\s]*)?",
     re.I,
 )
 SCRIPT = re.compile(r"<script\b[^>]*>.*?</script>", re.I | re.S)
@@ -125,6 +124,8 @@ def _strip_runtime_api_scripts(html: str, route: str = "/") -> str:
 
     def replace(match: re.Match[str]) -> str:
         block = match.group(0)
+        if re.search(r'type=["\']application/ld\+json["\']', block, re.I):
+            return block
         return "" if "api.mahoonartmagazine.ir" in block.lower() else block
 
     return SCRIPT.sub(replace, html)
@@ -147,7 +148,7 @@ def _materialize_media(
 ) -> str:
 
     def replace(match: re.Match[str]) -> str:
-        source = match.group("url")
+        source = match.group(0)
         with lock:
             if source in cache:
                 resolution = cache[source]
@@ -156,7 +157,7 @@ def _materialize_media(
                 cache[source] = resolution
 
         if resolution["status"] == "FALLBACK":
-            return 'data-mahoon-media-fallback="approved"'
+            return ""
 
         public = str(resolution["public_path"])
         blob = Path(str(resolution["blob"]))
@@ -175,9 +176,9 @@ def _materialize_media(
         }
         with lock:
             cache[source] = resolution
-        return f'{match.group("attr")}{match.group("eq")}{match.group("q")}{public}{match.group("q")}'
+        return public
 
-    return API_MEDIA_ATTRIBUTE.sub(replace, html)
+    return API_MEDIA_URL.sub(replace, html)
 
 
 def _normalize_search_text(value: object) -> str:

@@ -8,6 +8,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import media_bootstrap
+try:
+    from publisher.astro_static_materializer import _materialize_media, _strip_runtime_api_scripts
+except ImportError:
+    from astro_static_materializer import _materialize_media, _strip_runtime_api_scripts
 from static_media_resolver import PublishedMediaResolver
 
 
@@ -99,6 +103,28 @@ class MediaBootstrapTests(unittest.TestCase):
             with patch.dict("os.environ", {"MAHOON_CURRENT_MEDIA_MANIFEST": str(manifest), "MAHOON_IMMUTABLE_MEDIA_INDEX": str(root / "next.json"), "MAHOON_IMMUTABLE_MEDIA_STORE": str(store)}, clear=False):
                 result = PublishedMediaResolver().resolve_public_media("https://api.mahoonartmagazine.ir/media/media-1")
             self.assertEqual(result["status"], "IMMUTABLE")
+
+    def test_static_materializer_rewrites_meta_and_jsonld_and_preserves_jsonld(self):
+        class Resolver:
+            def resolve_public_media(self, source):
+                self.source = source
+                return {"status": "IMMUTABLE", "public_path": "/media/aa/hash.jpg", "sha256": "a" * 64, "mime": "image/jpeg", "blob": str(blob)}
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            blob = root / "hash.jpg"
+            blob.write_bytes(JPEG)
+            html = '<meta property="og:image" content="https://api.mahoonartmagazine.ir/media/media-1">' \
+                   '<script type="application/ld+json">{"image":"https://api.mahoonartmagazine.ir/media/media-1"}</script>' \
+                   '<img src="https://api.mahoonartmagazine.ir/media/media-1">'
+            cleaned = _strip_runtime_api_scripts(html, "/post/example")
+            resolver = Resolver()
+            rendered = _materialize_media(cleaned, root / "out", {}, {}, __import__("threading").Lock(), resolver)
+            self.assertEqual(rendered.count("/media/aa/hash.jpg"), 3)
+            self.assertIn("application/ld+json", rendered)
+            second = _materialize_media(cleaned.replace("example", "second"), root / "out", {}, {}, __import__("threading").Lock(), resolver)
+            self.assertEqual(second.count("/media/aa/hash.jpg"), 3)
+            self.assertIn("application/ld+json", second)
 
 
 if __name__ == "__main__":
