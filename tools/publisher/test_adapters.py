@@ -48,6 +48,33 @@ class PublisherAdapterTests(unittest.TestCase):
         self.assertFalse(result["PASS"])
         self.assertEqual(result["workers_dev_canonical_leaks"], 1)
 
+    def test_strict_filesystem_gate_catches_missing_media_and_duplicate_canonical(self):
+        with tempfile.TemporaryDirectory(prefix="mahoon-strict-gate-") as directory:
+            root = Path(directory)
+            manifest = root / "routes.json"
+            routes = ["/post/1", "/post/2"]
+            manifest.write_text(json.dumps({
+                "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
+                "routes": routes,
+            }), encoding="utf-8")
+            body = '<link rel="canonical" href="https://mahoonartmagazine.ir/post/1"><script type="application/ld+json">{"image":"/media/missing.jpg"}</script>'
+            for route in routes:
+                target = root / route.lstrip("/") / "index.html"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(body, encoding="utf-8")
+            previous = os.environ.get("MAHOON_ROUTE_MANIFEST")
+            os.environ["MAHOON_ROUTE_MANIFEST"] = str(manifest)
+            try:
+                result = validate(root)
+            finally:
+                if previous is None:
+                    os.environ.pop("MAHOON_ROUTE_MANIFEST", None)
+                else:
+                    os.environ["MAHOON_ROUTE_MANIFEST"] = previous
+            self.assertFalse(result["PASS"])
+            self.assertEqual(result["duplicate_canonicals"], 1)
+            self.assertEqual(result["static_media_missing"], 1)
+
     def test_approved_text_contract_is_self_contained(self):
         base = Path("publisher-base")
         self.assertTrue((base / "_headers").exists())
