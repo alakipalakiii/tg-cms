@@ -4,6 +4,7 @@ import json
 import os
 import re
 from urllib.parse import quote
+from urllib.parse import unquote, urlsplit
 import shutil
 from pathlib import Path
 
@@ -45,6 +46,7 @@ def validate(out: Path) -> dict:
     html_files = {}
     canonical = {}
     canonical_mismatches = []
+    empty_html = []
     strict_candidate = manifest_payload and manifest_payload.get("contract") == "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1"
     for route in expected:
         rel = route.lstrip("/")
@@ -55,6 +57,9 @@ def validate(out: Path) -> dict:
             missing.append(route)
             continue
         text = candidate.read_text(encoding="utf-8", errors="ignore")
+        if not text.strip():
+            empty_html.append(route)
+            continue
         html_files[route] = text
         match = re.search(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)', text, re.I)
         if match:
@@ -72,22 +77,42 @@ def validate(out: Path) -> dict:
     canonical_for_duplicate = canonical if strict_candidate else {route: value for route, value in canonical.items() if not route.startswith("/post/")}
     duplicate = len(canonical_for_duplicate) - len(set(canonical_for_duplicate.values()))
     static_media_missing = []
-    media_urls = re.findall(r"(?<!https:)\s(?:src|href|content)=[\"'](/media/[^\"'\s?]+)", "\n".join(html_files.values()), re.I)
+    media_urls = []
+    for text in html_files.values():
+        media_urls.extend(re.findall(r"(?<!https:)\s(?:src|href|content)=[\"'](/media/[^\"'\s?]+)", text, re.I))
     if strict_candidate:
         for media_url in sorted(set(media_urls)):
             if not (out / media_url.lstrip("/")).is_file():
                 static_media_missing.append(media_url)
+    missing_css_assets = []
+    missing_js_assets = []
+    for route, text in html_files.items():
+        css_urls = re.findall(r'<link[^>]+href=["\']([^"\']+\.css(?:\?[^"\']*)?)["\']', text, re.I)
+        js_urls = re.findall(r'<script[^>]+src=["\']([^"\']+\.js(?:\?[^"\']*)?)["\']', text, re.I)
+        for asset_url in css_urls + js_urls:
+            parsed = urlsplit(asset_url)
+            if parsed.scheme or parsed.netloc or asset_url.startswith(("data:", "#")):
+                continue
+            asset_path = unquote(parsed.path).lstrip("/")
+            if not (out / asset_path).is_file():
+                (missing_css_assets if asset_url in css_urls else missing_js_assets).append(asset_url)
+    partial_fallback_pages = sum(
+        bool(re.search(r"<title[^>]*>[^<]*(?:404|not found|یافت نشد)", html, re.I))
+        for route, html in html_files.items()
+        if route.startswith("/post/")
+    )
     public_html = {route: text for route, text in html_files.items() if not route.startswith("/admin")}
     public_api = sum("api.mahoonartmagazine.ir" in text for text in public_html.values())
     result = {"expected_html_routes": len(expected), "present_html_routes": len(expected) - len(missing),
               "expected_post_routes": len(posts), "present_post_routes": len(posts) - sum(route in missing for route in posts),
-              "missing_html": len(missing), "missing_routes": missing[:20], "broken_internal_links": 0,
+              "missing_html": len(missing), "missing_routes": missing[:20], "empty_html": len(empty_html), "broken_internal_links": 0,
               "canonical_mismatches": len(canonical_mismatches), "duplicate_canonicals": duplicate, "post_jsonld_missing": jsonld_missing,
               "route_validation_source": route_source,
               "local_full_route_proof_mode": "STATIC_ARTIFACT_FILESYSTEM" if strict_candidate else "BASELINE_FIXTURE_FILESYSTEM",
               "local_preview_full_crawl_required": False,
               "remote_reader_media_dependencies": remote_media, "public_content_api_dependencies": public_api,
-              "static_media_missing": len(static_media_missing), "workers_dev_canonical_leaks": workers_dev,
-              "PASS": not missing and duplicate == 0 and len(canonical_mismatches) == 0 and jsonld_missing == 0 and remote_media == 0 and (public_api == 0 if strict_candidate else True) and len(static_media_missing) == 0 and workers_dev == 0}
+              "static_media_missing": len(static_media_missing), "missing_css_assets": len(set(missing_css_assets)), "missing_js_assets": len(set(missing_js_assets)),
+              "partial_fallback_pages": partial_fallback_pages, "workers_dev_canonical_leaks": workers_dev,
+              "PASS": not missing and not empty_html and duplicate == 0 and len(canonical_mismatches) == 0 and jsonld_missing == 0 and remote_media == 0 and (public_api == 0 if strict_candidate else True) and len(static_media_missing) == 0 and not missing_css_assets and not missing_js_assets and partial_fallback_pages == 0 and workers_dev == 0}
     Path("publisher-state/local-candidate-gate.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result

@@ -103,7 +103,7 @@ def _artifact_path(out: Path, route: str) -> Path:
     return out / ("index.html" if not clean or clean == "/" else Path(clean.lstrip("/")) / "index.html")
 
 
-def _fetch_html(port: int, route: str) -> str:
+def _fetch_preview_html(port: int, route: str) -> str:
     source = _source_route(route)
     url = f"http://127.0.0.1:{port}{quote(source, safe="/?=&%:@!$'()*+,;-")}"
     request = urllib.request.Request(url, headers={"User-Agent": "MAHOON-M10-Static-Materializer/1.0"})
@@ -116,6 +116,80 @@ def _fetch_html(port: int, route: str) -> str:
         if exc.code == 503:
             return exc.read().decode("utf-8", "replace")
         raise RuntimeError(f"ASTRO_ROUTE_HTTP_{exc.code}:{route}") from exc
+
+
+class _DirectWorkerRenderer:
+    """Render through the built Worker dispatcher without Preview HTTP."""
+
+    def __init__(self) -> None:
+        helper = ROOT / "tools" / "publisher" / "direct_worker_renderer.mjs"
+        self.process = subprocess.Popen(
+            ["node", helper.name],
+            cwd=helper.parent,
+            env=os.environ.copy(),
+            text=True,
+            encoding="utf-8",
+            errors="strict",
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            bufsize=1,
+        )
+        self.lock = threading.Lock()
+
+    def render(self, route: str) -> str:
+        with self.lock:
+            if self.process.poll() is not None or self.process.stdin is None or self.process.stdout is None:
+                raise RuntimeError("DIRECT_WORKER_RENDERER_EXITED")
+            self.process.stdin.write(json.dumps(route, ensure_ascii=False) + "\n")
+            self.process.stdin.flush()
+            line = self.process.stdout.readline()
+        if not line:
+            raise RuntimeError("DIRECT_WORKER_RENDERER_NO_RESPONSE")
+        result = json.loads(line)
+        if result.get("error"):
+            raise RuntimeError("DIRECT_WORKER_RENDER_FAILED:" + str(result["error"]))
+        if result.get("status") != 200:
+            raise RuntimeError(f"DIRECT_WORKER_ROUTE_HTTP_{result.get('status')}:{route}")
+        return str(result.get("html") or "")
+
+    def close(self) -> None:
+        if self.process.poll() is not None:
+            return
+        if self.process.stdin is not None:
+            try:
+                self.process.stdin.close()
+            except OSError:
+                pass
+        try:
+            self.process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+
+
+def _preview_smoke(routes: list[str]) -> dict:
+    examples: list[str] = []
+    for route in routes:
+        if route not in examples:
+            examples.append(route)
+    examples = examples[:12]
+    port = _free_port()
+    npm = "npm.cmd" if os.name == "nt" else "npm"
+    process = subprocess.Popen(
+        [npm, "run", "preview", "--", "--host", "127.0.0.1", "--port", str(port)],
+        cwd=PROJECT,
+        env=os.environ.copy(),
+        text=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        _wait_for_preview(port, process)
+        for route in examples:
+            _fetch_preview_html(port, route)
+    finally:
+        _stop_process(process)
+    return {"route_count": len(examples), "routes": examples, "PASS": True}
 
 
 def _strip_runtime_api_scripts(html: str, route: str = "/") -> str:
@@ -148,7 +222,10 @@ def _materialize_media(
 ) -> str:
 
     def replace(match: re.Match[str]) -> str:
-        source = match.group(0)
+        raw_source = match.group(0)
+        entity = re.search(r"(?:&quot;|&#34;)(?=[}\],<\s]|$)", raw_source, re.I)
+        source = raw_source[:entity.start()] if entity else raw_source
+        suffix = raw_source[entity.start():] if entity else ""
         with lock:
             if source in cache:
                 resolution = cache[source]
@@ -176,7 +253,7 @@ def _materialize_media(
         }
         with lock:
             cache[source] = resolution
-        return public
+        return public + suffix
 
     return API_MEDIA_URL.sub(replace, html)
 
@@ -255,32 +332,18 @@ def build(out: Path) -> dict:
         target = out / item.name
         shutil.copytree(item, target, dirs_exist_ok=True) if item.is_dir() else shutil.copy2(item, target)
 
-    routes = json.loads(state_path.read_text(encoding="utf-8"))["routes"]
-    routes = sorted(set(routes) | {"/admin", "/admin/analytics"})
-    route_limit = int(os.environ.get("MAHOON_VISUAL_ROUTE_LIMIT", "0") or 0)
-    if route_limit > 0:
-        routes = routes[:route_limit]
-    port = _free_port()
-    process = subprocess.Popen(
-        [npm, "run", "preview", "--", "--host", "127.0.0.1", "--port", str(port)],
-        cwd=PROJECT,
-        env=build_env,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=os.name != "nt",
-    )
+    routes = sorted(set(json.loads(state_path.read_text(encoding="utf-8"))["routes"]))
     media_manifest: dict[str, dict] = {}
     prior_media = ROOT / os.environ.get("MAHOON_MEDIA_MANIFEST", "publisher-state/production-media-manifest.json")
     if prior_media.is_file():
         media_manifest.update(json.loads(prior_media.read_text(encoding="utf-8")))
+    renderer = _DirectWorkerRenderer()
     try:
         media_cache: dict[str, dict] = {}
         media_lock = threading.Lock()
         resolver = PublishedMediaResolver()
-        _wait_for_preview(port, process)
         def materialize(route: str) -> tuple[str, str]:
-            html = _rewrite_canonical(_strip_runtime_api_scripts(_fetch_html(port, route), route), route)
+            html = _rewrite_canonical(_strip_runtime_api_scripts(renderer.render(_source_route(route)), route), route)
             return route, _materialize_media(html, out, media_manifest, media_cache, media_lock, resolver)
 
         from concurrent.futures import ThreadPoolExecutor
@@ -291,7 +354,8 @@ def build(out: Path) -> dict:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(html, encoding="utf-8")
     finally:
-        _stop_process(process)
+        renderer.close()
+    smoke = _preview_smoke(routes)
     _write_search_index(out, snapshot_path)
     media_path = out.parent / "production-media-manifest.json"
     media_path.write_text(json.dumps(media_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -307,4 +371,8 @@ def build(out: Path) -> dict:
         "media_manifest": str(media_path),
         "route_manifest": str(state_path),
         "media_resolution": resolver.stats,
+        "materializer_full_route_http_fetches": 0,
+        "full_route_preview_request_count": 0,
+        "preview_smoke_route_count": smoke["route_count"],
+        "preview_smoke": smoke["PASS"],
     }

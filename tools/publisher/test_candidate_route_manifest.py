@@ -20,7 +20,8 @@ class CandidateRouteManifestTests(unittest.TestCase):
             ], accepted, output)
             self.assertEqual(result["old_routes_missing_from_candidate"], [])
             self.assertEqual(result["new_snapshot_routes"], ["/post/2", "/post/new-slug", "/post/two-slug"])
-            self.assertEqual(result["route_count"], 6)
+            self.assertEqual(result["route_count"], 8)
+            self.assertEqual(result["required_control_routes"], ["/admin", "/admin/analytics"])
 
     def test_candidate_never_silently_shrinks(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -31,6 +32,7 @@ class CandidateRouteManifestTests(unittest.TestCase):
             result = build_candidate_route_manifest([{ "id": 2, "slug": "two" }], accepted, output)
             self.assertEqual(result["old_routes_missing_from_candidate"], [])
             self.assertIn("/post/legacy", result["old_only_routes"])
+            self.assertEqual(result["control_route_count"], 2)
 
 
 if __name__ == "__main__":

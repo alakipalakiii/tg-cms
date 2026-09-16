@@ -14,6 +14,11 @@ from publisher import astro_static_materializer as materializer
 
 
 class AstroStaticMaterializerTests(unittest.TestCase):
+    def test_full_materializer_uses_direct_dispatch_not_preview_fetch(self):
+        source = __import__("inspect").getsource(materializer.build)
+        self.assertIn("_DirectWorkerRenderer", source)
+        self.assertNotIn("_fetch_preview_html", source)
+
     @unittest.skipIf(os.name == "nt", "Cloudflare preview fixture runs in the Linux CI runtime")
     def test_materializes_a_fixture_snapshot_without_snapshot_api(self) -> None:
         locked = materializer.PROJECT / "src" / "generated" / "locked-published-content.json"

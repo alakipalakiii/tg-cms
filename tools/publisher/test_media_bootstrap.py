@@ -126,6 +126,24 @@ class MediaBootstrapTests(unittest.TestCase):
             self.assertEqual(second.count("/media/aa/hash.jpg"), 3)
             self.assertIn("application/ld+json", second)
 
+    def test_static_materializer_does_not_include_html_entity_in_media_identity(self):
+        class Resolver:
+            def resolve_public_media(self, source):
+                self.source = source
+                return {"status": "IMMUTABLE", "public_path": "/media/aa/hash.jpg", "sha256": "a" * 64, "mime": "image/jpeg", "blob": str(blob)}
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            blob = root / "hash.jpg"
+            blob.write_bytes(JPEG)
+            resolver = Resolver()
+            rendered = _materialize_media(
+                '<script type="application/ld+json">{&quot;image&quot;:&quot;https://api.mahoonartmagazine.ir/media/media-1&quot;}</script>',
+                root / "out", {}, {}, __import__("threading").Lock(), resolver,
+            )
+            self.assertEqual(resolver.source, "https://api.mahoonartmagazine.ir/media/media-1")
+            self.assertIn('/media/aa/hash.jpg&quot;', rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

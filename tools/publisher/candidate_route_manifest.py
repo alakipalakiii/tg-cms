@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+REQUIRED_CONTROL_ROUTES = {"/admin", "/admin/analytics"}
+
 
 def snapshot_routes(posts: list[dict]) -> set[str]:
     routes: set[str] = set()
@@ -21,7 +23,7 @@ def build_candidate_route_manifest(posts: list[dict], accepted_path: Path, outpu
     accepted = json.loads(accepted_path.read_text(encoding="utf-8"))
     old_routes = {str(route) for route in accepted.get("routes", [])}
     current_routes = snapshot_routes(posts)
-    candidate_routes = sorted(old_routes | current_routes)
+    candidate_routes = sorted(old_routes | current_routes | REQUIRED_CONTROL_ROUTES)
     old_only = sorted(old_routes - current_routes)
     new_routes = sorted(current_routes - old_routes)
     payload = {
@@ -30,12 +32,15 @@ def build_candidate_route_manifest(posts: list[dict], accepted_path: Path, outpu
         "routes": candidate_routes,
         "baseline_route_count": len(old_routes),
         "snapshot_derived_route_count": len(current_routes),
+        "required_control_routes": sorted(REQUIRED_CONTROL_ROUTES),
+        "control_route_count": len(REQUIRED_CONTROL_ROUTES),
         "old_accepted_manifest_role": "NO_ROUTE_LOSS_BASELINE",
         "old_routes_missing_from_candidate": sorted(old_routes - set(candidate_routes)),
         "new_current_post_routes_included": sorted(current_routes & set(candidate_routes)),
         "new_snapshot_routes_missing_from_candidate": sorted(current_routes - set(candidate_routes)),
         "old_only_routes": old_only,
         "new_snapshot_routes": new_routes,
+        "new_control_routes": sorted(REQUIRED_CONTROL_ROUTES - old_routes),
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
