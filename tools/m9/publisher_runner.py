@@ -100,6 +100,49 @@ def main() -> int:
         print("PUBLISHED_REVISION_STATE_INVALID", file=sys.stderr)
         return 4
 
+    transaction_start_deployment = None
+    current_static_version = ""
+    rollback_state = None
+    if mode == "PUBLISH":
+        # Capture the transaction rollback anchor before the single revision lookup.
+        static_state = json.loads(STATIC_STATE.read_text(encoding="utf-8")) if STATIC_STATE.is_file() else {}
+        current_static_version = static_state.get("current_version", "")
+        if static_state.get("current_version_type") != "STATIC" or not current_static_version:
+            print("PUBLISHED_STATIC_STATE_INVALID", file=sys.stderr)
+            return 18
+        target_worker = "mahoon-art-magazine"
+        deployment.WORKER = target_worker
+        os.environ["MAHOON_WORKER"] = target_worker
+        try:
+            transaction_start_deployment = deployment.active_deployment(target_worker)
+        except Exception as exc:
+            print("PUBLISHER_TRANSACTION_START_LIVE_READ_FAILED: " + sanitize(str(exc)), file=sys.stderr)
+            return 18
+        baseline_pass, baseline_diagnostics = live_static_baseline(
+            transaction_start_deployment, current_static_version
+        )
+        Path("runner-evidence").mkdir(parents=True, exist_ok=True)
+        Path("runner-evidence/transaction-start-static-baseline.json").write_text(
+            json.dumps({"phase": "TRANSACTION_START_BEFORE_REVISION_LOOKUP",
+                        "expected_static_version": current_static_version,
+                        "diagnostics": baseline_diagnostics,
+                        "PASS": baseline_pass}, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        if not baseline_pass:
+            print("PUBLISHER_TRANSACTION_START_LIVE_STATIC_BASELINE_MISMATCH", file=sys.stderr)
+            return 18
+        rollback_state = {
+            "deployment_id": transaction_start_deployment["id"],
+            "static_version": current_static_version,
+        }
+        Path("runner-evidence/rollback-anchor-order.json").write_text(
+            json.dumps({"phase": "TRANSACTION_START_BEFORE_REVISION_LOOKUP",
+                        "rollback_anchor": rollback_state,
+                        "captured_before_revision_lookup": True,
+                        "captured_before_traffic_mutation": True}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
     try:
         current_revision, changed_at, revision_meta = fetch_public_content_revision()
     except Exception as exc:
@@ -208,21 +251,25 @@ def main() -> int:
             print("FAILURE_INJECTION_STATIC_BASELINE_MISSING", file=sys.stderr)
             return 18
     else:
-        static_state = json.loads(STATIC_STATE.read_text(encoding="utf-8")) if STATIC_STATE.is_file() else {}
-        current_static_version = static_state.get("current_version", "")
-        if static_state.get("current_version_type") != "STATIC" or not current_static_version:
-            print("PUBLISHED_STATIC_STATE_INVALID", file=sys.stderr)
-            return 18
-        pre_promotion = deployment.active_deployment(target_worker)
-        baseline_pass, baseline_diagnostics = live_static_baseline(pre_promotion, current_static_version)
-        if not baseline_pass:
-            Path("runner-evidence").mkdir(parents=True, exist_ok=True)
-            Path("runner-evidence/pre-upload-static-baseline.json").write_text(json.dumps(baseline_diagnostics, ensure_ascii=False, indent=2), encoding="utf-8")
-            print("PUBLISHER_LIVE_STATIC_BASELINE_MISMATCH", file=sys.stderr)
-            return 18
+        if transaction_start_deployment is not None:
+            pre_promotion = transaction_start_deployment
+        else:
+            static_state = json.loads(STATIC_STATE.read_text(encoding="utf-8")) if STATIC_STATE.is_file() else {}
+            current_static_version = static_state.get("current_version", "")
+            if static_state.get("current_version_type") != "STATIC" or not current_static_version:
+                print("PUBLISHED_STATIC_STATE_INVALID", file=sys.stderr)
+                return 18
+            pre_promotion = deployment.active_deployment(target_worker)
+            baseline_pass, baseline_diagnostics = live_static_baseline(pre_promotion, current_static_version)
+            if not baseline_pass:
+                Path("runner-evidence").mkdir(parents=True, exist_ok=True)
+                Path("runner-evidence/pre-upload-static-baseline.json").write_text(json.dumps(baseline_diagnostics, ensure_ascii=False, indent=2), encoding="utf-8")
+                print("PUBLISHER_LIVE_STATIC_BASELINE_MISMATCH", file=sys.stderr)
+                return 18
     Path("runner-evidence").mkdir(parents=True, exist_ok=True)
-    rollback_state = {"deployment_id": pre_promotion["id"], "static_version": current_static_version}
-    Path("runner-evidence/rollback-anchor-order.json").write_text(json.dumps({"phase": "PRE_CANDIDATE_UPLOAD", "rollback_anchor": rollback_state, "captured_before_traffic_mutation": True}, ensure_ascii=False, indent=2), encoding="utf-8")
+    if rollback_state is None:
+        rollback_state = {"deployment_id": pre_promotion["id"], "static_version": current_static_version}
+        Path("runner-evidence/rollback-anchor-order.json").write_text(json.dumps({"phase": "PRE_CANDIDATE_UPLOAD", "rollback_anchor": rollback_state, "captured_before_traffic_mutation": True}, ensure_ascii=False, indent=2), encoding="utf-8")
     route_data = json.loads(route_manifest.read_text(encoding="utf-8"))
     sealed_root = Path("runner-evidence/publisher-sealed") / digest / "site"
     sealed_root.parent.mkdir(parents=True, exist_ok=True)
@@ -239,6 +286,16 @@ def main() -> int:
     config_path = Path("runner-evidence/publisher-sealed-wrangler.jsonc")
     config_path.write_text(json.dumps({"name": target_worker, "main": str(Path("tools/publisher/static_version_main.js").resolve()),
                                        "compatibility_date": "2026-09-08", "assets": {"directory": str(sealed_root.resolve()), "binding": "ASSETS", "html_handling": "auto-trailing-slash", "not_found_handling": "404-page"}}, ensure_ascii=False, indent=2), encoding="utf-8")
+    live_before_upload = deployment.active_deployment(target_worker)
+    baseline_pass, baseline_diagnostics = live_static_baseline(live_before_upload, current_static_version)
+    Path("runner-evidence/pre-upload-static-baseline.json").write_text(
+        json.dumps({"expected_static_version": current_static_version,
+                    "diagnostics": baseline_diagnostics,
+                    "PASS": baseline_pass}, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    if not baseline_pass:
+        print("PUBLISHER_PRE_UPLOAD_LIVE_STATIC_BASELINE_MISMATCH", file=sys.stderr)
+        return 18
     try:
         version_id = deployment.upload_version(target_worker, sealed_root, config_path, "MAHOON-publisher-sealed-candidate")
     except Exception as exc:
@@ -249,8 +306,13 @@ def main() -> int:
     if not baseline_pass:
         print("PUBLISHER_PRE_ZERO_PERCENT_LIVE_DRIFT", file=sys.stderr)
         return 18
-    rollback_state = {"deployment_id": before_zero["id"], "static_version": current_static_version}
-    Path("runner-evidence/rollback-anchor-order.json").write_text(json.dumps({"phase": "PRE_ZERO_PERCENT_LIVE_READ", "rollback_anchor": rollback_state, "captured_before_traffic_mutation": True}, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path("runner-evidence/pre-zero-percent-live-read.json").write_text(
+        json.dumps({"phase": "PRE_ZERO_PERCENT_LIVE_READ",
+                    "transaction_rollback_anchor": rollback_state,
+                    "observed_deployment_id": before_zero.get("id"),
+                    "diagnostics": baseline_diagnostics,
+                    "PASS": baseline_pass}, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     try:
         deployment.deploy_pair(target_worker, version_id, 0, current_static_version, 100)
         zero_percent_state = deployment.wait_for_active(target_worker, {current_static_version: 100, version_id: 0})

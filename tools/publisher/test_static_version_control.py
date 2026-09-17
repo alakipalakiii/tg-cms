@@ -28,6 +28,16 @@ class StaticVersionControlTests(unittest.TestCase):
         self.assertLess(anchor, record)
         self.assertLess(record, upload)
 
+    def test_publish_captures_transaction_baseline_before_revision_and_upload(self):
+        runner = Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8")
+        capture = runner.index('transaction_start_deployment = deployment.active_deployment(target_worker)')
+        revision_lookup = runner.index('current_revision, changed_at, revision_meta = fetch_public_content_revision()')
+        upload_guard = runner.index('live_before_upload = deployment.active_deployment(target_worker)')
+        upload = runner.index('deployment.upload_version(')
+        self.assertLess(capture, revision_lookup)
+        self.assertLess(upload_guard, upload)
+        self.assertIn('"captured_before_revision_lookup": True', runner)
+
     def test_static_deployment_plan_contains_only_static_pairs(self):
         plan = static_deployment_plan("mahoon-art-magazine", "known-static", "candidate-static")
         self.assertEqual({"known-static": 100}, plan["baseline"])
