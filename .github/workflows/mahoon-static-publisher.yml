@@ -106,6 +106,7 @@ jobs:
       PUBLISHER_MODE: ${{ github.event_name == 'schedule' && 'CHECK_ONLY' || inputs.mode }}
       CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      MAHOON_WRANGLER: npx wrangler@4.83.0
       PUBLISHER_EXPECTED_FINGERPRINT: ${{ inputs.expected_fingerprint }}
       MAHOON_PUBLISH_READY: ${{ inputs.ready }}
       MAHOON_PUBLIC_CONTENT_REVISION_API: https://mahoon-content-revision.morentoofficial.workers.dev/public/content-revision-v1

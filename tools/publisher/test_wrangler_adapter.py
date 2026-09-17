@@ -41,6 +41,11 @@ class WranglerAdapterTests(unittest.TestCase):
         self.assertNotIn("deploy_pair", check_block)
         self.assertNotIn("cloudflare_direct_api", source)
 
+    def test_publisher_wrangler_matches_ci_auth_verified_version(self):
+        workflow = Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8")
+        self.assertIn("MAHOON_WRANGLER: npx wrangler@4.83.0", workflow)
+        self.assertIn("npx wrangler@4.83.0 whoami", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
