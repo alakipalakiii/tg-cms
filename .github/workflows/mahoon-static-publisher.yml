@@ -211,7 +211,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: mahoon-publish-proof-bundle-${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && needs.build-and-zero-percent.outputs.transaction_id || inputs.transaction_id }}
-          path: proof-bundle
+          path: ${{ runner.temp }}/proof-bundle
           run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && github.run_id || inputs.source_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
@@ -222,7 +222,7 @@ jobs:
         run: |
           python - <<'PY'
           import json, os
-          d='proof-bundle'
+          d=os.path.join(os.environ['RUNNER_TEMP'], 'proof-bundle')
           tx=json.load(open(f'{d}/transaction.json', encoding='utf-8'))
           idx=json.load(open(f'{d}/bundle-index.json', encoding='utf-8'))
           wanted=os.environ.get('REQUESTED_TRANSACTION_ID','')
@@ -256,7 +256,7 @@ jobs:
           python tools/m9/resumable_stage_runner.py
           --stage REMOTE_PROOF
           --transaction-id "${{ steps.meta.outputs.transaction_id }}"
-          --bundle-dir proof-bundle
+          --bundle-dir "${{ runner.temp }}/proof-bundle"
       - name: Upload measured remote proof, including failures
         if: ${{ always() && steps.meta.outputs.transaction_id != '' }}
         uses: actions/upload-artifact@v4
@@ -285,7 +285,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: mahoon-publish-proof-bundle-${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && needs.build-and-zero-percent.outputs.transaction_id || inputs.transaction_id }}
-          path: proof-bundle
+          path: ${{ runner.temp }}/proof-bundle
           run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && github.run_id || inputs.source_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
@@ -293,7 +293,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: mahoon-remote-proof-result-${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && needs.remote-proof.outputs.transaction_id || inputs.transaction_id }}
-          path: remote-proof
+          path: ${{ runner.temp }}/remote-proof
           run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && github.run_id || inputs.source_proof_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
@@ -304,8 +304,10 @@ jobs:
         run: |
           python - <<'PY'
           import json, os
-          tx=json.load(open('proof-bundle/transaction.json', encoding='utf-8'))
-          proof=json.load(open('remote-proof/remote-proof-result.json', encoding='utf-8'))
+          import os
+          root=os.environ['RUNNER_TEMP']
+          tx=json.load(open(f'{root}/proof-bundle/transaction.json', encoding='utf-8'))
+          proof=json.load(open(f'{root}/remote-proof/remote-proof-result.json', encoding='utf-8'))
           wanted=os.environ.get('REQUESTED_TRANSACTION_ID','')
           assert tx['transaction_id'] == proof['transaction_id'] == wanted
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
@@ -336,8 +338,8 @@ jobs:
           python tools/m9/resumable_stage_runner.py
           --stage PROMOTE_AND_VALIDATE
           --transaction-id "${{ steps.meta.outputs.transaction_id }}"
-          --bundle-dir proof-bundle
-          --proof-dir remote-proof
+          --bundle-dir "${{ runner.temp }}/proof-bundle"
+          --proof-dir "${{ runner.temp }}/remote-proof"
       - name: Read production pass marker
         id: result
         if: ${{ always() }}
@@ -371,12 +373,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: mahoon-production-result-${{ needs.promote-and-validate.outputs.transaction_id }}
-          path: production-result
+          path: ${{ runner.temp }}/production-result
       - name: Download corresponding proof bundle
         uses: actions/download-artifact@v4
         with:
           name: mahoon-publish-proof-bundle-${{ needs.promote-and-validate.outputs.transaction_id }}
-          path: proof-bundle
+          path: ${{ runner.temp }}/proof-bundle
           run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && github.run_id || inputs.source_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
@@ -386,7 +388,7 @@ jobs:
       - name: Verify PASS artifacts and install only transaction state
         env:
           PYTHONPATH: tools/publisher:tools:.
-        run: python tools/m9/persist_publisher_state.py --bundle-dir proof-bundle --result-dir production-result
+        run: python tools/m9/persist_publisher_state.py --bundle-dir "${{ runner.temp }}/proof-bundle" --result-dir "${{ runner.temp }}/production-result"
       - name: Persist only verified publisher state
         run: |
           git config user.name "github-actions[bot]"

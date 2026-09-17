@@ -151,6 +151,15 @@ class ResumableTransactionTests(unittest.TestCase):
         self.assertIn("vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH'", workflow)
         self.assertIn("github.event_name == 'schedule' && (vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && 'PUBLISH' || 'CHECK_ONLY')", workflow)
         self.assertNotIn("vars.PUBLISHER_MODE_SCHEDULED || 'PUBLISH'", workflow)
+        self.assertIn("path: ${{ runner.temp }}/proof-bundle", workflow)
+        self.assertIn("path: ${{ runner.temp }}/remote-proof", workflow)
+        self.assertIn("path: ${{ runner.temp }}/production-result", workflow)
+
+    def test_remote_failure_logger_prints_sanitized_json_to_stderr(self):
+        source = inspect.getsource(resumable_stage_runner.main)
+        self.assertIn('print(json.dumps({"stage": args.stage, "failure": type(exc).__name__ + ": " + _safe_failure(exc)}), file=sys.stderr)', source)
+        self.assertNotIn('json.dumps({"stage": args.stage, "failure": type(exc).__name__ + ": " + _safe_failure(exc)}, file=sys.stderr)', source)
+        self.assertEqual("token=[REDACTED]", resumable_stage_runner._safe_failure(Exception("token=secret")))
 
     def test_promotion_state_requires_successful_matching_production_result(self):
         transaction, digest = self._bundle()

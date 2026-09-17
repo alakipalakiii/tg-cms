@@ -416,7 +416,7 @@ def main() -> int:
                 })
             except Exception:
                 pass
-        print(json.dumps({"stage": args.stage, "failure": type(exc).__name__ + ": " + _safe_failure(exc)}, file=sys.stderr))
+        print(json.dumps({"stage": args.stage, "failure": type(exc).__name__ + ": " + _safe_failure(exc)}), file=sys.stderr)
         return 1
 
 
