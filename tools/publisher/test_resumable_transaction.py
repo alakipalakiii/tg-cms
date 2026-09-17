@@ -134,6 +134,7 @@ class ResumableTransactionTests(unittest.TestCase):
     def test_build_has_one_export_call_and_remote_stage_cannot_rebuild_or_deploy(self):
         build_source = inspect.getsource(publisher_runner.main)
         self.assertEqual(1, build_source.count("export_content(snapshot_path)"))
+        self.assertLess(build_source.index("fetch_public_content_revision()"), build_source.index("static_build_adapter.build(out, snapshot_path)"))
         remote_source = inspect.getsource(resumable_stage_runner.run_remote)
         self.assertIn("verify_proof_bundle", remote_source)
         self.assertIn("active_deployment", remote_source)
@@ -142,6 +143,7 @@ class ResumableTransactionTests(unittest.TestCase):
 
     def test_workflow_has_independent_timeouts_and_keeps_schedule_check_only(self):
         workflow = Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8")
+        transaction_job = workflow.split("  build-and-zero-percent:", 1)[1].split("  remote-proof:", 1)[0]
         self.assertIn("BUILD_AND_ZERO_PERCENT, REMOTE_PROOF, PROMOTE_AND_VALIDATE", workflow)
         self.assertIn("timeout-minutes: 45", workflow)
         self.assertIn("timeout-minutes: 60", workflow)
@@ -151,6 +153,8 @@ class ResumableTransactionTests(unittest.TestCase):
         self.assertIn("vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH'", workflow)
         self.assertIn("github.event_name == 'schedule' && (vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && 'PUBLISH' || 'CHECK_ONLY')", workflow)
         self.assertNotIn("vars.PUBLISHER_MODE_SCHEDULED || 'PUBLISH'", workflow)
+        self.assertNotIn("Build website from the pinned transaction snapshot", workflow)
+        self.assertNotIn("run: npm run build --prefix website/dreary-disk", transaction_job)
         self.assertIn("path: ${{ runner.temp }}/proof-bundle", workflow)
         self.assertIn("path: ${{ runner.temp }}/remote-proof", workflow)
         self.assertIn("path: ${{ runner.temp }}/production-result", workflow)

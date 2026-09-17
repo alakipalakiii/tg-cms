@@ -13,7 +13,7 @@ import sys
 from datetime import datetime, timezone
 import urllib.request
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urljoin, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from publisher.core import fingerprint
@@ -29,6 +29,7 @@ from publisher.candidate_route_manifest import build_candidate_route_manifest
 from publisher.promotion_gates import evaluate_local_candidate
 from publisher.content_revision import DEFAULT_ENDPOINT, fetch_public_content_revision
 from publisher.error_contract import PublisherStageError, build_error, safe_details
+from publisher.remote_proof_harness import request_with_version_pinning
 from publisher.resumable_transaction import create_proof_bundle, transaction_id
 
 API = os.environ.get("MAHOON_PUBLIC_CONTENT_API", "https://api.mahoonartmagazine.ir/posts-full-public-v2")
@@ -90,6 +91,65 @@ def sealed_static_worker_config(target_worker: str, sealed_root: Path) -> dict:
         },
         "version_metadata": version_metadata,
     }
+
+
+def pre_upload_baseline_health(routes: list[str], baseline_version: str) -> dict:
+    base = os.environ.get("MAHOON_PRODUCTION_ORIGIN", "https://mahoonartmagazine.ir").rstrip("/")
+    route_set = set(routes)
+    category = next((route for route in routes if route.startswith("/category/")), None)
+    post = "/post/32" if "/post/32" in route_set else next(
+        (route for route in routes if re.fullmatch(r"/post/\d+", route)), None
+    )
+    page_routes = ["/", "/posts", category, post, "/admin", "/admin/analytics"]
+    headers = {"User-Agent": "MAHOON-M10-preupload-baseline-health/1.0", "Accept": "text/html,*/*"}
+    pages: list[dict] = []
+    css_urls: set[str] = set()
+    base_origin = urlsplit(base).netloc.lower()
+    for route in page_routes:
+        if not route:
+            pages.append({"route": None, "status": None, "error_class": "REPRESENTATIVE_ROUTE_MISSING"})
+            continue
+        url = base + quote(route, safe="/%:@!$&'()*+,;=-._~")
+        try:
+            proof = request_with_version_pinning(
+                url, worker="mahoon-art-magazine", version=baseline_version,
+                headers=headers, timeout=35,
+            )
+            pages.append({"route": route, "status": proof["status"], "content_type": proof["content_type"],
+                          "redirect_hop_count": proof["redirect_hop_count"],
+                          "override_preserved_on_every_hop": proof["override_preserved_on_every_hop"]})
+            if proof["status"] == 200 and proof["content_type"] == "text/html":
+                html = proof["body"].decode("utf-8", "replace")
+                for match in re.finditer(r'<link\b[^>]*\bhref=["\']([^"\']+\.css(?:\?[^"\']*)?)["\']', html, re.I):
+                    css_url = urljoin(url, match.group(1))
+                    if urlsplit(css_url).netloc.lower() == base_origin:
+                        css_urls.add(css_url)
+        except Exception as exc:
+            pages.append({"route": route, "status": None, "error_class": type(exc).__name__})
+
+    css_assets: list[dict] = []
+    for css_url in sorted(css_urls):
+        try:
+            proof = request_with_version_pinning(
+                css_url, worker="mahoon-art-magazine", version=baseline_version,
+                headers={**headers, "Accept": "text/css,*/*"}, method="GET", timeout=35,
+            )
+            css_assets.append({"path": urlsplit(css_url).path, "status": proof["status"],
+                               "content_type": proof["content_type"]})
+        except Exception as exc:
+            css_assets.append({"path": urlsplit(css_url).path, "status": None,
+                               "error_class": type(exc).__name__})
+
+    passed = (
+        len(pages) == 6
+        and all(item.get("status") == 200 and item.get("content_type") == "text/html"
+                and item.get("override_preserved_on_every_hop") is True for item in pages)
+        and bool(css_assets)
+        and all(item.get("status") == 200 and item.get("content_type", "").startswith("text/css")
+                for item in css_assets)
+    )
+    return {"baseline_version": baseline_version, "pages": pages, "css_assets": css_assets,
+            "PASS": passed}
 
 
 def export_content(snapshot_path: Path | None = None) -> tuple[dict, str]:
@@ -345,6 +405,13 @@ def main() -> int:
     if not baseline_pass:
         print("PUBLISHER_PRE_UPLOAD_LIVE_STATIC_BASELINE_MISMATCH", file=sys.stderr)
         return 18
+    baseline_health = pre_upload_baseline_health(route_data.get("routes", []), current_static_version)
+    Path("runner-evidence/pre-upload-baseline-health.json").write_text(
+        json.dumps(baseline_health, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    if not baseline_health.get("PASS"):
+        print("PUBLISHER_PRE_UPLOAD_BASELINE_HEALTH_FAILED", file=sys.stderr)
+        return 18
     try:
         version_id = deployment.upload_version(target_worker, sealed_root, config_path, "MAHOON-publisher-sealed-candidate")
     except Exception as exc:
@@ -412,6 +479,7 @@ def main() -> int:
                 "filesystem_gate": gate,
                 "measured_local_gates": measured_gates,
                 "pre_upload_live_baseline": json.loads(Path("runner-evidence/pre-upload-static-baseline.json").read_text(encoding="utf-8")),
+                "pre_upload_baseline_health": baseline_health,
                 "pre_zero_percent_live_read": json.loads(Path("runner-evidence/pre-zero-percent-live-read.json").read_text(encoding="utf-8")),
                 "rollback_anchor": json.loads(Path("runner-evidence/rollback-anchor-order.json").read_text(encoding="utf-8")),
                 "candidate_zero_split": promotion_anchor,

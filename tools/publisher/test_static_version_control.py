@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from tools.publisher import cloudflare_wrangler as wrangler
 from tools.publisher import rollback
-from tools.m9.publisher_runner import sealed_static_worker_config
+from tools.m9.publisher_runner import pre_upload_baseline_health, sealed_static_worker_config
 from tools.publisher.seal_artifact import create_seal, verify_seal
 from tools.publisher.state_machine import live_static_baseline, static_deployment_plan, verify_promoted_static
 from tools.publisher.resumable_transaction import split_is_baseline_zero
@@ -34,6 +34,36 @@ class StaticVersionControlTests(unittest.TestCase):
         worker = Path("tools/publisher/static_version_main.js").read_text(encoding="utf-8")
         self.assertIn("env.CF_VERSION_METADATA?.id", worker)
         self.assertIn("withVersionMetadata(response", worker)
+
+    def test_preupload_baseline_health_checks_pages_and_linked_css_with_version_pin(self):
+        def fake_request(url, *, worker, version, **_kwargs):
+            self.assertEqual("mahoon-art-magazine", worker)
+            self.assertEqual("baseline-version", version)
+            if url.endswith("/style.css"):
+                return {"status": 200, "content_type": "text/css", "body": b"body{}",
+                        "redirect_hop_count": 0, "override_preserved_on_every_hop": True}
+            return {"status": 200, "content_type": "text/html",
+                    "body": b'<link rel="stylesheet" href="/style.css">',
+                    "redirect_hop_count": 0, "override_preserved_on_every_hop": True}
+
+        with patch("tools.m9.publisher_runner.request_with_version_pinning", side_effect=fake_request):
+            result = pre_upload_baseline_health(["/category/books", "/post/32"], "baseline-version")
+        self.assertTrue(result["PASS"])
+        self.assertEqual(6, len(result["pages"]))
+        self.assertEqual(1, len(result["css_assets"]))
+
+    def test_preupload_baseline_health_fails_on_missing_css(self):
+        def fake_request(url, **_kwargs):
+            if url.endswith("/style.css"):
+                return {"status": 404, "content_type": "text/plain", "body": b"not found",
+                        "redirect_hop_count": 0, "override_preserved_on_every_hop": True}
+            return {"status": 200, "content_type": "text/html",
+                    "body": b'<link rel="stylesheet" href="/style.css">',
+                    "redirect_hop_count": 0, "override_preserved_on_every_hop": True}
+
+        with patch("tools.m9.publisher_runner.request_with_version_pinning", side_effect=fake_request):
+            result = pre_upload_baseline_health(["/category/books", "/post/32"], "baseline-version")
+        self.assertFalse(result["PASS"])
 
     def test_initial_rollback_anchor_is_captured_before_upload(self):
         runner = Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8")

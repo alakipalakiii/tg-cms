@@ -160,10 +160,6 @@ jobs:
           MAHOON_RUN_BROWSER_TESTS: "0"
           PYTHONPATH: tools/publisher:tools:.
         run: python -m unittest discover -s tools/publisher -p 'test_*.py'
-      - name: Build website from the pinned transaction snapshot
-        env:
-          PUBLIC_MAHOON_SNAPSHOT_BINDING: "1"
-        run: npm run build --prefix website/dreary-disk
       - name: Build, gate, seal, upload, and create candidate at 0 percent
         run: python tools/m9/publisher_runner.py
       - name: Read transaction identity
