@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -213,6 +214,7 @@ class PromotionGateTests(unittest.TestCase):
             import shutil
             shutil.rmtree(root)
 
+    @unittest.skipUnless(os.environ.get("MAHOON_RUN_BROWSER_TESTS") == "1", "browser fixture runs in browser-enabled CI stage")
     def test_real_browser_visual_and_zero_origin_fixtures_pass_and_fail(self):
         result = subprocess.run(["node", "tools/publisher/prepromotion_browser_gate.mjs", "--self-test"],
                                 capture_output=True, text=True, check=False, timeout=120)

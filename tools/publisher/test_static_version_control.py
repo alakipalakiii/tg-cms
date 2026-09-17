@@ -6,7 +6,8 @@ from unittest.mock import patch
 from tools.publisher import cloudflare_wrangler as wrangler
 from tools.publisher import rollback
 from tools.publisher.seal_artifact import create_seal, verify_seal
-from tools.publisher.state_machine import live_static_baseline, static_deployment_plan
+from tools.publisher.state_machine import live_static_baseline, static_deployment_plan, verify_promoted_static
+from tools.publisher.resumable_transaction import split_is_baseline_zero
 
 
 class StaticVersionControlTests(unittest.TestCase):
@@ -46,6 +47,29 @@ class StaticVersionControlTests(unittest.TestCase):
         self.assertEqual({"known-static": 100, "candidate-static": 0}, plan["rollback"])
         self.assertFalse(plan["contains_ssr_version"])
         self.assertNotIn("SSR", str(plan))
+
+    def test_existing_zero_percent_candidate_is_preserved_without_allowing_traffic(self):
+        state = {"id": "d", "versions": [
+            {"version_id": "7c6570b4-dbf5-42d3-84d6-acdb0da63092", "percentage": 100},
+            {"version_id": "33df7584-c670-432f-8078-a94f11ee4837", "percentage": 0},
+        ]}
+        self.assertTrue(live_static_baseline(state, "7c6570b4-dbf5-42d3-84d6-acdb0da63092")[0])
+        tx = {"baseline_static_version": "7c6570b4-dbf5-42d3-84d6-acdb0da63092",
+              "candidate_static_version": "candidate-new",
+              "preexisting_zero_versions": ["33df7584-c670-432f-8078-a94f11ee4837"]}
+        zero = {"versions": [*state["versions"], {"version_id": "candidate-new", "percentage": 0}]}
+        self.assertTrue(split_is_baseline_zero(zero, tx))
+        unsafe = {"versions": [
+            {"version_id": "7c6570b4-dbf5-42d3-84d6-acdb0da63092", "percentage": 99},
+            {"version_id": "33df7584-c670-432f-8078-a94f11ee4837", "percentage": 1},
+        ]}
+        self.assertFalse(live_static_baseline(unsafe, "7c6570b4-dbf5-42d3-84d6-acdb0da63092")[0])
+        promoted = {"id": "p", "versions": [
+            {"version_id": "candidate-new", "percentage": 100},
+            {"version_id": "7c6570b4-dbf5-42d3-84d6-acdb0da63092", "percentage": 0},
+            {"version_id": "33df7584-c670-432f-8078-a94f11ee4837", "percentage": 0},
+        ]}
+        self.assertTrue(verify_promoted_static(promoted, "candidate-new", tx["baseline_static_version"])[0])
 
     def test_failed_transaction_rolls_back_to_pre_promotion_live_not_old_history(self):
         pre_promotion_version = "7c6570b4-dbf5-42d3-84d6-acdb0da63092"
@@ -98,6 +122,12 @@ class StaticVersionControlTests(unittest.TestCase):
         self.assertIn("candidate@0", run.call_args.args[0])
         self.assertIn("verified-static@100", run.call_args.args[0])
         self.assertNotIn("SSR", str(run.call_args.args[0]))
+        with patch.object(wrangler, "_run", return_value="[]") as run, patch.object(
+            wrangler, "read_deployment", return_value={"id": "d", "versions": []}
+        ):
+            wrangler.deploy_pair("worker", "candidate", 0, "verified-static", 100,
+                                 ("33df7584-c670-432f-8078-a94f11ee4837",))
+        self.assertIn("33df7584-c670-432f-8078-a94f11ee4837@0", run.call_args.args[0])
         with patch.object(wrangler, "_run") as run:
             with self.assertRaises(wrangler.WranglerError):
                 wrangler.deploy_pair("worker", "candidate", 0, "verified-static", 90)

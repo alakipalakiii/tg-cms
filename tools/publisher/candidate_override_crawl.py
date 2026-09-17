@@ -28,6 +28,7 @@ WORKER = os.environ.get("MAHOON_OVERRIDE_WORKER", "mahoon-art-magazine")
 VERSION = os.environ.get("MAHOON_CANDIDATE_VERSION", "")
 ROUTES_PATH = Path(os.environ.get("MAHOON_ROUTE_MANIFEST", "publisher-state/current-accepted-route-manifest.json"))
 SNAPSHOT_PATH = Path(os.environ.get("MAHOON_PUBLISHED_CONTENT_SNAPSHOT", "runner-evidence/current-v2-snapshot.json"))
+EXPECTATIONS_PATH = Path(os.environ["MAHOON_REMOTE_EXPECTATIONS"]) if os.environ.get("MAHOON_REMOTE_EXPECTATIONS") else None
 MEDIA_PATH = Path(os.environ.get("MAHOON_MEDIA_MANIFEST", "publisher-state/production-media-manifest.json"))
 UA = "MAHOON-M10-Measured-Static-Candidate-Crawl/1.0"
 PAGE_SIZE = 20
@@ -145,9 +146,19 @@ def _head_media(path: str) -> dict:
 
 def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: dict,
              media_manifest: dict) -> dict:
-    posts = _posts(snapshot)
-    logical = _expected_posts(snapshot)
-    expected_ids = [int(post["id"]) for post in logical]
+    minimized = snapshot.get("contract") == "MAHOON_REMOTE_EXPECTATIONS_V1"
+    if minimized:
+        posts = snapshot.get("posts", [])
+        expected_ids = [int(value) for value in snapshot.get("listing_ids", [])]
+        expected_categories = snapshot.get("category_ids", {})
+    else:
+        posts = _posts(snapshot)
+        logical = _expected_posts(snapshot)
+        expected_ids = [int(post["id"]) for post in logical]
+        expected_categories = {
+            label: [int(post["id"]) for post in logical if canonical_category(post) == label]
+            for label, _variants in CATEGORY_DEFINITIONS
+        }
     by_slug, by_id = _route_id_map(posts)
     route_set = set(route_list)
     post_source_routes = {f"/post/{post['id']}" for post in posts if str(post.get("id", "")).isdigit()}
@@ -173,6 +184,10 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
         canonical_failures += int(value.get("canonical") != _url(route))
         post_seo_failures += sum(not value.get(key) for key in ("title", "h1", "meta", "og", "jsonld"))
         post_seo_failures += int(bool(value.get("robots_noindex")))
+    post_jsonld_missing = sum(
+        not html.get(f"/post/{post.get('slug')}", {}).get("jsonld")
+        for post in posts if post.get("slug")
+    )
     expected_norm = {unquote(urlsplit(route).path).rstrip("/") or "/" for route in route_set}
     broken_links = 0
     for route, value in html.items():
@@ -214,7 +229,7 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
     category_memberships: dict[int, int] = {}
     category_sequences: dict[str, list[int]] = {}
     for label, _variants in CATEGORY_DEFINITIONS:
-        expected = [int(post["id"]) for post in logical if canonical_category(post) == label]
+        expected = [int(value) for value in expected_categories.get(label, [])]
         pages = _page_routes(route_set, "/category/" + label, (len(expected) + PAGE_SIZE - 1) // PAGE_SIZE)
         sequence = []
         page_seen: set[int] = set()
@@ -261,6 +276,8 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
         "measured": True,
         "html_routes": len(html_routes), "html_final_200": len(html_routes) - len(html_failures),
         "all_manifest_routes": len(route_list), "manifest_routes_final_200": len(route_list) - len(route_status_failures),
+        "expected_route_count": len(route_list), "present_route_count": len(route_list) - len(route_status_failures),
+        "missing_routes": [path for path in route_list if state["routes"].get(path, {}).get("http_status") != 200],
         "post_routes": len(post_source_routes), "post_final_200": len(post_source_routes) - len(post_route_failures),
         "broken_critical_links": broken_links, "orphan_posts": orphan_posts,
         "duplicate_canonicals": duplicate_canonicals, "duplicate_listing_ids": duplicate_card_ids,
@@ -271,11 +288,13 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
         "redirect_loops": redirect_loops, "remote_reader_media_dependencies": reader_media,
         "workers_dev_leaks": workers_dev, "preview_url_leaks": preview_leaks,
         "post_seo_failures": post_seo_failures, "canonical_failures": canonical_failures,
+        "post_jsonld_missing": post_jsonld_missing,
         "search_index_ids": len(search_ids), "search_index_duplicate_ids": search_duplicate,
         "search_index_parity_failures": search_parity_failures,
         "robots_sitemap_directive": bool(robots), "missing_sitemap_posts": missing_sitemap_posts,
         "required_remote_media_objects": len(media_paths), "remote_media_http_failures": media_http_failures,
         "media_manifest_unresolved": media_unresolved,
+        "expected_media_source_count": snapshot.get("media_source_count") if minimized else None,
         "gates": {
             "remote_route_parity": {"measured": True, "PASS": route_parity},
             "remote_content_parity": {"measured": True, "PASS": content_pass},
@@ -300,7 +319,9 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     expected = routes()
-    snapshot = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8-sig"))
+    snapshot = json.loads((EXPECTATIONS_PATH or SNAPSHOT_PATH).read_text(encoding="utf-8-sig"))
+    if EXPECTATIONS_PATH and snapshot.get("contract") != "MAHOON_REMOTE_EXPECTATIONS_V1":
+        raise ValueError("remote proof expectations contract is invalid")
     media_manifest = json.loads(MEDIA_PATH.read_text(encoding="utf-8")) if MEDIA_PATH.is_file() else {}
     route_hash = hashlib.sha256(json.dumps(expected, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
     state = {"base": BASE, "override_worker": WORKER, "override_version": VERSION if os.environ.get("MAHOON_DISABLE_VERSION_OVERRIDE") != "1" else "PRODUCTION",
@@ -315,19 +336,37 @@ def main() -> None:
     pending = [path for path in expected if state["routes"][path].get("status") != "PASS"]
     _save(state)
     print(json.dumps({"expected_routes": len(expected), "checkpoint_pass": len(expected) - len(pending), "pending": len(pending), "route_hash": route_hash}, ensure_ascii=False), flush=True)
-    for start in range(0, len(pending), 50):
-        batch = pending[start:start + 50]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+    workers = max(1, min(12, int(os.environ.get("MAHOON_REMOTE_CRAWL_WORKERS", "8"))))
+    systemic_failure = False
+    for start in range(0, len(pending), 80):
+        batch = pending[start:start + 80]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
             results = list(executor.map(fetch, batch))
         for path, result in zip(batch, results):
             state["routes"][path] = result
         _save(state)
+        failures = [item for item in results if item.get("status") != "PASS"]
+        # Stop spending time on thousands of requests when a whole batch shows
+        # the same systemic outage; retain an explicit failure record per route.
+        if len(failures) >= max(10, int(len(batch) * 0.8)):
+            classes = {item.get("error_class", item.get("http_status")) for item in failures}
+            systemic_failure = len(classes) == 1
+            if systemic_failure:
+                for remaining in pending[start + len(batch):]:
+                    state["routes"][remaining] = {
+                        "status": "FAIL", "http_status": None,
+                        "error_class": "SYSTEMIC_FAILURE_NOT_ATTEMPTED",
+                    }
+                _save(state)
         summary = {"batch_start": start, "batch_size": len(batch),
                    "pass_total": sum(item.get("status") == "PASS" for item in state["routes"].values()),
                    "fail_total": sum(item.get("status") == "FAIL" for item in state["routes"].values()),
-                   "retry_pending": sum(item.get("status") == "RETRY_PENDING" for item in state["routes"].values())}
+                   "retry_pending": sum(item.get("status") == "RETRY_PENDING" for item in state["routes"].values()),
+                   "systemic_failure": systemic_failure, "bounded_workers": workers}
         (OUT / f"batch-{start // 50 + 1:03d}.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps(summary, ensure_ascii=False), flush=True)
+        if systemic_failure:
+            break
     search_result = fetch("/search/search-index.json")
     if search_result.get("http_status") == 200:
         try:

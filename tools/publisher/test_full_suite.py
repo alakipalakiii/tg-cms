@@ -185,8 +185,12 @@ class PublisherFullSuite(unittest.TestCase):
         self.assertIsInstance(build_error("s", "c", "m", details={"observed": {"message": "x"}}), PublisherStageError)
     def test_83_rollback_anchor_order_is_pre_mutation(self):
         self.assertIn("PRE_ZERO_PERCENT_LIVE_READ", Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8"))
-    def test_84_failure_injection_is_nonproduction_mode(self):
-        self.assertIn("FAILURE_INJECTION", Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8"))
+    def test_84_publisher_workflow_is_split_into_resumable_stages(self):
+        workflow = Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8")
+        self.assertIn("BUILD_AND_ZERO_PERCENT", workflow)
+        self.assertIn("REMOTE_PROOF", workflow)
+        self.assertIn("PROMOTE_AND_VALIDATE", workflow)
+        self.assertNotIn("FAILURE_INJECTION", workflow)
     def test_85_failure_injection_media_fixture_is_scoped(self):
         source = Path("tools/publisher/cloudflare_direct_api.py").read_text(encoding="utf-8")
         self.assertIn("MAHOON_FAILURE_INJECTION_NO_PERSISTED_MEDIA", source)

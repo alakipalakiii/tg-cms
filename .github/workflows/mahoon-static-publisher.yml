@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Run the shared publisher mode"
+        description: "Run one publisher stage or the complete resumable transaction"
         required: true
         default: CHECK_ONLY
         type: choice
-        options: [CHECK_ONLY, PROOF_ZERO_PERCENT, PUBLISH, FAILURE_INJECTION, CONTENT_DIAGNOSTIC, SAFETY_TESTS_ONLY]
+        options: [CHECK_ONLY, PUBLISH, BUILD_AND_ZERO_PERCENT, REMOTE_PROOF, PROMOTE_AND_VALIDATE, CONTENT_DIAGNOSTIC, SAFETY_TESTS_ONLY]
       expected_fingerprint:
         description: "Optional reviewed pending-candidate fingerprint for a no-change proof"
         required: false
@@ -20,22 +20,37 @@ on:
         default: false
         type: boolean
       ready:
-        description: "Explicitly authorize the already-reviewed production cutover"
+        description: "Explicitly authorize the controlled production promotion"
         required: false
         default: "NO"
         type: choice
         options: ["NO", "YES"]
+      transaction_id:
+        description: "Exact transaction ID when resuming an existing bundle"
+        required: false
+        default: ""
+        type: string
+      source_run_id:
+        description: "Build workflow run ID containing the immutable proof bundle"
+        required: false
+        default: ""
+        type: string
+      source_proof_run_id:
+        description: "Remote-proof workflow run ID containing a passing proof result"
+        required: false
+        default: ""
+        type: string
   schedule:
     - cron: "17 * * * *"
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: mahoon-production-publisher
   cancel-in-progress: false
 
-  
 jobs:
   ci-auth-probe:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'CHECK_ONLY' && inputs.auth_only == true }}
@@ -59,7 +74,7 @@ jobs:
       - name: Upload diagnostic evidence
         uses: actions/upload-artifact@v4
         with:
-          name: mahoon-github-content-transport-diagnostic
+          name: mahoon-github-content-transport-diagnostic-${{ github.run_id }}
           path: runner-evidence/github-content-api-transport-matrix.json
 
   safety-tests-only:
@@ -75,13 +90,19 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: website/dreary-disk/package-lock.json
-      - name: Install project and Playwright dependencies
+      - name: Install project dependencies
         run: npm ci --prefix website/dreary-disk
-      - name: Install Chromium for browser-gate fixtures
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('website/dreary-disk/package-lock.json') }}
+      - name: Install Chromium for browser-gate regression fixture
         working-directory: website/dreary-disk
         run: npx playwright install --with-deps chromium
-      - name: Run promotion-safety regression suite
+      - name: Run resumable-publisher regression suite
         env:
+          MAHOON_RUN_BROWSER_TESTS: "1"
           PYTHONPATH: tools/publisher:tools:.
         run: python -m unittest discover -s tools/publisher -p 'test_*.py'
       - name: Build website from checked-in locked content
@@ -96,111 +117,284 @@ jobs:
           echo "CI_DEPLOYMENT=NO"
           echo "CI_TRAFFIC_MUTATION=NO"
 
-  publisher:
-    if: ${{ (github.event_name == 'schedule' || (inputs.mode != 'CONTENT_DIAGNOSTIC' && inputs.mode != 'SAFETY_TESTS_ONLY')) && !(github.event_name == 'workflow_dispatch' && inputs.auth_only == true) }}
-    outputs:
-      production_pass: ${{ steps.result.outputs.production_pass }}
+  check-only:
+    if: ${{ (github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED != 'PUBLISH') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'CHECK_ONLY' && inputs.auth_only != true) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     env:
-      PUBLISHER_MODE: ${{ github.event_name == 'schedule' && 'CHECK_ONLY' || inputs.mode }}
-      CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      MAHOON_WRANGLER: npx wrangler@4.83.0
+      PUBLISHER_MODE: ${{ github.event_name == 'schedule' && (vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && 'PUBLISH' || 'CHECK_ONLY') || inputs.mode }}
       PUBLISHER_EXPECTED_FINGERPRINT: ${{ inputs.expected_fingerprint }}
-      MAHOON_PUBLISH_READY: ${{ inputs.ready }}
       MAHOON_PUBLIC_CONTENT_REVISION_API: https://mahoon-content-revision.morentoofficial.workers.dev/public/content-revision-v1
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Node for changed-revision builds
-        uses: actions/setup-node@v4
+      - name: Read revision only; scheduled mode remains CHECK_ONLY
+        run: python tools/m9/publisher_runner.py
+
+  build-and-zero-percent:
+    if: ${{ (github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH') || (github.event_name == 'workflow_dispatch' && ((inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || inputs.mode == 'BUILD_AND_ZERO_PERCENT')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      transaction_id: ${{ steps.meta.outputs.transaction_id }}
+      source_sha: ${{ steps.meta.outputs.source_sha }}
+    env:
+      PUBLISHER_MODE: BUILD_AND_ZERO_PERCENT
+      CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      MAHOON_WRANGLER: npx wrangler@4.83.0
+      MAHOON_PUBLISH_READY: ${{ github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && 'YES' || inputs.ready }}
+      MAHOON_PUBLIC_CONTENT_REVISION_API: https://mahoon-content-revision.morentoofficial.workers.dev/public/content-revision-v1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require clean main for a controlled transaction
+        run: test "$GITHUB_REF" = "refs/heads/main"
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: website/dreary-disk/package-lock.json
-      - name: Install static site dependencies
+      - name: Install static-site dependencies
         run: npm ci --prefix website/dreary-disk
-      - name: Install Chromium for publisher browser gates
-        working-directory: website/dreary-disk
-        run: npx playwright install --with-deps chromium
-      - name: Run publisher regression tests
-        run: PYTHONPATH=tools/publisher:. python -m unittest discover -s tools/publisher -p 'test_*.py'
-      - name: Run shared publisher
-        id: execute
+      - name: Run publisher and transaction contract tests
+        env:
+          MAHOON_RUN_BROWSER_TESTS: "0"
+          PYTHONPATH: tools/publisher:tools:.
+        run: python -m unittest discover -s tools/publisher -p 'test_*.py'
+      - name: Build website from the pinned transaction snapshot
+        env:
+          PUBLIC_MAHOON_SNAPSHOT_BINDING: "1"
+        run: npm run build --prefix website/dreary-disk
+      - name: Build, gate, seal, upload, and create candidate at 0 percent
         run: python tools/m9/publisher_runner.py
-
-      - name: Upload sanitized candidate gate evidence
-        if: ${{ always() && hashFiles('runner-evidence/prepromotion-local-gates.json') != '' }}
+      - name: Read transaction identity
+        id: meta
+        run: |
+          python - <<'PY'
+          import json, os
+          p=json.load(open('runner-evidence/publish-transaction-summary.json', encoding='utf-8'))
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+              f.write(f"transaction_id={p.get('transaction_id','')}\n")
+              f.write(f"source_sha={p.get('source_sha','')}\n")
+          print(json.dumps({k:p.get(k) for k in ('transaction_id','source_sha','candidate_version','baseline_version','no_change')}))
+          PY
+      - name: Upload immutable sanitized proof bundle
+        if: ${{ steps.meta.outputs.transaction_id != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: mahoon-publisher-local-gates-${{ github.run_id }}
-          path: |
-            runner-evidence/transaction-start-static-baseline.json
-            runner-evidence/public-content-revision-lookup.json
-            runner-evidence/rollback-anchor-order.json
-            runner-evidence/local-candidate-gate.json
-            runner-evidence/prepromotion-local-gates.json
-            runner-evidence/pre-upload-static-baseline.json
+          name: mahoon-publish-proof-bundle-${{ steps.meta.outputs.transaction_id }}
+          path: runner-evidence/publish-proof-bundle/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload build-gate evidence
+        if: ${{ always() && hashFiles('runner-evidence/publish-transaction-summary.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahoon-publish-build-evidence-${{ github.run_id }}
+          path: runner-evidence/publish-transaction-summary.json
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 30
 
-      - name: Publish result marker
+  remote-proof:
+    needs: build-and-zero-percent
+    if: ${{ always() && (((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH')) && needs.build-and-zero-percent.result == 'success' && needs.build-and-zero-percent.outputs.transaction_id != '') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'REMOTE_PROOF')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      MAHOON_WRANGLER: npx wrangler@4.83.0
+    outputs:
+      transaction_id: ${{ steps.meta.outputs.transaction_id }}
+      source_sha: ${{ steps.meta.outputs.source_sha }}
+    steps:
+      - name: Download the exact immutable transaction bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: mahoon-publish-proof-bundle-${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && needs.build-and-zero-percent.outputs.transaction_id || inputs.transaction_id }}
+          path: proof-bundle
+          run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && github.run_id || inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+      - name: Read bundle identity before checkout
+        id: meta
+        env:
+          REQUESTED_TRANSACTION_ID: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && needs.build-and-zero-percent.outputs.transaction_id || inputs.transaction_id }}
+        run: |
+          python - <<'PY'
+          import json, os
+          d='proof-bundle'
+          tx=json.load(open(f'{d}/transaction.json', encoding='utf-8'))
+          idx=json.load(open(f'{d}/bundle-index.json', encoding='utf-8'))
+          wanted=os.environ.get('REQUESTED_TRANSACTION_ID','')
+          assert tx['transaction_id'] == idx['transaction_id']
+          assert not wanted or wanted == tx['transaction_id']
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+              f.write(f"transaction_id={tx['transaction_id']}\nsource_sha={tx['source_sha']}\n")
+          PY
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.source_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/dreary-disk/package-lock.json
+      - name: Install browser-gate dependencies
+        run: npm ci --prefix website/dreary-disk
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('website/dreary-disk/package-lock.json') }}
+      - name: Install Chromium for representative visual proof
+        working-directory: website/dreary-disk
+        run: npx playwright install --with-deps chromium
+      - name: Crawl exact proof-bundle routes and measure candidate
+        env:
+          PYTHONPATH: tools/publisher:tools:.
+        run: >-
+          python tools/m9/resumable_stage_runner.py
+          --stage REMOTE_PROOF
+          --transaction-id "${{ steps.meta.outputs.transaction_id }}"
+          --bundle-dir proof-bundle
+      - name: Upload measured remote proof, including failures
+        if: ${{ always() && steps.meta.outputs.transaction_id != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahoon-remote-proof-result-${{ steps.meta.outputs.transaction_id }}
+          path: runner-evidence/remote-proof-result.json
+          if-no-files-found: warn
+          retention-days: 90
+
+  promote-and-validate:
+    needs: [build-and-zero-percent, remote-proof]
+    if: ${{ always() && (((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES')) && needs.build-and-zero-percent.result == 'success' && needs.remote-proof.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      production_pass: ${{ steps.result.outputs.production_pass }}
+      transaction_id: ${{ steps.meta.outputs.transaction_id }}
+      source_sha: ${{ steps.meta.outputs.source_sha }}
+    env:
+      CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      MAHOON_WRANGLER: npx wrangler@4.83.0
+      MAHOON_PUBLISH_READY: ${{ github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && 'YES' || inputs.ready }}
+    steps:
+      - name: Download the matching build proof bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: mahoon-publish-proof-bundle-${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && needs.build-and-zero-percent.outputs.transaction_id || inputs.transaction_id }}
+          path: proof-bundle
+          run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && github.run_id || inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+      - name: Download the remote proof result
+        uses: actions/download-artifact@v4
+        with:
+          name: mahoon-remote-proof-result-${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && needs.remote-proof.outputs.transaction_id || inputs.transaction_id }}
+          path: remote-proof
+          run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && github.run_id || inputs.source_proof_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+      - name: Read transaction identity before checkout
+        id: meta
+        env:
+          REQUESTED_TRANSACTION_ID: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && needs.build-and-zero-percent.outputs.transaction_id || inputs.transaction_id }}
+        run: |
+          python - <<'PY'
+          import json, os
+          tx=json.load(open('proof-bundle/transaction.json', encoding='utf-8'))
+          proof=json.load(open('remote-proof/remote-proof-result.json', encoding='utf-8'))
+          wanted=os.environ.get('REQUESTED_TRANSACTION_ID','')
+          assert tx['transaction_id'] == proof['transaction_id'] == wanted
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+              f.write(f"transaction_id={tx['transaction_id']}\nsource_sha={tx['source_sha']}\n")
+          PY
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.source_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/dreary-disk/package-lock.json
+      - name: Install browser-gate dependencies
+        run: npm ci --prefix website/dreary-disk
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('website/dreary-disk/package-lock.json') }}
+      - name: Install Chromium for production visual validation
+        working-directory: website/dreary-disk
+        run: npx playwright install --with-deps chromium
+      - name: Verify proof, check live split, promote Static-to-Static, and validate production
+        env:
+          PYTHONPATH: tools/publisher:tools:.
+        run: >-
+          python tools/m9/resumable_stage_runner.py
+          --stage PROMOTE_AND_VALIDATE
+          --transaction-id "${{ steps.meta.outputs.transaction_id }}"
+          --bundle-dir proof-bundle
+          --proof-dir remote-proof
+      - name: Read production pass marker
         id: result
         if: ${{ always() }}
         run: |
-          if test -f runner-evidence/production-validation.json && python -c "import json; raise SystemExit(0 if json.load(open('runner-evidence/production-validation.json')).get('PASS') is True else 1)"; then
+          if test -f runner-evidence/production-result.json && python -c "import json; raise SystemExit(0 if json.load(open('runner-evidence/production-result.json', encoding='utf-8')).get('PASS') is True else 1)"; then
             echo "production_pass=true" >> "$GITHUB_OUTPUT"
           else
             echo "production_pass=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Upload validated result
-        if: ${{ steps.result.outputs.production_pass == 'true' }}
+      - name: Upload production result and persistence payload
+        if: ${{ always() && hashFiles('runner-evidence/production-result.json') != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: mahoon-publisher-production-result
-          path: runner-evidence
+          name: mahoon-production-result-${{ steps.meta.outputs.transaction_id }}
+          path: |
+            runner-evidence/production-result.json
+            runner-evidence/published-state/
+          if-no-files-found: warn
+          retention-days: 90
 
   persist-state:
-    needs: publisher
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && needs.publisher.result == 'success' && needs.publisher.outputs.production_pass == 'true' }}
+    needs: promote-and-validate
+    if: ${{ always() && (((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES')) && needs.promote-and-validate.result == 'success' && needs.promote-and-validate.outputs.production_pass == 'true') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
+      actions: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - name: Download verified production result
+        uses: actions/download-artifact@v4
         with:
-          name: mahoon-publisher-production-result
-          path: runner-evidence
-      - name: Refuse unproven state persistence
-        run: |
-          test -f runner-evidence/production-validation.json
-          python - <<'PY'
-          import json
-          p=json.load(open('runner-evidence/production-validation.json', encoding='utf-8'))
-          assert p.get('PASS') is True
-          PY
-      - name: Install only validated publisher state
-        run: |
-          test -f runner-evidence/published-state/production-content-fingerprint.json
-          test -f runner-evidence/published-state/production-media-manifest.json
-          test -f runner-evidence/published-state/immutable-media-index.json
-          test -f runner-evidence/published-state/published-route-manifest.json
-          test -f runner-evidence/published-state/published-static-state.json
-          cp runner-evidence/published-state/production-content-fingerprint.json publisher-state/production-content-fingerprint.json
-          cp runner-evidence/published-state/production-media-manifest.json publisher-state/production-media-manifest.json
-          cp runner-evidence/published-state/immutable-media-index.json publisher-state/immutable-media-index.json
-          cp runner-evidence/published-state/published-route-manifest.json publisher-state/published-route-manifest.json
-          cp runner-evidence/published-state/published-route-manifest.json publisher-state/current-accepted-route-manifest.json
-          cp runner-evidence/published-state/published-static-state.json publisher-state/published-static-state.json
-          test -z "$(git diff --name-only -- publisher-state | grep -v -E '^publisher-state/(production-content-fingerprint|production-media-manifest|immutable-media-index|published-route-manifest|current-accepted-route-manifest|published-static-state)\.json$' || true)"
-      - name: Persist only approved publisher state
+          name: mahoon-production-result-${{ needs.promote-and-validate.outputs.transaction_id }}
+          path: production-result
+      - name: Download corresponding proof bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: mahoon-publish-proof-bundle-${{ needs.promote-and-validate.outputs.transaction_id }}
+          path: proof-bundle
+          run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && github.run_id || inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.promote-and-validate.outputs.source_sha }}
+      - name: Verify PASS artifacts and install only transaction state
+        env:
+          PYTHONPATH: tools/publisher:tools:.
+        run: python tools/m9/persist_publisher_state.py --bundle-dir proof-bundle --result-dir production-result
+      - name: Persist only verified publisher state
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add publisher-state/production-content-fingerprint.json publisher-state/production-media-manifest.json publisher-state/published-route-manifest.json
-          git add publisher-state/immutable-media-index.json
-          git add publisher-state/current-accepted-route-manifest.json
-          git add publisher-state/published-static-state.json
-          git diff --cached --quiet || git commit -m "chore: persist published publisher state"
-          git push
+          git add publisher-state/production-content-fingerprint.json publisher-state/production-media-manifest.json
+          git add publisher-state/immutable-media-index.json publisher-state/published-route-manifest.json
+          git add publisher-state/current-accepted-route-manifest.json publisher-state/published-static-state.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: persist verified static publisher state"
+            git push origin HEAD:main
+          fi

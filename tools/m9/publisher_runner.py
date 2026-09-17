@@ -29,6 +29,7 @@ from publisher.candidate_route_manifest import build_candidate_route_manifest
 from publisher.promotion_gates import evaluate_local_candidate
 from publisher.content_revision import DEFAULT_ENDPOINT, fetch_public_content_revision
 from publisher.error_contract import PublisherStageError, build_error, safe_details
+from publisher.resumable_transaction import create_proof_bundle, transaction_id
 
 API = os.environ.get("MAHOON_PUBLIC_CONTENT_API", "https://api.mahoonartmagazine.ir/posts-full-public-v2")
 STATE = Path(os.environ.get("MAHOON_PUBLISHER_STATE", "publisher-state/production-content-fingerprint.json"))
@@ -88,7 +89,7 @@ def export_content(snapshot_path: Path | None = None) -> tuple[dict, str]:
 
 def main() -> int:
     mode = os.environ.get("PUBLISHER_MODE", "CHECK_ONLY").upper()
-    if mode not in {"CHECK_ONLY", "PROOF_ZERO_PERCENT", "PUBLISH", "FAILURE_INJECTION"}:
+    if mode not in {"CHECK_ONLY", "PROOF_ZERO_PERCENT", "PUBLISH", "BUILD_AND_ZERO_PERCENT", "FAILURE_INJECTION"}:
         print("PUBLISHER_MODE_INVALID", file=sys.stderr)
         return 2
     if not STATE.exists():
@@ -103,7 +104,8 @@ def main() -> int:
     transaction_start_deployment = None
     current_static_version = ""
     rollback_state = None
-    if mode == "PUBLISH":
+    preserved_zero_versions: tuple[str, ...] = ()
+    if mode in {"PUBLISH", "BUILD_AND_ZERO_PERCENT"}:
         # Capture the transaction rollback anchor before the single revision lookup.
         static_state = json.loads(STATIC_STATE.read_text(encoding="utf-8")) if STATIC_STATE.is_file() else {}
         current_static_version = static_state.get("current_version", "")
@@ -131,6 +133,10 @@ def main() -> int:
         if not baseline_pass:
             print("PUBLISHER_TRANSACTION_START_LIVE_STATIC_BASELINE_MISMATCH", file=sys.stderr)
             return 18
+        preserved_zero_versions = tuple(sorted(
+            str(item["version_id"]) for item in transaction_start_deployment.get("versions", [])
+            if item.get("version_id") != current_static_version and item.get("percentage") == 0
+        ))
         rollback_state = {
             "deployment_id": transaction_start_deployment["id"],
             "static_version": current_static_version,
@@ -175,6 +181,13 @@ def main() -> int:
         "state_present": True
     }, ensure_ascii=False))
     if unchanged:
+        if mode == "BUILD_AND_ZERO_PERCENT":
+            Path("runner-evidence").mkdir(parents=True, exist_ok=True)
+            Path("runner-evidence/publish-transaction-summary.json").write_text(
+                json.dumps({"no_change": True, "source_revision": current_revision,
+                            "revision_requests": 1, "full_v2_exports": 0}, indent=2) + "\n",
+                encoding="utf-8",
+            )
         print(json.dumps({"mode": mode, "no_change_detected": True, "upload_performed": False,
                           "full_v2_exports": 0, "build": False, "media_processing": False,
                           "seal": False, "upload_performed": False, "version_created": False,
@@ -186,8 +199,8 @@ def main() -> int:
         return 3
 
     if mode == "PUBLISH":
-        # Changed-revision PUBLISH continues into the single transaction below.
-        pass
+        print("PUBLISH_REQUIRES_RESUMABLE_MULTI_JOB_TRANSACTION", file=sys.stderr)
+        return 18
 
     snapshot_path = Path(os.environ.get(
         "MAHOON_PUBLISHED_CONTENT_SNAPSHOT",
@@ -327,13 +340,73 @@ def main() -> int:
                     "PASS": baseline_pass}, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     try:
-        deployment.deploy_pair(target_worker, version_id, 0, current_static_version, 100)
-        zero_percent_state = deployment.wait_for_active(target_worker, {current_static_version: 100, version_id: 0})
+        deployment.deploy_pair(target_worker, version_id, 0, current_static_version, 100,
+                               preserved_zero_versions)
+        zero_split = {current_static_version: 100, version_id: 0,
+                      **{item: 0 for item in preserved_zero_versions}}
+        zero_percent_state = deployment.wait_for_active(target_worker, zero_split)
         zero_percent_deployment_id = zero_percent_state.get("id")
         promotion_anchor = promotion_precondition(zero_percent_state, current_static_version, version_id)
     except Exception as exc:
         print("PUBLISHER_ZERO_PERCENT_DEPLOYMENT_FAILED: " + sanitize(str(exc)), file=sys.stderr)
         return 18
+    if mode == "BUILD_AND_ZERO_PERCENT":
+        run_id = os.environ.get("GITHUB_RUN_ID", "")
+        run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "")
+        source_sha = os.environ.get("GITHUB_SHA", "")
+        if not source_sha:
+            source_sha = subprocess.run(["git", "rev-parse", "HEAD"], text=True,
+                                        capture_output=True, check=True).stdout.strip()
+        tx_id = transaction_id(current_revision, run_id, run_attempt)
+        seal_payload = json.loads((sealed_root.parent / "artifact-seal.json").read_text(encoding="utf-8"))
+        bundle = create_proof_bundle(
+            Path("runner-evidence/publish-proof-bundle"),
+            transaction={
+                "transaction_id": tx_id,
+                "source_sha": source_sha,
+                "source_revision": current_revision,
+                "revision_requests": 1,
+                "full_v2_exports": 1,
+                "snapshot_api_starts": 0,
+                "single_snapshot_reuse": "YES",
+                "candidate_static_version": version_id,
+                "baseline_static_version": current_static_version,
+                "target_worker": target_worker,
+                "content_fingerprint": digest,
+                "candidate_deployment_id": zero_percent_deployment_id,
+                "candidate_split": {current_static_version: 100, version_id: 0,
+                                    **{item: 0 for item in preserved_zero_versions}},
+                "preexisting_zero_versions": list(preserved_zero_versions),
+                "rollback_anchor": rollback_state,
+                "created_at": now(),
+            },
+            routes=route_data,
+            media_manifest=json.loads(Path(media_bootstrap["manifest"]).read_text(encoding="utf-8")),
+            media_index=json.loads(Path(media_bootstrap["index"]).read_text(encoding="utf-8")),
+            seal=seal_payload,
+            local_evidence={
+                "revision_lookup": revision_evidence,
+                "transaction_start_static_baseline": json.loads(Path("runner-evidence/transaction-start-static-baseline.json").read_text(encoding="utf-8")),
+                "filesystem_gate": gate,
+                "measured_local_gates": measured_gates,
+                "pre_upload_live_baseline": json.loads(Path("runner-evidence/pre-upload-static-baseline.json").read_text(encoding="utf-8")),
+                "pre_zero_percent_live_read": json.loads(Path("runner-evidence/pre-zero-percent-live-read.json").read_text(encoding="utf-8")),
+                "rollback_anchor": json.loads(Path("runner-evidence/rollback-anchor-order.json").read_text(encoding="utf-8")),
+                "candidate_zero_split": promotion_anchor,
+            },
+            posts=exported["posts"],
+        )
+        Path("runner-evidence/publish-transaction-summary.json").write_text(
+            json.dumps({"transaction_id": tx_id, "source_sha": source_sha,
+                        "candidate_version": version_id, "baseline_version": current_static_version,
+                        "bundle_sha256": bundle["bundle_sha256"], "no_change": False},
+                       ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        print(json.dumps({"stage": "BUILD_AND_ZERO_PERCENT", "PUBLISH_TRANSACTION_ID": tx_id,
+                          "candidate_version": version_id, "candidate_percent": 0,
+                          "baseline_version": current_static_version, "baseline_percent": 100,
+                          "proof_bundle": bundle["bundle_path"], "bundle_sha256": bundle["bundle_sha256"]}, ensure_ascii=False))
+        return 0
     os.environ["MAHOON_CANDIDATE_VERSION"] = version_id
     os.environ["MAHOON_ASSETS_DIRECTORY"] = str(out)
     crawl = subprocess.run([sys.executable, "tools/publisher/candidate_override_crawl.py"], text=True, capture_output=True)
@@ -461,10 +534,12 @@ def main() -> int:
         code = exc.code if isinstance(exc, PublisherStageError) else "ERR_VALIDATOR_INTERNAL"
         write_safe_error(stage, code, exc, version_id, locals().get("promoted_deployment_id"), **getattr(exc, "details", {}))
         try:
-            rollback_response = automatic_rollback(target_worker, current_static_version, version_id, locals().get("promoted_deployment_id"))
+            rollback_response = automatic_rollback(target_worker, current_static_version, version_id,
+                                                   locals().get("promoted_deployment_id"), preserved_zero_versions)
             rollback_result_id = rollback_response.get("id")
             restored = deployment.active_deployment(target_worker)
-            expected_versions = {current_static_version: 100, version_id: 0}
+            expected_versions = {current_static_version: 100, version_id: 0,
+                                 **{item: 0 for item in preserved_zero_versions}}
             observed_versions = {item.get("version_id"): item.get("percentage") for item in restored.get("versions", [])}
             rollback_pass = expected_versions == observed_versions
             Path("runner-evidence/rollback-semantic-verification.json").write_text(json.dumps({"rollback_target_static_version": current_static_version, "failed_candidate_version": version_id, "rollback_result_deployment_id": rollback_result_id or restored.get("id"), "expected_versions": expected_versions, "observed_versions": observed_versions, "ROLLBACK_SEMANTIC_RESTORE": rollback_pass}, ensure_ascii=False, indent=2), encoding="utf-8")

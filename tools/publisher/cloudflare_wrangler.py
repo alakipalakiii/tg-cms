@@ -92,7 +92,8 @@ def upload_version(worker_name: str, sealed_artifact_root: str | Path,
 
 
 def deploy_pair(worker_name: str, primary_version_id: str, primary_percentage: int,
-                secondary_version_id: str | None = None, secondary_percentage: int = 0) -> dict:
+                secondary_version_id: str | None = None, secondary_percentage: int = 0,
+                preserve_zero_versions: tuple[str, ...] = ()) -> dict:
     primary_percentage = int(primary_percentage)
     secondary_percentage = int(secondary_percentage)
     if not primary_version_id or not 0 <= primary_percentage <= 100:
@@ -106,6 +107,11 @@ def deploy_pair(worker_name: str, primary_version_id: str, primary_percentage: i
         specs.append(f"{secondary_version_id}@{int(secondary_percentage)}")
     elif primary_percentage != 100:
         raise WranglerError("single-version deployment must receive 100 percent")
+    if any(not isinstance(version, str) or not version or version in {
+        primary_version_id, secondary_version_id
+    } for version in preserve_zero_versions) or len(set(preserve_zero_versions)) != len(preserve_zero_versions):
+        raise WranglerError("invalid preserved zero-percent version list")
+    specs.extend(f"{version}@0" for version in preserve_zero_versions)
     _run(["versions", "deploy", *specs, "--name", worker_name, "--yes"], timeout=180)
     return read_deployment(worker_name)
 
@@ -134,8 +140,10 @@ def wait_for_active(worker_name: str, expected: dict[str, int], timeout_seconds:
 
 
 def rollback_to_previous_static(worker_name: str, previous_version_id: str,
-                                failed_version_id: str) -> dict:
-    return deploy_pair(worker_name, previous_version_id, 100, failed_version_id, 0)
+                                failed_version_id: str,
+                                preserve_zero_versions: tuple[str, ...] = ()) -> dict:
+    return deploy_pair(worker_name, previous_version_id, 100, failed_version_id, 0,
+                       preserve_zero_versions)
 
 
 # Compatibility names used by the existing runner; all normal calls remain Wrangler-only.

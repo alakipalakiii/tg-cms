@@ -36,6 +36,9 @@ function sortedPosts(posts) {
 }
 
 function representatives(snapshot, routes) {
+  if (snapshot.contract === 'MAHOON_REMOTE_EXPECTATIONS_V1') {
+    return (snapshot.visual_routes || []).map((item) => ({ ...item }));
+  }
   const posts = sortedPosts(snapshot.payload.posts || []);
   const byPath = new Set(routes);
   const routeFor = (post) => `/post/${post.slug}`;
@@ -121,8 +124,13 @@ async function checkPage(browser, base, candidateVersion, route, name, viewport,
 }
 
 async function runCandidate(args) {
-  const snapshot = JSON.parse(await readFile(args.snapshot, 'utf8'));
+  const sourcePath = args.expectations || args.snapshot;
+  if (!sourcePath) throw new Error('--expectations or --snapshot is required');
+  const snapshot = JSON.parse(await readFile(sourcePath, 'utf8'));
   const manifest = JSON.parse(await readFile(args.routes, 'utf8'));
+  if (args.expectations && snapshot.contract !== 'MAHOON_REMOTE_EXPECTATIONS_V1') {
+    throw new Error('remote expectations contract is invalid');
+  }
   const selected = representatives(snapshot, manifest.routes);
   const screenshots = args.output ? `${args.output}.screenshots` : null;
   const browser = await chromium.launch({ headless: true });
