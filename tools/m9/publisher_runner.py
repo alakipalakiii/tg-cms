@@ -224,7 +224,7 @@ def main() -> int:
         print(json.dumps({"failure_code": "PUBLISHER_LOCAL_GATE_FAILED", "gate": gate}, ensure_ascii=False), file=sys.stderr)
         print("PUBLISHER_LOCAL_GATE_FAILED", file=sys.stderr)
         return 12
-    measured_gates = evaluate_local_candidate(snapshot_path, out, route_manifest, Path("runner-build/production-media-manifest.json"))
+    measured_gates = evaluate_local_candidate(snapshot_path, out, route_manifest, Path(media_bootstrap["manifest"]))
     Path("runner-evidence/prepromotion-local-gates.json").write_text(
         json.dumps(measured_gates, ensure_ascii=False, indent=2), encoding="utf-8"
     )
