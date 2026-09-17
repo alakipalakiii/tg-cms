@@ -55,6 +55,14 @@ def _gate(summary: dict, key: str) -> bool:
     return value.get("measured") is True and value.get("PASS") is True
 
 
+def _traffic_split(live: dict) -> dict[str, int]:
+    return {
+        str(item.get("version_id")): int(item.get("percentage", 0))
+        for item in live.get("versions", [])
+        if item.get("version_id")
+    }
+
+
 def _active_deployment_with_retry(attempts: int = 5) -> dict:
     last_error = None
     for attempt in range(attempts):
@@ -92,6 +100,11 @@ def _crawl(bundle_dir: Path, transaction: dict, *, production: bool,
         "MAHOON_REMOTE_EXPECTATIONS": str(expectation_path),
         "MAHOON_ROUTE_MANIFEST": str(route_path),
         "MAHOON_MEDIA_MANIFEST": str(media_path),
+        "MAHOON_LOCAL_EVIDENCE": str(bundle_dir / "local-evidence.json"),
+        "MAHOON_ARTIFACT_SEAL": str(bundle_dir / "artifact-seal.json"),
+        "MAHOON_ACCEPTED_ROUTE_MANIFEST": str(
+            ROOT / "publisher-state" / "current-accepted-route-manifest.json"
+        ),
         "MAHOON_CRAWL_OUTPUT": str(crawl_root),
         "MAHOON_CRAWL_BASE": ORIGIN,
         "MAHOON_PRODUCTION_ORIGIN": ORIGIN,
@@ -150,26 +163,40 @@ def _measured_gates(summary: dict, browser: dict, expected_routes: int) -> dict:
 
 
 def run_remote(bundle_dir: Path, transaction_id: str) -> int:
-    transaction, bundle_sha = verify_proof_bundle(bundle_dir, transaction_id, _head_sha())
+    expected_source_sha = os.environ.get("MAHOON_EXPECTED_BUNDLE_SOURCE_SHA") or _head_sha()
+    transaction, bundle_sha = verify_proof_bundle(
+        bundle_dir, transaction_id, expected_source_sha
+    )
     if transaction.get("target_worker") != WORKER:
         raise ValueError("proof bundle Worker target is not the approved production Static Worker")
     deployment.WORKER = WORKER
     os.environ["MAHOON_WORKER"] = WORKER
-    if not split_is_baseline_zero(_active_deployment_with_retry(), transaction):
+    before_live = _active_deployment_with_retry()
+    if not split_is_baseline_zero(before_live, transaction):
         raise RuntimeError("REMOTE_PROOF_LIVE_SPLIT_DRIFT")
     routes = _read(bundle_dir / "candidate-route-manifest.json")
     summary = _crawl(bundle_dir, transaction, production=False, timeout=3300)
     browser = _browser_gate(bundle_dir, transaction, production=False)
+    after_live = _active_deployment_with_retry()
+    split_unchanged = split_is_baseline_zero(after_live, transaction)
     gates = _measured_gates(summary, browser, routes["route_count"])
     passed = all(gates[key] is True for key in (
         "full_route_crawl", "content_parity", "listing_uniqueness", "category_parity",
         "latest_parity", "seo", "media", "visual", "zero_origin_runtime"))
+    passed = passed and split_unchanged
+    gates["candidate_split_unchanged"] = split_unchanged
     result = {
         "contract": "MAHOON_REMOTE_PROOF_RESULT_V1",
         "transaction_id": transaction_id,
+        "bundle_source_sha": transaction.get("source_sha"),
+        "diagnostics_code_sha": _head_sha(),
         "candidate_version": transaction["candidate_static_version"],
+        "observed_split_before": _traffic_split(before_live),
+        "observed_split_after": _traffic_split(after_live),
+        "candidate_split_unchanged": split_unchanged,
         "bundle_sha256": bundle_sha,
         "revision_requests": 0, "full_v2_exports": 0, "builds": 0, "uploads": 0,
+        "deployments": 0, "traffic_mutations": 0,
         "rerun_reuses_candidate": True,
         "REMOTE_PROOF_PASS": passed,
         "REMOTE_FULL_ROUTE_CRAWL": "PASS" if gates["full_route_crawl"] else "FAIL",
@@ -181,6 +208,12 @@ def run_remote(bundle_dir: Path, transaction_id: str) -> int:
         "REMOTE_MEDIA": "PASS" if gates["media"] else "FAIL",
         "REMOTE_VISUAL": "PASS" if gates["visual"] else "FAIL",
         "REMOTE_ZERO_ORIGIN_RUNTIME": "PASS" if gates["zero_origin_runtime"] else "FAIL",
+        "REMOTE_CANONICAL_FAILURE_SAMPLES_RECORDED": (
+            "YES" if summary.get("remote_canonical_failure_samples_recorded") else "NO"
+        ),
+        "REMOTE_ATTRIBUTION_FAILURE_SAMPLES_RECORDED": (
+            "YES" if summary.get("remote_attribution_failure_samples_recorded") else "NO"
+        ),
         "metrics": gates,
         "crawler_summary": summary,
         "failed_routes": _failed_routes(EVIDENCE / "remote-proof-crawl", routes["routes"]),

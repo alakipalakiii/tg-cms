@@ -229,7 +229,9 @@ jobs:
           PY
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.meta.outputs.source_sha }}
+          # Run only the diagnostic harness from this workflow-dispatch ref.
+          # The immutable transaction source SHA remains separately bound below.
+          ref: ${{ github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -248,6 +250,7 @@ jobs:
       - name: Crawl exact proof-bundle routes and measure candidate
         env:
           PYTHONPATH: tools/publisher:tools:.
+          MAHOON_EXPECTED_BUNDLE_SOURCE_SHA: ${{ steps.meta.outputs.source_sha }}
         run: >-
           python tools/m9/resumable_stage_runner.py
           --stage REMOTE_PROOF

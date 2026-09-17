@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import fnmatch
 import hashlib
 import json
 import os
@@ -37,6 +38,11 @@ ROUTES_PATH = Path(os.environ.get("MAHOON_ROUTE_MANIFEST", "publisher-state/curr
 SNAPSHOT_PATH = Path(os.environ.get("MAHOON_PUBLISHED_CONTENT_SNAPSHOT", "runner-evidence/current-v2-snapshot.json"))
 EXPECTATIONS_PATH = Path(os.environ["MAHOON_REMOTE_EXPECTATIONS"]) if os.environ.get("MAHOON_REMOTE_EXPECTATIONS") else None
 MEDIA_PATH = Path(os.environ.get("MAHOON_MEDIA_MANIFEST", "publisher-state/production-media-manifest.json"))
+LOCAL_EVIDENCE_PATH = Path(os.environ.get("MAHOON_LOCAL_EVIDENCE", ""))
+ARTIFACT_SEAL_PATH = Path(os.environ.get("MAHOON_ARTIFACT_SEAL", ""))
+ACCEPTED_ROUTES_PATH = Path(os.environ.get(
+    "MAHOON_ACCEPTED_ROUTE_MANIFEST", "publisher-state/current-accepted-route-manifest.json"
+))
 UA = "MAHOON-M10-Measured-Static-Candidate-Crawl/1.0"
 PAGE_SIZE = 20
 
@@ -143,6 +149,166 @@ def _route_id_map(posts: list[dict]) -> tuple[dict[str, int], dict[str, int]]:
     return by_slug, by_id
 
 
+def _post_route_identity(route: str, by_slug: dict[str, int], by_id: dict[str, int]) -> tuple[str, int | None]:
+    path = unquote(urlsplit(route).path)
+    if not path.startswith("/post/"):
+        return "OTHER", None
+    value = path[len("/post/"):].strip("/")
+    if value.isdigit():
+        return "NUMERIC_POST", by_id.get(value, int(value))
+    if value in by_slug:
+        return "SLUG_POST", by_slug[value]
+    return "OTHER", None
+
+
+def _route_response_class(route: str, value: dict) -> str:
+    path = unquote(urlsplit(route).path).rstrip("/") or "/"
+    if path in {"/robots.txt", "/sitemap.xml", "/rss.xml", "/search/search-index.json"}:
+        return "SPECIAL_CONTROL_ROUTE"
+    if value.get("is_html") is True or str(value.get("content_type", "")).lower().startswith("text/html"):
+        return "HTML_PAGE"
+    if Path(path).suffix:
+        return "STATIC_ASSET"
+    return "OTHER_NON_HTML"
+
+
+def _worker_first_patterns() -> tuple[str, ...] | None:
+    config_path = Path(__file__).resolve().parents[2] / "website" / "dreary-disk" / "wrangler.jsonc"
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        patterns = config.get("assets", {}).get("run_worker_first")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return tuple(item for item in patterns if isinstance(item, str)) if isinstance(patterns, list) else None
+
+
+def _is_worker_first(route: str, patterns: tuple[str, ...] | None) -> bool | None:
+    if patterns is None:
+        return None
+    path = unquote(urlsplit(route).path)
+    return any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
+
+
+def _requires_version_attribution(route: str, route_class: str,
+                                  patterns: tuple[str, ...] | None) -> bool:
+    if route_class == "HTML_PAGE":
+        return True
+    worker_first = _is_worker_first(route, patterns)
+    if worker_first is True:
+        return True
+    if route_class == "STATIC_ASSET" and worker_first is False:
+        return False
+    # A control/unknown response stays gated unless its direct-asset exemption is proven.
+    return True
+
+
+def _integer_ranges(values: list[int]) -> list[dict[str, int]]:
+    ordered = sorted(set(values))
+    if not ordered:
+        return []
+    ranges: list[dict[str, int]] = []
+    start = previous = ordered[0]
+    for value in ordered[1:]:
+        if value != previous + 1:
+            ranges.append({"start": start, "end": previous, "count": previous - start + 1})
+            start = value
+        previous = value
+    ranges.append({"start": start, "end": previous, "count": previous - start + 1})
+    return ranges
+
+
+def _evenly_spaced(items: list[dict], limit: int = 20) -> list[dict]:
+    if limit <= 0:
+        return []
+    if len(items) <= limit:
+        return items
+    if limit == 1:
+        return [items[0]]
+    indices = {round(index * (len(items) - 1) / (limit - 1)) for index in range(limit)}
+    return [items[index] for index in sorted(indices)]
+
+
+def _sealed_artifact_evidence(route_list: list[str], route: str, expected_canonical: str) -> dict:
+    """Use the immutable bundle's local gate and seal; never mistake publisher-base for this candidate."""
+    try:
+        local = json.loads(LOCAL_EVIDENCE_PATH.read_text(encoding="utf-8"))
+        seal = json.loads(ARTIFACT_SEAL_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"route_exists": None, "canonical": None, "evidence": "SEALED_LOCAL_EVIDENCE_UNAVAILABLE"}
+    filesystem = local.get("filesystem_gate") or {}
+    local_gates = local.get("measured_local_gates") or {}
+    seo = (local_gates.get("gates") or {}).get("seo") or {}
+    complete = (
+        filesystem.get("PASS") is True
+        and filesystem.get("expected_html_routes") == filesystem.get("present_html_routes")
+        and filesystem.get("missing_html") == 0
+        and filesystem.get("canonical_mismatches") == 0
+        and local_gates.get("measured") is True
+        and local_gates.get("PASS") is True
+        and seo.get("PASS") is True
+        and seal.get("contract") == "MAHOON_STATIC_ARTIFACT_SEAL_V1"
+    )
+    present = route in set(route_list) and complete
+    return {
+        "route_exists": present if complete else None,
+        "canonical": expected_canonical if present else None,
+        "evidence": "BUNDLE_SEAL_AND_PASSING_LOCAL_FILESYSTEM_CANONICAL_GATES" if present else "NOT_PROVEN",
+        "artifact_sha256": seal.get("artifact_sha256"),
+        "artifact_tree_sha256": seal.get("artifact_tree_sha256"),
+        "raw_sealed_html_retained_in_bundle": False,
+    }
+
+
+def _canonical_failure_sample(route: str, value: dict, by_slug: dict[str, int],
+                              by_id: dict[str, int], route_list: list[str]) -> dict:
+    route_type, logical_id = _post_route_identity(route, by_slug, by_id)
+    expected = _url(route)
+    sealed = _sealed_artifact_evidence(route_list, route, expected)
+    return {
+        "route": route,
+        "route_type": route_type,
+        "logical_post_id": logical_id,
+        "expected_canonical": expected,
+        "actual_canonical": value.get("canonical", ""),
+        "http_status": value.get("http_status"),
+        "redirect_chain": value.get("redirect_chain", []),
+        "final_url": value.get("final_url"),
+        "actual_worker_version": value.get("actual_version"),
+        "expected_worker_version": VERSION or None,
+        "cf_cache_status": value.get("cf_cache_status"),
+        "body_sha256": value.get("body_sha256"),
+        "sealed_static_route_exists": sealed["route_exists"],
+        "sealed_static_canonical": sealed["canonical"],
+        "sealed_static_evidence": sealed["evidence"],
+        "sealed_static_artifact_sha256": sealed.get("artifact_sha256"),
+        "sealed_static_tree_sha256": sealed.get("artifact_tree_sha256"),
+        "sealed_static_html_retained_for_byte_comparison": sealed.get("raw_sealed_html_retained_in_bundle", False),
+    }
+
+
+def _attribution_failure_sample(route: str, value: dict, by_slug: dict[str, int],
+                                by_id: dict[str, int], patterns: tuple[str, ...] | None) -> dict:
+    route_type, logical_id = _post_route_identity(route, by_slug, by_id)
+    route_class = _route_response_class(route, value)
+    worker_first = _is_worker_first(route, patterns)
+    return {
+        "route": route,
+        "route_type": route_type,
+        "logical_post_id": logical_id,
+        "route_class": route_class,
+        "status": value.get("http_status"),
+        "expected_version": VERSION or None,
+        "actual_version": value.get("actual_version"),
+        "actual_version_header": value.get("actual_version"),
+        "redirect_chain": value.get("redirect_chain", []),
+        "cf_cache_status": value.get("cf_cache_status"),
+        "content_type": value.get("content_type"),
+        "is_html": value.get("is_html") is True,
+        "worker_first_route": worker_first,
+        "attribution_required": _requires_version_attribution(route, route_class, patterns),
+    }
+
+
 def _page_routes(all_routes: set[str], prefix: str, pages: int) -> list[tuple[int, str]]:
     base = prefix.rstrip("/")
     result = []
@@ -240,13 +406,66 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
     preview_leaks = sum(int(bool(value.get("preview_url"))) for value in html.values())
     reader_media = sum(int(bool(value.get("remote_media"))) for value in html.values())
     post_seo_failures = 0
-    canonical_failures = 0
     for post in posts:
         route = f"/post/{post.get('slug')}"
         value = html.get(route, {})
-        canonical_failures += int(value.get("canonical") != _url(route))
         post_seo_failures += sum(not value.get(key) for key in ("title", "h1", "meta", "og", "jsonld"))
         post_seo_failures += int(bool(value.get("robots_noindex")))
+    canonical_failure_routes = sorted(
+        route for route in post_source_routes
+        if state["routes"].get(route, {}).get("canonical") != _url(route)
+    )
+    canonical_failures = len(canonical_failure_routes)
+    canonical_failure_identities = {
+        route: _post_route_identity(route, by_slug, by_id) for route in canonical_failure_routes
+    }
+    failed_ids = [
+        logical_id for _route, (route_type, logical_id) in canonical_failure_identities.items()
+        if route_type in {"NUMERIC_POST", "SLUG_POST"} and logical_id is not None
+    ]
+    failed_numeric_routes = [
+        route for route in canonical_failure_routes
+        if canonical_failure_identities[route][0] == "NUMERIC_POST"
+    ]
+    failed_slug_routes = [
+        route for route in canonical_failure_routes
+        if canonical_failure_identities[route][0] == "SLUG_POST"
+    ]
+    canonical_samples = [
+        _canonical_failure_sample(route, state["routes"].get(route, {}), by_slug, by_id, route_list)
+        for route in _evenly_spaced(canonical_failure_routes, 20)
+    ]
+    slug_failure_routes = sorted(
+        failed_slug_routes,
+        key=lambda route: (canonical_failure_identities[route][1] or 0, route),
+    )
+    slug_comparison_routes: list[str] = []
+    if slug_failure_routes:
+        slug_comparison_routes.append(slug_failure_routes[0])
+        route_32 = next(
+            (route for route in slug_failure_routes if canonical_failure_identities[route][1] == 32),
+            None,
+        )
+        slug_comparison_routes.append(
+            route_32 or slug_failure_routes[(len(slug_failure_routes) - 1) // 2]
+        )
+        slug_comparison_routes.append(slug_failure_routes[-1])
+    slug_comparison_routes = list(dict.fromkeys(slug_comparison_routes))
+    slug_comparison_samples = [
+        _canonical_failure_sample(route, state["routes"].get(route, {}), by_slug, by_id, route_list)
+        for route in slug_comparison_routes
+    ]
+    old_accepted_routes: set[str] | None
+    try:
+        accepted_manifest = json.loads(ACCEPTED_ROUTES_PATH.read_text(encoding="utf-8"))
+        old_accepted_routes = set(accepted_manifest.get("routes", []))
+    except (OSError, ValueError, TypeError):
+        old_accepted_routes = None
+    failures_only_old_accepted = (
+        bool(canonical_failure_routes)
+        and old_accepted_routes is not None
+        and set(canonical_failure_routes).issubset(old_accepted_routes)
+    )
     post_jsonld_missing = sum(
         not html.get(f"/post/{post.get('slug')}", {}).get("jsonld")
         for post in posts if post.get("slug")
@@ -348,10 +567,29 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
     if not isinstance(media_unresolved, int):
         media_unresolved = None
     attribution_required = bool(VERSION) and os.environ.get("MAHOON_DISABLE_VERSION_OVERRIDE") != "1"
-    version_attribution_failures = sum(
-        value.get("version_attribution_status") != "PROVEN" or value.get("actual_version") != VERSION
-        for value in state["routes"].values()
-    ) if attribution_required else 0
+    worker_first_patterns = _worker_first_patterns()
+    version_header_failure_routes = [
+        route for route, value in state["routes"].items()
+        if attribution_required and (
+            value.get("version_attribution_status") != "PROVEN"
+            or value.get("actual_version") != VERSION
+        )
+    ]
+    attribution_failure_samples = [
+        _attribution_failure_sample(
+            route, state["routes"].get(route, {}), by_slug, by_id, worker_first_patterns
+        )
+        for route in sorted(version_header_failure_routes)
+    ]
+    required_attribution_failures = [
+        sample for sample in attribution_failure_samples if sample["attribution_required"]
+    ]
+    version_attribution_failures = len(required_attribution_failures)
+    real_page_attribution_failures = sum(
+        item["route_class"] in {"HTML_PAGE", "SPECIAL_CONTROL_ROUTE"}
+        and item["attribution_required"]
+        for item in attribution_failure_samples
+    )
     all_status = len(route_status_failures) == 0 and version_attribution_failures == 0
     route_parity = all_status and not missing_source_routes and not unexpected_routes and not html_failures and not post_route_failures
     content_pass = route_parity and canonical_failures == 0 and search_parity_failures == 0 and search_duplicate == 0
@@ -372,6 +610,18 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
         "broken_link_false_positive_targets": len(false_positive_link_targets),
         "unverified_link_targets": sum(item.get("reason") == "UNVERIFIED_TARGET" for item in broken_link_targets),
         "version_attribution_failures": version_attribution_failures,
+        "version_header_failures_all_routes": len(version_header_failure_routes),
+        "real_page_attribution_failures": real_page_attribution_failures,
+        "attribution_requirement_by_route_type": {
+            "HTML_PAGE": "REQUIRED",
+            "SPECIAL_CONTROL_ROUTE": "REQUIRED_WHEN_CONFIGURED_WORKER_FIRST; otherwise conservative REQUIRED",
+            "STATIC_ASSET": "EXEMPT_ONLY_WHEN_CONFIGURED_TO_BYPASS_WORKER; verify through asset manifest/hash",
+            "OTHER_NON_HTML": "REQUIRED_UNLESS_DIRECT_ASSET_BYPASS_IS_PROVEN",
+        },
+        "remote_attribution_failure_samples": attribution_failure_samples,
+        "remote_attribution_failure_samples_recorded": (
+            len(attribution_failure_samples) == len(version_header_failure_routes)
+        ),
         "remote_crawler_version_pinning": {"required_version": VERSION or None, "PASS": not attribution_required or version_attribution_failures == 0},
         "duplicate_canonicals": duplicate_canonicals, "duplicate_listing_ids": duplicate_card_ids,
         "pagination_overlap": overlap + category_overlap, "listing_page_parity_failures": coverage_failures,
@@ -381,6 +631,27 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
         "redirect_loops": redirect_loops, "remote_reader_media_dependencies": reader_media,
         "workers_dev_leaks": workers_dev, "preview_url_leaks": preview_leaks,
         "post_seo_failures": post_seo_failures, "canonical_failures": canonical_failures,
+        "failed_numeric_route_count": len(failed_numeric_routes),
+        "failed_slug_route_count": len(failed_slug_routes),
+        "failed_id_min": min(failed_ids) if failed_ids else None,
+        "failed_id_max": max(failed_ids) if failed_ids else None,
+        "failed_id_ranges": _integer_ranges(failed_ids),
+        "failures_only_on_old_accepted_routes": failures_only_old_accepted,
+        "old_accepted_manifest_available": old_accepted_routes is not None,
+        "failures_only_on_slug_routes": bool(canonical_failure_routes) and not failed_numeric_routes,
+        "remote_canonical_failure_samples": canonical_samples,
+        "remote_canonical_failure_samples_recorded": (
+            len(canonical_samples) == min(20, len(canonical_failure_routes))
+            and (not canonical_failure_routes or len(canonical_samples) >= min(20, len(canonical_failure_routes))
+                 and len(canonical_samples) > 0)
+        ),
+        "representative_slug_canonical_comparisons": slug_comparison_samples,
+        "static_vs_remote_canonical_comparison_complete": (
+            len(slug_comparison_samples) >= min(3, len(slug_failure_routes))
+            and all(item.get("sealed_static_canonical") is not None for item in slug_comparison_samples)
+            and bool(slug_comparison_samples)
+        ),
+        "sealed_static_raw_html_available_for_byte_comparison": False,
         "post_jsonld_missing": post_jsonld_missing,
         "search_index_ids": len(search_ids), "search_index_duplicate_ids": search_duplicate,
         "search_index_parity_failures": search_parity_failures,
