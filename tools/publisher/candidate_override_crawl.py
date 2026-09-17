@@ -7,17 +7,24 @@ import json
 import os
 import re
 import time
-import urllib.error
-import urllib.request
+import uuid
 from pathlib import Path
 from urllib.parse import quote, unquote, urljoin, urlsplit
 
 try:
     from .content_taxonomy import CATEGORY_DEFINITIONS, canonical_category
     from .promotion_gates import _expected_posts, _id_for_href, _posts, _url_evidence
+    from .remote_proof_harness import (
+        category_page_matches, classify_link_target,
+        link_contract_fails, request_with_version_pinning,
+    )
 except ImportError:
     from content_taxonomy import CATEGORY_DEFINITIONS, canonical_category
     from promotion_gates import _expected_posts, _id_for_href, _posts, _url_evidence
+    from remote_proof_harness import (
+        category_page_matches, classify_link_target,
+        link_contract_fails, request_with_version_pinning,
+    )
 
 SOURCE = Path(os.environ.get("MAHOON_ASSETS_DIRECTORY", "publisher-base"))
 ROOT = Path(os.environ.get("MAHOON_CRAWL_OUTPUT", "publisher-state/override-crawl"))
@@ -51,59 +58,77 @@ def routes() -> list[str]:
 
 
 def _crawl_headers() -> dict[str, str]:
-    headers = {"User-Agent": UA, "Accept": "text/html,application/json,application/xml,text/plain,*/*"}
-    if VERSION and os.environ.get("MAHOON_DISABLE_VERSION_OVERRIDE") != "1":
-        headers["Cloudflare-Workers-Version-Overrides"] = f'{WORKER}="{VERSION}"'
-    return headers
+    return {"User-Agent": UA, "Accept": "text/html,application/json,application/xml,text/plain,*/*"}
 
 
-def fetch(path: str) -> dict:
+def _pinned_request(url: str, method: str = "GET") -> dict:
+    version = VERSION if os.environ.get("MAHOON_DISABLE_VERSION_OVERRIDE") != "1" else ""
+    return request_with_version_pinning(
+        url, worker=WORKER, version=version, method=method, headers=_crawl_headers(),
+        cache_bust_nonce=uuid.uuid4().hex if version else None,
+    )
+
+
+def fetch_url(url: str) -> dict:
     last = None
     for attempt, delay in enumerate((0, 2, 5, 10), 1):
         if delay:
             time.sleep(delay)
         try:
-            req = urllib.request.Request(_url(path), headers=_crawl_headers())
-            with urllib.request.urlopen(req, timeout=45) as response:
-                body = response.read()
-                content_type = str(response.headers.get_content_type() or "")
-                text = body.decode("utf-8", "replace") if content_type.startswith(("text/", "application/json", "application/xml")) else ""
-                facts = None
-                if content_type == "text/html":
-                    try:
-                        from .promotion_gates import _facts
-                    except ImportError:
-                        from promotion_gates import _facts
-                    facts = _facts(text)
-                url_evidence = _url_evidence(text, facts) if facts else {
-                    "workers_dev": False, "preview_url": False, "remote_media": False
-                }
-                return {
-                    "status": "PASS" if response.status == 200 else "FAIL",
-                    "http_status": response.status, "final_url": response.geturl(),
-                    "content_type": content_type, "bytes": len(body), "attempts": attempt,
-                    "is_html": content_type == "text/html",
-                    "canonical": facts.canonicals[0] if facts and facts.canonicals else "",
-                    "title": bool(facts and facts.titles and facts.titles[0].strip()),
-                    "h1": bool(facts and facts.h1s and facts.h1s[0].strip()),
-                    "meta": bool(facts and facts.descriptions and facts.descriptions[0].strip()),
-                    "og": bool(re.search(r'<meta[^>]+(?:property|name)=["\']og:', text, re.I)),
-                    "jsonld": bool(facts and facts.jsonld),
-                    "robots_noindex": bool(facts and any("noindex" in value for value in facts.robots)),
-                    **url_evidence,
-                    "card_routes": facts.cards if facts else [],
-                    "latest_rows": facts.latest_rows if facts else [],
-                    "anchor_links": facts.anchors if facts else [],
-                }
-        except urllib.error.HTTPError as exc:
-            last = {"status": "FAIL", "http_status": exc.code, "attempts": attempt,
-                    "error_class": "HTTP_ERROR", "redirect_loop": 300 <= exc.code < 400}
-            if 400 <= exc.code < 500 and exc.code != 408:
-                break
+            proof = _pinned_request(url)
+            if proof["status"] >= 500 or proof["status"] == 408:
+                last = {"status": "RETRY_PENDING", "http_status": proof["status"], "attempts": attempt,
+                        "error_class": "TRANSIENT_HTTP_ERROR", "redirect_loop": False}
+                continue
+            body = proof["body"]
+            content_type = proof["content_type"]
+            text = body.decode("utf-8", "replace") if content_type.startswith(("text/", "application/json", "application/xml")) else ""
+            facts = None
+            if content_type == "text/html":
+                try:
+                    from .promotion_gates import _facts
+                except ImportError:
+                    from promotion_gates import _facts
+                facts = _facts(text)
+            url_evidence = _url_evidence(text, facts) if facts else {
+                "workers_dev": False, "preview_url": False, "remote_media": False
+            }
+            attribution_ok = proof["version_attribution_status"] == "PROVEN" if VERSION and os.environ.get("MAHOON_DISABLE_VERSION_OVERRIDE") != "1" else True
+            return {
+                "status": "PASS" if proof["status"] == 200 and attribution_ok else "FAIL",
+                "http_status": proof["status"], "final_url": proof["final_url"],
+                "content_type": content_type, "bytes": len(body), "attempts": attempt,
+                "is_html": content_type == "text/html",
+                "canonical": facts.canonicals[0] if facts and facts.canonicals else "",
+                "title": bool(facts and facts.titles and facts.titles[0].strip()),
+                "h1": bool(facts and facts.h1s and facts.h1s[0].strip()),
+                "meta": bool(facts and facts.descriptions and facts.descriptions[0].strip()),
+                "og": bool(re.search(r'<meta[^>]+(?:property|name)=["\']og:', text, re.I)),
+                "jsonld": bool(facts and facts.jsonld),
+                "robots_noindex": bool(facts and any("noindex" in value for value in facts.robots)),
+                **url_evidence,
+                "card_routes": facts.cards if facts else [],
+                "latest_rows": facts.latest_rows if facts else [],
+                "anchor_links": facts.anchors if facts else [],
+                "requested_version": VERSION or None,
+                "actual_version": proof["actual_version"],
+                "version_attribution_status": proof["version_attribution_status"],
+                "override_preserved_on_every_hop": proof["override_preserved_on_every_hop"],
+                "redirect_hop_count": proof["redirect_hop_count"],
+                "redirect_chain": proof["redirect_chain"],
+                "cache_busted": proof["cache_busted"],
+                "cf_cache_status": proof["headers"].get("CF-Cache-Status"),
+                "body_sha256": hashlib.sha256(body).hexdigest(),
+                **({} if attribution_ok else {"error_class": "VERSION_ATTRIBUTION_MISSING_OR_MISMATCH"}),
+            }
         except Exception as exc:
             last = {"status": "RETRY_PENDING", "http_status": None, "attempts": attempt,
                     "error_class": type(exc).__name__, "error": str(exc)[:300], "redirect_loop": False}
     return last or {"status": "FAIL", "http_status": None, "attempts": 4, "error_class": "UNKNOWN", "redirect_loop": False}
+
+
+def fetch(path: str) -> dict:
+    return fetch_url(_url(path))
 
 
 def _save(state: dict) -> None:
@@ -136,12 +161,50 @@ def _ids(hrefs: list[str], by_slug: dict[str, int], by_id: dict[str, int]) -> li
 
 
 def _head_media(path: str) -> dict:
-    request = urllib.request.Request(_url(path), headers=_crawl_headers(), method="HEAD")
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return {"status": response.status, "content_type": str(response.headers.get_content_type() or "")}
+        proof = request_with_version_pinning(
+            _url(path), worker=WORKER, version=VERSION, headers=_crawl_headers(), method="HEAD", timeout=30,
+        )
+        return {"status": proof["status"], "content_type": proof["content_type"]}
     except Exception as exc:
         return {"status": None, "error_class": type(exc).__name__}
+
+
+def _measure_link_targets(route_list: list[str], state: dict) -> dict[str, dict]:
+    route_set = set(route_list)
+    targets: dict[str, str] = {}
+    for source_route, value in state.get("routes", {}).items():
+        for href in value.get("anchor_links", []):
+            kind, path = classify_link_target(urljoin(BASE + source_route, href), BASE, route_set)
+            if kind != "EXTERNAL_OTHER":
+                targets[path] = kind
+
+    checks: dict[str, dict] = {}
+    pending: list[tuple[str, str]] = []
+    for path, kind in targets.items():
+        if path in route_set:
+            route = state.get("routes", {}).get(path, {})
+            checks[path] = {"status": route.get("http_status"), "content_type": route.get("content_type"), "source": "manifest"}
+        else:
+            pending.append((path, kind))
+
+    def check_target(item: tuple[str, str]) -> tuple[str, dict]:
+        path, kind = item
+        if kind in {"STATIC_MEDIA", "STATIC_ASSET"}:
+            return path, {**_head_media(path), "source": "http_head"}
+        route = fetch_url(_url(path))
+        status = route.get("http_status")
+        if VERSION and route.get("version_attribution_status") != "PROVEN":
+            status = None
+        return path, {
+            "status": status, "content_type": route.get("content_type"),
+            "version_attribution_status": route.get("version_attribution_status"), "source": "pinned_http_get",
+        }
+
+    if pending:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            checks.update(executor.map(check_target, pending))
+    return checks
 
 
 def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: dict,
@@ -188,16 +251,30 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
         not html.get(f"/post/{post.get('slug')}", {}).get("jsonld")
         for post in posts if post.get("slug")
     )
-    expected_norm = {unquote(urlsplit(route).path).rstrip("/") or "/" for route in route_set}
-    broken_links = 0
+    link_checks = state.get("link_checks", {})
+    link_kind_counts: dict[str, int] = {}
+    broken_link_targets: list[dict] = []
+    false_positive_link_targets: set[str] = set()
     for route, value in html.items():
         for href in value.get("anchor_links", []):
-            target = urlsplit(urljoin(BASE + route, href))
-            if target.scheme not in {"http", "https"} or target.netloc.lower() != urlsplit(BASE).netloc.lower():
+            kind, path = classify_link_target(urljoin(BASE + route, href), BASE, route_set)
+            link_kind_counts[kind] = link_kind_counts.get(kind, 0) + 1
+            if kind == "EXTERNAL_OTHER":
                 continue
-            path = unquote(target.path).rstrip("/") or "/"
-            if path not in expected_norm:
-                broken_links += 1
+            check = link_checks.get(path)
+            if check is None and path in route_set:
+                route_check = state.get("routes", {}).get(path, {})
+                check = {"status": route_check.get("http_status"), "content_type": route_check.get("content_type")}
+            if check is None:
+                broken_link_targets.append({"path": path, "kind": kind, "reason": "UNVERIFIED_TARGET"})
+                continue
+            if path not in route_set and check.get("status") == 200:
+                false_positive_link_targets.add(path)
+            if link_contract_fails(kind, check.get("status"), check.get("content_type", "")):
+                broken_link_targets.append({"path": path, "kind": kind, "status": check.get("status"), "content_type": check.get("content_type")})
+    # A repeated href to the same failed destination is one broken destination, not an inflated count.
+    broken_link_targets = list({item["path"]: item for item in broken_link_targets}.values())
+    broken_links = len(broken_link_targets)
     redirect_loops = sum(int(bool(value.get("redirect_loop"))) for value in state["routes"].values())
     search_ok = search_result.get("http_status") == 200 and isinstance(search_result.get("records"), list)
     search_records = search_result.get("records", []) if search_ok else []
@@ -230,7 +307,8 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
     category_sequences: dict[str, list[int]] = {}
     for label, _variants in CATEGORY_DEFINITIONS:
         expected = [int(value) for value in expected_categories.get(label, [])]
-        pages = _page_routes(route_set, "/category/" + label, (len(expected) + PAGE_SIZE - 1) // PAGE_SIZE)
+        required_pages = max(1, (len(expected) + PAGE_SIZE - 1) // PAGE_SIZE)
+        pages = _page_routes(route_set, "/category/" + label, required_pages)
         sequence = []
         page_seen: set[int] = set()
         for page_number, route in pages:
@@ -238,9 +316,13 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
             category_overlap += len(page_seen.intersection(ids))
             page_seen.update(ids)
             sequence.extend(ids)
-            if ids != expected[(page_number - 1) * PAGE_SIZE:page_number * PAGE_SIZE]:
+            expected_page_ids = expected[(page_number - 1) * PAGE_SIZE:page_number * PAGE_SIZE]
+            if not category_page_matches(
+                route in route_set, expected_page_ids, ids,
+                state.get("routes", {}).get(route, {}).get("http_status"),
+            ):
                 category_wrong += 1
-        if len(pages) != (len(expected) + PAGE_SIZE - 1) // PAGE_SIZE:
+        if len(pages) != required_pages:
             category_missing += 1
         category_missing += len(set(expected) - set(sequence))
         category_extra += len(set(sequence) - set(expected))
@@ -265,7 +347,12 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
     media_unresolved = media_manifest.get("stats", {}).get("unresolved") if isinstance(media_manifest, dict) else None
     if not isinstance(media_unresolved, int):
         media_unresolved = None
-    all_status = len(route_status_failures) == 0
+    attribution_required = bool(VERSION) and os.environ.get("MAHOON_DISABLE_VERSION_OVERRIDE") != "1"
+    version_attribution_failures = sum(
+        value.get("version_attribution_status") != "PROVEN" or value.get("actual_version") != VERSION
+        for value in state["routes"].values()
+    ) if attribution_required else 0
+    all_status = len(route_status_failures) == 0 and version_attribution_failures == 0
     route_parity = all_status and not missing_source_routes and not unexpected_routes and not html_failures and not post_route_failures
     content_pass = route_parity and canonical_failures == 0 and search_parity_failures == 0 and search_duplicate == 0
     listing_pass = not any((duplicate_card_ids, search_duplicate, overlap, category_overlap, orphan_posts, coverage_failures))
@@ -280,6 +367,12 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
         "missing_routes": [path for path in route_list if state["routes"].get(path, {}).get("http_status") != 200],
         "post_routes": len(post_source_routes), "post_final_200": len(post_source_routes) - len(post_route_failures),
         "broken_critical_links": broken_links, "orphan_posts": orphan_posts,
+        "broken_critical_link_samples": broken_link_targets[:25],
+        "link_target_class_counts": link_kind_counts,
+        "broken_link_false_positive_targets": len(false_positive_link_targets),
+        "unverified_link_targets": sum(item.get("reason") == "UNVERIFIED_TARGET" for item in broken_link_targets),
+        "version_attribution_failures": version_attribution_failures,
+        "remote_crawler_version_pinning": {"required_version": VERSION or None, "PASS": not attribution_required or version_attribution_failures == 0},
         "duplicate_canonicals": duplicate_canonicals, "duplicate_listing_ids": duplicate_card_ids,
         "pagination_overlap": overlap + category_overlap, "listing_page_parity_failures": coverage_failures,
         "category_wrong_membership": category_wrong, "category_missing_membership": category_missing,
@@ -303,6 +396,7 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
             "remote_latest_parity": {"measured": True, "PASS": latest_pass},
             "remote_seo": {"measured": True, "PASS": seo_pass},
             "remote_media": {"measured": media_unresolved is not None, "PASS": media_pass},
+            "remote_broken_critical_links": {"measured": True, "PASS": broken_links == 0},
         },
         "PASS": all_status and all(gate["measured"] and gate["PASS"] for gate in {
             "route": {"measured": True, "PASS": route_parity},
@@ -312,6 +406,7 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
             "latest": {"measured": True, "PASS": latest_pass},
             "seo": {"measured": True, "PASS": seo_pass},
             "media": {"measured": media_unresolved is not None, "PASS": media_pass},
+            "links": {"measured": True, "PASS": broken_links == 0},
         }.values()),
     }
 
@@ -325,13 +420,19 @@ def main() -> None:
     media_manifest = json.loads(MEDIA_PATH.read_text(encoding="utf-8")) if MEDIA_PATH.is_file() else {}
     route_hash = hashlib.sha256(json.dumps(expected, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
     state = {"base": BASE, "override_worker": WORKER, "override_version": VERSION if os.environ.get("MAHOON_DISABLE_VERSION_OVERRIDE") != "1" else "PRODUCTION",
+             "version_attribution_protocol": "CF_VERSION_METADATA_V1",
              "route_hash": route_hash, "routes": {path: {"status": "PENDING"} for path in expected}}
     if STATE_PATH.exists():
         old = json.loads(STATE_PATH.read_text(encoding="utf-8"))
-        if old.get("base") == state["base"] and old.get("override_worker") == WORKER and old.get("override_version") == state["override_version"] and old.get("route_hash") == route_hash:
+        if (old.get("base") == state["base"] and old.get("override_worker") == WORKER
+                and old.get("override_version") == state["override_version"]
+                and old.get("version_attribution_protocol") == state["version_attribution_protocol"]
+                and old.get("route_hash") == route_hash):
             for path in expected:
                 prior = old.get("routes", {}).get(path, {})
-                if prior.get("status") == "PASS" and prior.get("http_status") == 200:
+                if (prior.get("status") == "PASS" and prior.get("http_status") == 200
+                        and prior.get("version_attribution_status") == "PROVEN"
+                        and prior.get("actual_version") == VERSION):
                     state["routes"][path] = prior
     pending = [path for path in expected if state["routes"][path].get("status") != "PASS"]
     _save(state)
@@ -370,9 +471,10 @@ def main() -> None:
     search_result = fetch("/search/search-index.json")
     if search_result.get("http_status") == 200:
         try:
-            search_result["records"] = json.loads(urllib.request.urlopen(
-                urllib.request.Request(_url("/search/search-index.json"), headers=_crawl_headers()), timeout=45
-            ).read().decode("utf-8" )).get("records", [])
+            search_body = _pinned_request(_url("/search/search-index.json"))
+            if VERSION and search_body["version_attribution_status"] != "PROVEN":
+                raise ValueError("search index response version attribution is not proven")
+            search_result["records"] = json.loads(search_body["body"].decode("utf-8")).get("records", [])
         except Exception as exc:
             search_result["records"] = []
             search_result["search_parse_error"] = type(exc).__name__
@@ -381,7 +483,10 @@ def main() -> None:
     # Re-read only small text resources to measure their actual returned contents.
     for path, target in (("/sitemap.xml", sitemap), ("/robots.txt", robots)):
         try:
-            body = urllib.request.urlopen(urllib.request.Request(_url(path), headers=_crawl_headers()), timeout=30).read().decode("utf-8", "replace")
+            proof = _pinned_request(_url(path))
+            if VERSION and proof["version_attribution_status"] != "PROVEN":
+                raise ValueError("control resource response version attribution is not proven")
+            body = proof["body"].decode("utf-8", "replace")
             if path.endswith("robots.txt"):
                 target["robots_sitemap"] = bool(re.search(r"(?im)^\s*Sitemap:\s*" + re.escape(BASE + "/sitemap.xml") + r"\s*$", body))
             else:
@@ -389,6 +494,7 @@ def main() -> None:
         except Exception:
             target["robots_sitemap"] = False
             target["sitemap_posts"] = []
+    state["link_checks"] = _measure_link_targets(expected, state)
     result = _measure(expected, state, snapshot, search_result, media_manifest)
     state["supplemental_search"] = {key: value for key, value in search_result.items() if key != "records"}
     _save(state)

@@ -11,6 +11,7 @@ from tools.publisher.promotion_gates import (
     media_gate, seo_gate, _read_page,
 )
 from tools.publisher.candidate_override_crawl import _measure, _url_evidence
+from tools.publisher.content_taxonomy import CATEGORY_DEFINITIONS
 
 
 def _fixture(with_media=False):
@@ -20,6 +21,7 @@ def _fixture(with_media=False):
         {"id": 1, "slug": "old-post", "created_at": "2026-09-01T00:00:00Z", "text": "Older #کتاب"},
     ]
     routes = ["/", "/posts", "/category/کتاب", "/category/شعر و متن", "/post/2", "/post/new-post", "/post/1", "/post/old-post", "/robots.txt", "/sitemap.xml"]
+    routes.extend(f"/category/{label}" for label, _variants in CATEGORY_DEFINITIONS if f"/category/{label}" not in routes)
     media_records = []
     media_url = None
     if with_media:
@@ -56,6 +58,10 @@ def _fixture(with_media=False):
     write_route("/posts", page("/posts", ("new-post", "old-post"), "Posts"))
     write_route("/category/کتاب", page("/category/کتاب", ("old-post",), "Books"))
     write_route("/category/شعر و متن", page("/category/شعر و متن", ("new-post",), "Text"))
+    for label, _variants in CATEGORY_DEFINITIONS:
+        route = f"/category/{label}"
+        if route not in {"/category/کتاب", "/category/شعر و متن"}:
+            write_route(route, page(route, (), "Empty category"))
     for post in posts:
         for route in (f"/post/{post['id']}", f"/post/{post['slug']}"):
             write_route(route, page(route, (), post["text"], True, media_url if with_media and post["id"] == 2 else None))
@@ -188,11 +194,11 @@ class PromotionGateTests(unittest.TestCase):
             for route in routes:
                 target = _route_file(root, route)
                 if target.suffix in {".txt", ".xml"}:
-                    remote_routes[route] = {"status": "PASS", "http_status": 200, "is_html": False}
+                    remote_routes[route] = {"status": "PASS", "http_status": 200, "is_html": False, "content_type": "text/plain" if target.suffix == ".txt" else "application/xml"}
                 else:
                     facts = _facts(target.read_text(encoding="utf-8"))
                     remote_routes[route] = {
-                        "status": "PASS", "http_status": 200, "is_html": True,
+                        "status": "PASS", "http_status": 200, "is_html": True, "content_type": "text/html",
                         "canonical": facts.canonicals[0] if facts.canonicals else "",
                         "title": bool(facts.titles), "h1": bool(facts.h1s), "meta": bool(facts.descriptions),
                         "og": bool(facts.descriptions), "jsonld": facts.jsonld, "robots_noindex": False,
