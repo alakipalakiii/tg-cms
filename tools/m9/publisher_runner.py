@@ -229,7 +229,20 @@ def main() -> int:
         json.dumps(measured_gates, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     if measured_gates.get("measured") is not True or measured_gates.get("PASS") is not True:
-        print("PUBLISHER_PREPROMOTION_LOCAL_GATES_FAILED", file=sys.stderr)
+        diagnostic_gates = measured_gates.get("gates", {})
+        scalar_gates = {
+            name: {key: value for key, value in result.items()
+                   if isinstance(value, (bool, int, float)) or value is None}
+            for name, result in diagnostic_gates.items() if isinstance(result, dict)
+        } if isinstance(diagnostic_gates, dict) else {}
+        diagnostics = {"measured": measured_gates.get("measured"),
+                       "PASS": measured_gates.get("PASS"), "gates": scalar_gates}
+        if measured_gates.get("failure"):
+            diagnostics["failure"] = sanitize(measured_gates["failure"])
+        if measured_gates.get("failure_class"):
+            diagnostics["failure_class"] = str(measured_gates["failure_class"])
+        print(json.dumps({"failure_code": "PUBLISHER_PREPROMOTION_LOCAL_GATES_FAILED",
+                          "diagnostics": diagnostics}, ensure_ascii=False), file=sys.stderr)
         return 12
     os.environ["MAHOON_ASSETS_DIRECTORY"] = str(out)
     os.environ["MAHOON_MEDIA_MANIFEST"] = str(media_manifest)

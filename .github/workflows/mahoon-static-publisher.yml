@@ -129,6 +129,21 @@ jobs:
         id: execute
         run: python tools/m9/publisher_runner.py
 
+      - name: Upload sanitized candidate gate evidence
+        if: ${{ always() && hashFiles('runner-evidence/prepromotion-local-gates.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahoon-publisher-local-gates-${{ github.run_id }}
+          path: |
+            runner-evidence/transaction-start-static-baseline.json
+            runner-evidence/public-content-revision-lookup.json
+            runner-evidence/rollback-anchor-order.json
+            runner-evidence/local-candidate-gate.json
+            runner-evidence/prepromotion-local-gates.json
+            runner-evidence/pre-upload-static-baseline.json
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Publish result marker
         id: result
         if: ${{ always() }}
