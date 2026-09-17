@@ -340,10 +340,10 @@ def main() -> int:
                     "PASS": baseline_pass}, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     try:
-        deployment.deploy_pair(target_worker, version_id, 0, current_static_version, 100,
-                               preserved_zero_versions)
-        zero_split = {current_static_version: 100, version_id: 0,
-                      **{item: 0 for item in preserved_zero_versions}}
+        # Cloudflare versions deploy accepts at most two versions. Any older
+        # zero-weight version is detached from this deployment (still 0% traffic).
+        deployment.deploy_pair(target_worker, version_id, 0, current_static_version, 100)
+        zero_split = {current_static_version: 100, version_id: 0}
         zero_percent_state = deployment.wait_for_active(target_worker, zero_split)
         zero_percent_deployment_id = zero_percent_state.get("id")
         promotion_anchor = promotion_precondition(zero_percent_state, current_static_version, version_id)
@@ -374,8 +374,7 @@ def main() -> int:
                 "target_worker": target_worker,
                 "content_fingerprint": digest,
                 "candidate_deployment_id": zero_percent_deployment_id,
-                "candidate_split": {current_static_version: 100, version_id: 0,
-                                    **{item: 0 for item in preserved_zero_versions}},
+                "candidate_split": {current_static_version: 100, version_id: 0},
                 "preexisting_zero_versions": list(preserved_zero_versions),
                 "rollback_anchor": rollback_state,
                 "created_at": now(),
@@ -535,11 +534,10 @@ def main() -> int:
         write_safe_error(stage, code, exc, version_id, locals().get("promoted_deployment_id"), **getattr(exc, "details", {}))
         try:
             rollback_response = automatic_rollback(target_worker, current_static_version, version_id,
-                                                   locals().get("promoted_deployment_id"), preserved_zero_versions)
+                                                   locals().get("promoted_deployment_id"))
             rollback_result_id = rollback_response.get("id")
             restored = deployment.active_deployment(target_worker)
-            expected_versions = {current_static_version: 100, version_id: 0,
-                                 **{item: 0 for item in preserved_zero_versions}}
+            expected_versions = {current_static_version: 100, version_id: 0}
             observed_versions = {item.get("version_id"): item.get("percentage") for item in restored.get("versions", [])}
             rollback_pass = expected_versions == observed_versions
             Path("runner-evidence/rollback-semantic-verification.json").write_text(json.dumps({"rollback_target_static_version": current_static_version, "failed_candidate_version": version_id, "rollback_result_deployment_id": rollback_result_id or restored.get("id"), "expected_versions": expected_versions, "observed_versions": observed_versions, "ROLLBACK_SEMANTIC_RESTORE": rollback_pass}, ensure_ascii=False, indent=2), encoding="utf-8")

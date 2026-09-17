@@ -234,7 +234,10 @@ def split_is_baseline_zero(observed: dict, transaction: dict) -> bool:
     preserved = transaction.get("preexisting_zero_versions", [])
     return bool(baseline and candidate and baseline != candidate
                 and state.get(baseline) == 100 and state.get(candidate) == 0
-                and all(state.get(version) == 0 for version in preserved)
+                # Cloudflare Wrangler supports two entries per deployment. A
+                # pre-existing zero-weight version may therefore be detached;
+                # absent from the active split is still 0% traffic.
+                and all(state.get(version, 0) == 0 for version in preserved)
                 and sum(state.values()) == 100
                 and all(version in {baseline, candidate, *preserved} or percentage == 0
                         for version, percentage in state.items()))

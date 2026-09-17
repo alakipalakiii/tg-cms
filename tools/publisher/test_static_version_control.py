@@ -48,7 +48,7 @@ class StaticVersionControlTests(unittest.TestCase):
         self.assertFalse(plan["contains_ssr_version"])
         self.assertNotIn("SSR", str(plan))
 
-    def test_existing_zero_percent_candidate_is_preserved_without_allowing_traffic(self):
+    def test_existing_zero_percent_candidate_stays_unpromoted_when_new_pair_is_attached(self):
         state = {"id": "d", "versions": [
             {"version_id": "7c6570b4-dbf5-42d3-84d6-acdb0da63092", "percentage": 100},
             {"version_id": "33df7584-c670-432f-8078-a94f11ee4837", "percentage": 0},
@@ -57,7 +57,10 @@ class StaticVersionControlTests(unittest.TestCase):
         tx = {"baseline_static_version": "7c6570b4-dbf5-42d3-84d6-acdb0da63092",
               "candidate_static_version": "candidate-new",
               "preexisting_zero_versions": ["33df7584-c670-432f-8078-a94f11ee4837"]}
-        zero = {"versions": [*state["versions"], {"version_id": "candidate-new", "percentage": 0}]}
+        zero = {"versions": [
+            {"version_id": "7c6570b4-dbf5-42d3-84d6-acdb0da63092", "percentage": 100},
+            {"version_id": "candidate-new", "percentage": 0},
+        ]}
         self.assertTrue(split_is_baseline_zero(zero, tx))
         unsafe = {"versions": [
             {"version_id": "7c6570b4-dbf5-42d3-84d6-acdb0da63092", "percentage": 99},
@@ -67,7 +70,6 @@ class StaticVersionControlTests(unittest.TestCase):
         promoted = {"id": "p", "versions": [
             {"version_id": "candidate-new", "percentage": 100},
             {"version_id": "7c6570b4-dbf5-42d3-84d6-acdb0da63092", "percentage": 0},
-            {"version_id": "33df7584-c670-432f-8078-a94f11ee4837", "percentage": 0},
         ]}
         self.assertTrue(verify_promoted_static(promoted, "candidate-new", tx["baseline_static_version"])[0])
 
@@ -114,7 +116,7 @@ class StaticVersionControlTests(unittest.TestCase):
         with patch.object(wrangler, "_json", return_value=history):
             self.assertEqual("latest", wrangler.read_deployment("worker")["id"])
 
-    def test_deploy_pair_emits_only_static_pair_and_rejects_bad_traffic(self):
+    def test_deploy_pair_emits_only_two_static_versions_and_rejects_bad_traffic(self):
         with patch.object(wrangler, "_run", return_value="[]") as run, patch.object(
             wrangler, "read_deployment", return_value={"id": "d", "versions": []}
         ):
@@ -122,12 +124,9 @@ class StaticVersionControlTests(unittest.TestCase):
         self.assertIn("candidate@0", run.call_args.args[0])
         self.assertIn("verified-static@100", run.call_args.args[0])
         self.assertNotIn("SSR", str(run.call_args.args[0]))
-        with patch.object(wrangler, "_run", return_value="[]") as run, patch.object(
-            wrangler, "read_deployment", return_value={"id": "d", "versions": []}
-        ):
-            wrangler.deploy_pair("worker", "candidate", 0, "verified-static", 100,
-                                 ("33df7584-c670-432f-8078-a94f11ee4837",))
-        self.assertIn("33df7584-c670-432f-8078-a94f11ee4837@0", run.call_args.args[0])
+        version_specs = [value for value in run.call_args.args[0] if "@" in value]
+        self.assertLessEqual(len(version_specs), 2)
+        self.assertNotIn("33df7584-c670-432f-8078-a94f11ee4837@0", run.call_args.args[0])
         with patch.object(wrangler, "_run") as run:
             with self.assertRaises(wrangler.WranglerError):
                 wrangler.deploy_pair("worker", "candidate", 0, "verified-static", 90)

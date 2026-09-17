@@ -261,15 +261,12 @@ def run_promotion(bundle_dir: Path, proof_dir: Path, transaction_id: str) -> int
     promoted_id = None
     promotion_confirmed = False
     try:
-        preserved_zero = tuple(transaction.get("preexisting_zero_versions", []))
         response = deployment.deploy_pair(WORKER, transaction["candidate_static_version"], 100,
-                                          transaction["baseline_static_version"], 0,
-                                          preserved_zero)
+                                          transaction["baseline_static_version"], 0)
         promoted_id = response.get("id")
         promoted_split = {
             transaction["candidate_static_version"]: 100,
             transaction["baseline_static_version"]: 0,
-            **{version: 0 for version in preserved_zero},
         }
         promoted = deployment.wait_for_active(WORKER, promoted_split, timeout_seconds=150)
         promotion_confirmed, promotion_readback = verify_promoted_static(
@@ -334,7 +331,6 @@ def run_promotion(bundle_dir: Path, proof_dir: Path, transaction_id: str) -> int
         expected_candidate_split = {
             transaction["candidate_static_version"]: 100,
             transaction["baseline_static_version"]: 0,
-            **{version: 0 for version in transaction.get("preexisting_zero_versions", [])},
         }
         observed = {item.get("version_id"): item.get("percentage") for item in current.get("versions", [])}
         rollback_performed = False
@@ -342,8 +338,7 @@ def run_promotion(bundle_dir: Path, proof_dir: Path, transaction_id: str) -> int
         if observed == expected_candidate_split and current.get("id"):
             try:
                 restored = automatic_rollback(WORKER, transaction["baseline_static_version"],
-                                              transaction["candidate_static_version"], current["id"],
-                                              tuple(transaction.get("preexisting_zero_versions", [])))
+                                              transaction["candidate_static_version"], current["id"])
                 rollback_performed = True
                 rollback_verified = live_static_baseline(restored, transaction["baseline_static_version"])[0]
             except Exception:
