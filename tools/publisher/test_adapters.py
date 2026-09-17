@@ -3,9 +3,11 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.parse import quote
 
 from static_build_adapter import build, validate
 from state import persist_after_public_pass
+from tools.publisher.astro_static_materializer import _artifact_path
 
 
 class PublisherAdapterTests(unittest.TestCase):
@@ -57,7 +59,7 @@ class PublisherAdapterTests(unittest.TestCase):
                 "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
                 "routes": routes,
             }), encoding="utf-8")
-            body = '<link rel="canonical" href="https://mahoonartmagazine.ir/post/1"><script type="application/ld+json">{"image":"/media/missing.jpg"}</script>'
+            body = '<link rel="canonical" href="https://mahoonartmagazine.ir/post/1"><a href="/post/missing">broken</a><script type="application/ld+json">{"image":"/media/missing.jpg"}</script>'
             for route in routes:
                 target = root / route.lstrip("/") / "index.html"
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -74,6 +76,43 @@ class PublisherAdapterTests(unittest.TestCase):
             self.assertFalse(result["PASS"])
             self.assertEqual(result["duplicate_canonicals"], 1)
             self.assertEqual(result["static_media_missing"], 1)
+            self.assertGreater(result["broken_internal_links"], 0)
+
+    def test_encoded_tag_route_maps_to_unicode_static_file_and_internal_category(self):
+        with tempfile.TemporaryDirectory(prefix="mahoon-encoded-route-") as directory:
+            root = Path(directory)
+            tag_route = "/tag/" + quote("کتاب_گویا", safe="-_.!~*'()")
+            category_route = "/category/نقاشی"
+            manifest = root / "routes.json"
+            manifest.write_text(json.dumps({
+                "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
+                "routes": [tag_route, category_route],
+            }), encoding="utf-8")
+            tag_file = _artifact_path(root, tag_route)
+            category_file = _artifact_path(root, category_route)
+            canonical_safe = "/%:@!$&'()*+,;=-._~"
+            tag_file.parent.mkdir(parents=True)
+            category_file.parent.mkdir(parents=True)
+            tag_file.write_text(
+                f'<link rel="canonical" href="https://mahoonartmagazine.ir{quote(tag_route, safe=canonical_safe)}"><a href="{category_route}">category</a>',
+                encoding="utf-8",
+            )
+            category_file.write_text(
+                f'<link rel="canonical" href="https://mahoonartmagazine.ir{quote(category_route, safe=canonical_safe)}">',
+                encoding="utf-8",
+            )
+            previous = os.environ.get("MAHOON_ROUTE_MANIFEST")
+            os.environ["MAHOON_ROUTE_MANIFEST"] = str(manifest)
+            try:
+                result = validate(root)
+            finally:
+                if previous is None:
+                    os.environ.pop("MAHOON_ROUTE_MANIFEST", None)
+                else:
+                    os.environ["MAHOON_ROUTE_MANIFEST"] = previous
+            self.assertTrue(result["PASS"], json.dumps(result, ensure_ascii=True))
+            self.assertEqual(result["present_html_routes"], 2)
+            self.assertEqual(result["broken_internal_links"], 0)
 
     def test_approved_text_contract_is_self_contained(self):
         base = Path("publisher-base")

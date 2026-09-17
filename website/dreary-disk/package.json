@@ -9,10 +9,11 @@
     "deploy": "npm run build && npx wrangler deploy"
   },
   "dependencies": {
-    "astro": "6.3.6",
-    "@astrojs/cloudflare": "13.5.2"
+    "@astrojs/cloudflare": "13.5.2",
+    "astro": "6.3.6"
   },
   "devDependencies": {
+    "playwright": "1.63.0",
     "wrangler": "4.83.0"
   }
 }

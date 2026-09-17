@@ -15,11 +15,17 @@ const apiBase = (SITE.workerUrl || "https://api.mahoonartmagazine.ir").replace(/
 const pageTitle = "همه مطالب";
 const pageDescription = "آرشیو کامل مطالب منتشرشده در مجله هنری ماهون";
 const canonicalUrl = SITE.url + "/posts";
+const requestedPage = Number(Astro.url.searchParams.get("page") || "1");
+const initialOffset = Number.isSafeInteger(requestedPage)
+  && requestedPage > 1
+  && requestedPage <= Math.floor(Number.MAX_SAFE_INTEGER / PAGE_SIZE)
+  ? (requestedPage - 1) * PAGE_SIZE
+  : 0;
 
 const initialArchive = await fetchPublicArchivePage({
   apiBase,
   limit: PAGE_SIZE,
-  offset: 0,
+  offset: initialOffset,
   timeoutMs: 5000
 });
 

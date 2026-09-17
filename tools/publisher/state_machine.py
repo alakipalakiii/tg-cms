@@ -1,56 +1,81 @@
-"""Pure deployment state-machine guards used by the publisher transaction."""
+"""Fail-closed Static-only deployment state guards."""
 from __future__ import annotations
 
 
 def _versions(deployment: dict) -> dict[str, int]:
-    return {item.get("version_id"): item.get("percentage") for item in deployment.get("versions", [])}
+    items = deployment.get("versions")
+    if not isinstance(items, list) or any(
+        not isinstance(item, dict) or not isinstance(item.get("version_id"), str)
+        or not isinstance(item.get("percentage"), int)
+        for item in items
+    ):
+        return {}
+    result = {item["version_id"]: item["percentage"] for item in items}
+    return result if len(result) == len(items) else {}
 
 
-def rollback_anchor(deployment: dict) -> dict:
-    versions = _versions(deployment)
+def live_static_baseline(deployment: dict, expected_static_version: str) -> tuple[bool, dict]:
+    observed = _versions(deployment)
+    expected = {expected_static_version: 100}
+    passed = bool(expected_static_version and deployment.get("id") and observed == expected)
+    return passed, {"deployment_id": deployment.get("id"), "expected": expected,
+                    "observed": observed, "PASS": passed}
+
+
+def static_deployment_plan(worker: str, current_static_version: str,
+                           candidate_version: str) -> dict:
+    if (not worker or not current_static_version or not candidate_version
+            or current_static_version == candidate_version):
+        raise ValueError("static deployment plan requires two distinct version IDs and a worker")
     return {
-        "rollback_deployment_id": deployment.get("id"),
-        "rollback_ssr_version": next((v for v, p in versions.items() if p == 100), None),
-        "rollback_static_versions": [v for v, p in versions.items() if p == 0],
-        "rollback_traffic_percentages": dict(versions),
-        "deployment": deployment,
+        "worker": worker,
+        "baseline": {current_static_version: 100},
+        "candidate_zero_percent": {current_static_version: 100, candidate_version: 0},
+        "promotion": {candidate_version: 100, current_static_version: 0},
+        "rollback": {current_static_version: 100, candidate_version: 0},
+        "contains_ssr_version": False,
     }
 
 
-def promotion_precondition(deployment: dict, candidate_version: str, ssr_version: str) -> dict:
-    return {
-        "expected_current_deployment_id": deployment.get("id"),
-        "expected_ssr_version": ssr_version,
-        "expected_candidate_version": candidate_version,
-        "expected_traffic": {"SSR": 100, "candidate": 0},
-    }
+def zero_percent_split(worker: str, current: dict, candidate_version: str,
+                       expected_static_version: str) -> dict:
+    passed, diagnostic = live_static_baseline(current, expected_static_version)
+    if not passed or not candidate_version or candidate_version == expected_static_version:
+        raise ValueError(f"live Static baseline mismatch: {diagnostic}")
+    return {"worker": worker, "expected_current_deployment_id": current["id"],
+            "current_static_version": expected_static_version,
+            "candidate_version": candidate_version,
+            "expected_versions": {expected_static_version: 100, candidate_version: 0}}
 
 
-def verify_promotion_precondition(current: dict, anchor: dict, worker: str = "mahoon-art-magazine") -> tuple[bool, dict]:
+def promotion_precondition(zero_deployment: dict, current_static_version: str,
+                           candidate_version: str) -> dict:
+    expected = {current_static_version: 100, candidate_version: 0}
+    passed = bool(zero_deployment.get("id") and _versions(zero_deployment) == expected)
+    if not passed:
+        raise ValueError("zero-percent deployment readback does not match Static baseline")
+    return {"expected_current_deployment_id": zero_deployment["id"],
+            "current_static_version": current_static_version,
+            "candidate_version": candidate_version, "expected_versions": expected}
+
+
+def verify_promotion_precondition(current: dict, anchor: dict,
+                                  worker: str = "mahoon-art-magazine") -> tuple[bool, dict]:
     observed_versions = _versions(current)
-    expected_id = anchor.get("expected_current_deployment_id")
-    expected_ssr = anchor.get("expected_ssr_version")
-    expected_candidate = anchor.get("expected_candidate_version")
-    expected = {
-        "worker": worker,
-        "deployment_id": expected_id,
-        "ssr_version": expected_ssr,
-        "candidate_version": expected_candidate,
-        "traffic": {"SSR": 100, "candidate": 0},
-    }
-    nonzero_unknown = [v for v, p in observed_versions.items() if v not in {expected_ssr, expected_candidate} and p not in (0, None)]
-    observed = {
-        "worker": worker,
-        "deployment_id": current.get("id"),
-        "versions": observed_versions,
-        "traffic": {"SSR": observed_versions.get(expected_ssr), "candidate": observed_versions.get(expected_candidate)},
-        "unknown_nonzero_versions": nonzero_unknown,
-    }
-    passed = (
-        current.get("id") == expected_id
-        and observed_versions.get(expected_ssr) == 100
-        and observed_versions.get(expected_candidate) == 0
-        and not nonzero_unknown
-        and len([v for v, p in observed_versions.items() if p not in (0, None)]) == 1
-    )
+    expected_versions = anchor.get("expected_versions")
+    expected = {"worker": worker, "deployment_id": anchor.get("expected_current_deployment_id"),
+                "versions": expected_versions}
+    observed = {"worker": worker, "deployment_id": current.get("id"),
+                "versions": observed_versions}
+    passed = (bool(expected_versions) and current.get("id") == anchor.get("expected_current_deployment_id")
+              and observed_versions == expected_versions)
     return passed, {"expected": expected, "observed": observed, "PASS": passed}
+
+
+def verify_promoted_static(current: dict, candidate_version: str,
+                           previous_static_version: str) -> tuple[bool, dict]:
+    expected = {candidate_version: 100, previous_static_version: 0}
+    observed = _versions(current)
+    passed = bool(current.get("id") and observed == expected)
+    return passed, {"deployment_id": current.get("id"), "expected": expected,
+                    "observed": observed, "PASS": passed}

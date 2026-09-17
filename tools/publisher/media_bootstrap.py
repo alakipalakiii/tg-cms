@@ -106,7 +106,7 @@ def bootstrap(posts: list[dict], *, index_path: Path | None = None, store: Path 
               output_manifest: Path | None = None, output_index: Path | None = None,
               production_base: str | None = None, source_base: str | None = None) -> dict:
     index_path = index_path or ROOT / "publisher-state/immutable-media-index.json"
-    store = store or ROOT / "runner-evidence/immutable-media-store"
+    store = store or ROOT / "runner-build/immutable-media-store"
     output_manifest = output_manifest or ROOT / "runner-build/current-media-manifest.json"
     output_index = output_index or ROOT / "runner-build/immutable-media-index.json"
     production_base = (production_base or os.environ.get("MAHOON_PRODUCTION_MEDIA_BASE") or PRODUCTION_BASE).rstrip("/")

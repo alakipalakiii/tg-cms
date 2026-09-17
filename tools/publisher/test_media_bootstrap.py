@@ -7,12 +7,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import media_bootstrap
-try:
-    from publisher.astro_static_materializer import _materialize_media, _strip_runtime_api_scripts
-except ImportError:
-    from astro_static_materializer import _materialize_media, _strip_runtime_api_scripts
-from static_media_resolver import PublishedMediaResolver
+from tools.publisher import media_bootstrap, static_media_resolver
+from tools.publisher.astro_static_materializer import _materialize_media, _strip_runtime_api_scripts
+from tools.publisher.static_media_resolver import PublishedMediaResolver
 
 
 JPEG = b"\xff\xd8\xff\xe0" + b"fixture-media"
@@ -42,6 +39,32 @@ class MediaBootstrapTests(unittest.TestCase):
         self.assertEqual(result["new"], 0)
         self.assertTrue(calls[0].startswith("https://mahoonartmagazine.ir/media/"))
         self.assertEqual(manifest["records"][0]["sha256"], digest)
+
+    def test_default_clean_runner_store_is_rebuilt_under_runner_build(self):
+        from tools.publisher import static_media_resolver
+        digest = hashlib.sha256(JPEG).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            index_path = root / "publisher-state/immutable-media-index.json"
+            index_path.parent.mkdir()
+            index_path.write_text(json.dumps({"entries": [{
+                "source_identifier": "media-1", "immutable_path": f"/media/{digest[:2]}/{digest}.jpg",
+                "sha256": digest, "mime": "image/jpeg", "media_type": "photo", "fallback": False,
+            }]}), encoding="utf-8")
+            with patch.object(media_bootstrap, "ROOT", root), patch.object(static_media_resolver, "ROOT", root), patch.object(media_bootstrap, "_fetch", return_value=(JPEG, "image/jpeg")):
+                result = media_bootstrap.bootstrap([post(1)], index_path=index_path)
+                self.assertEqual(Path(result["store"]), root / "runner-build/immutable-media-store")
+                self.assertEqual(result["unresolved"], 0)
+                self.assertFalse((root / "runner-evidence").exists())
+                with patch.dict("os.environ", {
+                    "MAHOON_CURRENT_MEDIA_MANIFEST": "runner-build/current-media-manifest.json",
+                    "MAHOON_IMMUTABLE_MEDIA_INDEX": "runner-build/immutable-media-index.json",
+                    "MAHOON_IMMUTABLE_MEDIA_STORE": "runner-build/immutable-media-store",
+                }, clear=False):
+                    resolved = PublishedMediaResolver().resolve_public_media(
+                        "https://api.mahoonartmagazine.ir/media/media-1"
+                    )
+                self.assertEqual(resolved["status"], "IMMUTABLE")
 
     def test_hash_mismatch_fails_closed(self):
         index = {"entries": [{"source_identifier": "media-1", "immutable_path": "/media/aa/bad.jpg", "sha256": "a" * 64, "mime": "image/jpeg"}]}

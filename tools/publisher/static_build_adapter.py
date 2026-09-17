@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from urllib.parse import quote
+from urllib.parse import quote, urljoin
 from urllib.parse import unquote, urlsplit
 import shutil
 from pathlib import Path
@@ -57,9 +57,10 @@ def validate(out: Path) -> dict:
     missing_js_assets = []
     checked_css_assets = set()
     checked_js_assets = set()
+    broken_internal = set()
     strict_candidate = manifest_payload and manifest_payload.get("contract") == "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1"
     for route in expected:
-        rel = route.lstrip("/")
+        rel = unquote(route.lstrip("/"))
         candidate = out / ("index.html" if not rel else rel)
         if route.endswith("/") or candidate.is_dir():
             candidate = out / rel / "index.html"
@@ -67,14 +68,31 @@ def validate(out: Path) -> dict:
             missing.append(route)
             continue
         text = candidate.read_text(encoding="utf-8", errors="ignore")
+        try:
+            from .promotion_gates import _facts, _url_evidence
+        except ImportError:
+            from promotion_gates import _facts, _url_evidence
+        page_facts = _facts(text, "references")
+        url_flags = _url_evidence(text, page_facts)
+        for reference in page_facts.references:
+            resolved = urlsplit(urljoin("https://mahoonartmagazine.ir" + route, reference))
+            if resolved.scheme not in {"http", "https"} or resolved.netloc.lower() != "mahoonartmagazine.ir":
+                continue
+            linked_path = unquote(resolved.path or "/")
+            if linked_path.endswith("/") or not Path(linked_path).suffix:
+                target_file = out / linked_path.lstrip("/") / "index.html"
+            else:
+                target_file = out / linked_path.lstrip("/")
+            if not target_file.is_file():
+                broken_internal.add((route, reference))
         if not text.strip():
             empty_html.append(route)
             continue
         if route in posts and "application/ld+json" not in text:
             jsonld_missing += 1
-        remote_media += int("https://api.mahoonartmagazine.ir/media/" in text)
-        workers_dev += int("workers.dev" in text)
-        public_api += int(not route.startswith("/admin") and "api.mahoonartmagazine.ir" in text)
+        remote_media += int(url_flags["remote_media"])
+        workers_dev += int(url_flags["workers_dev"])
+        public_api += int(not route.startswith("/admin") and url_flags["public_api"])
         if route.startswith("/post/") and re.search(r"<title[^>]*>[^<]*(?:404|not found|یافت نشد)", text, re.I):
             partial_fallback_pages += 1
         media_urls.extend(re.findall(r"(?<![A-Za-z0-9._-])(/media/[A-Za-z0-9._/-]+)", text, re.I))
@@ -116,7 +134,7 @@ def validate(out: Path) -> dict:
                 static_media_missing.append(media_url)
     result = {"expected_html_routes": len(expected), "present_html_routes": len(expected) - len(missing),
               "expected_post_routes": len(posts), "present_post_routes": len(posts) - sum(route in missing for route in posts),
-              "missing_html": len(missing), "missing_routes": missing[:20], "empty_html": len(empty_html), "broken_internal_links": 0,
+              "missing_html": len(missing), "missing_routes": missing[:20], "empty_html": len(empty_html), "broken_internal_links": len(broken_internal),
               "canonical_mismatches": len(canonical_mismatches), "duplicate_canonicals": duplicate, "post_jsonld_missing": jsonld_missing,
               "route_validation_source": route_source,
               "local_full_route_proof_mode": "STATIC_ARTIFACT_FILESYSTEM" if strict_candidate else "BASELINE_FIXTURE_FILESYSTEM",
@@ -124,6 +142,10 @@ def validate(out: Path) -> dict:
               "remote_reader_media_dependencies": remote_media, "public_content_api_dependencies": public_api,
               "static_media_missing": len(static_media_missing), "missing_css_assets": len(set(missing_css_assets)), "missing_js_assets": len(set(missing_js_assets)),
               "partial_fallback_pages": partial_fallback_pages, "workers_dev_canonical_leaks": workers_dev,
-              "PASS": not missing and not empty_html and duplicate == 0 and len(canonical_mismatches) == 0 and jsonld_missing == 0 and remote_media == 0 and (public_api == 0 if strict_candidate else True) and len(static_media_missing) == 0 and not missing_css_assets and not missing_js_assets and partial_fallback_pages == 0 and workers_dev == 0}
-    Path("publisher-state/local-candidate-gate.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+              "PASS": not missing and not empty_html and (not broken_internal or not strict_candidate) and duplicate == 0 and len(canonical_mismatches) == 0 and jsonld_missing == 0 and remote_media == 0 and (public_api == 0 if strict_candidate else True) and len(static_media_missing) == 0 and not missing_css_assets and not missing_js_assets and partial_fallback_pages == 0 and workers_dev == 0}
+    evidence_path = os.environ.get("MAHOON_CANDIDATE_GATE_OUTPUT")
+    if evidence_path:
+        output = Path(evidence_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result

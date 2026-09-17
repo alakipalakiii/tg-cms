@@ -8,7 +8,7 @@ on:
         required: true
         default: CHECK_ONLY
         type: choice
-        options: [CHECK_ONLY, PROOF_ZERO_PERCENT, PUBLISH, FAILURE_INJECTION, CONTENT_DIAGNOSTIC]
+        options: [CHECK_ONLY, PROOF_ZERO_PERCENT, PUBLISH, FAILURE_INJECTION, CONTENT_DIAGNOSTIC, SAFETY_TESTS_ONLY]
       expected_fingerprint:
         description: "Optional reviewed pending-candidate fingerprint for a no-change proof"
         required: false
@@ -62,8 +62,42 @@ jobs:
           name: mahoon-github-content-transport-diagnostic
           path: runner-evidence/github-content-api-transport-matrix.json
 
+  safety-tests-only:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'SAFETY_TESTS_ONLY' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/dreary-disk/package-lock.json
+      - name: Install project and Playwright dependencies
+        run: npm ci --prefix website/dreary-disk
+      - name: Install Chromium for browser-gate fixtures
+        working-directory: website/dreary-disk
+        run: npx playwright install --with-deps chromium
+      - name: Run promotion-safety regression suite
+        env:
+          PYTHONPATH: tools/publisher:tools:.
+        run: python -m unittest discover -s tools/publisher -p 'test_*.py'
+      - name: Build website from checked-in locked content
+        env:
+          PUBLIC_MAHOON_SNAPSHOT_BINDING: "1"
+        run: npm run build --prefix website/dreary-disk
+      - name: Record read-only proof boundary
+        run: |
+          echo "LIVE_REVISION_LOOKUPS=0"
+          echo "V2_EXPORTS=0"
+          echo "CI_UPLOAD=NO"
+          echo "CI_DEPLOYMENT=NO"
+          echo "CI_TRAFFIC_MUTATION=NO"
+
   publisher:
-    if: ${{ (github.event_name == 'schedule' || inputs.mode != 'CONTENT_DIAGNOSTIC') && !(github.event_name == 'workflow_dispatch' && inputs.auth_only == true) }}
+    if: ${{ (github.event_name == 'schedule' || (inputs.mode != 'CONTENT_DIAGNOSTIC' && inputs.mode != 'SAFETY_TESTS_ONLY')) && !(github.event_name == 'workflow_dispatch' && inputs.auth_only == true) }}
     outputs:
       production_pass: ${{ steps.result.outputs.production_pass }}
     runs-on: ubuntu-latest
@@ -133,12 +167,14 @@ jobs:
           test -f runner-evidence/published-state/production-media-manifest.json
           test -f runner-evidence/published-state/immutable-media-index.json
           test -f runner-evidence/published-state/published-route-manifest.json
+          test -f runner-evidence/published-state/published-static-state.json
           cp runner-evidence/published-state/production-content-fingerprint.json publisher-state/production-content-fingerprint.json
           cp runner-evidence/published-state/production-media-manifest.json publisher-state/production-media-manifest.json
           cp runner-evidence/published-state/immutable-media-index.json publisher-state/immutable-media-index.json
           cp runner-evidence/published-state/published-route-manifest.json publisher-state/published-route-manifest.json
           cp runner-evidence/published-state/published-route-manifest.json publisher-state/current-accepted-route-manifest.json
-          test -z "$(git diff --name-only -- publisher-state | grep -v -E '^publisher-state/(production-content-fingerprint|production-media-manifest|immutable-media-index|published-route-manifest|current-accepted-route-manifest)\.json$' || true)"
+          cp runner-evidence/published-state/published-static-state.json publisher-state/published-static-state.json
+          test -z "$(git diff --name-only -- publisher-state | grep -v -E '^publisher-state/(production-content-fingerprint|production-media-manifest|immutable-media-index|published-route-manifest|current-accepted-route-manifest|published-static-state)\.json$' || true)"
       - name: Persist only approved publisher state
         run: |
           git config user.name "github-actions[bot]"
@@ -146,5 +182,6 @@ jobs:
           git add publisher-state/production-content-fingerprint.json publisher-state/production-media-manifest.json publisher-state/published-route-manifest.json
           git add publisher-state/immutable-media-index.json
           git add publisher-state/current-accepted-route-manifest.json
+          git add publisher-state/published-static-state.json
           git diff --cached --quiet || git commit -m "chore: persist published publisher state"
           git push

@@ -24,7 +24,7 @@ class PublishedMediaResolver:
             "MAHOON_IMMUTABLE_MEDIA_INDEX", "runner-evidence/immutable-media-index.json"
         )
         store = ROOT / os.environ.get(
-            "MAHOON_IMMUTABLE_MEDIA_STORE", "runner-evidence/immutable-media-store"
+            "MAHOON_IMMUTABLE_MEDIA_STORE", "runner-build/immutable-media-store"
         )
         self.store = store
         self.manifest = manifest

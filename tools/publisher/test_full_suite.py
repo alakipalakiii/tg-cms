@@ -7,12 +7,15 @@ from urllib.parse import quote
 
 from core import PromotionGuard, delta, fingerprint, route_gate
 from tools.m9.publisher_runner import public_path
-from deployment import rollback, wait_for_active
+import cloudflare_wrangler as deployment
+from cloudflare_wrangler import wait_for_active
+from publisher.rollback import automatic_rollback
 from post_deploy_validator import validate_zero_origin
 from state import persist_checked, persist_after_public_pass
 from delta_build_adapter import sha_cloud
 from content_transport import classify_error, SAFE_HEADERS
-from state_machine import promotion_precondition, rollback_anchor, verify_promotion_precondition
+from state_machine import (live_static_baseline, promotion_precondition,
+                           verify_promotion_precondition, verify_promoted_static)
 from error_contract import PublisherStageError, build_error, safe_details
 
 
@@ -45,11 +48,22 @@ class PublisherFullSuite(unittest.TestCase):
     def test_26_stale_validation_rejection(self): self.assertFalse(PromotionGuard("v1", "v2", True, True, True, True, True).allowed())
     def test_27_promotion_fail_closed(self): self.assertFalse(PromotionGuard("", "", True, True, True, True, True).allowed())
     def test_28_rollback_function_requires_target(self):
-        with self.assertRaises(Exception): rollback({})
-    def test_29_failed_postdeploy_invokes_rollback(self):
-        with patch("deployment.api", return_value={"success": True}) as api:
-            rollback({"versions": [{"version_id": "old", "percentage": 100}]})
-            api.assert_called_once()
+        current = {"id": "unexpected", "versions": [{"version_id": "old", "percentage": 100}]}
+        with patch("publisher.rollback.deployment.active_deployment", return_value=current), patch(
+            "publisher.rollback.deployment.rollback_to_previous_static"
+        ) as rollback_call:
+            with self.assertRaises(RuntimeError):
+                automatic_rollback("worker", "old", "candidate", "expected")
+            rollback_call.assert_not_called()
+    def test_29_failed_candidate_rolls_back_only_static_versions(self):
+        current = {"id": "expected", "versions": [{"version_id": "candidate", "percentage": 100}, {"version_id": "old", "percentage": 0}]}
+        with patch("publisher.rollback.deployment.active_deployment", return_value=current), patch(
+            "publisher.rollback.deployment.rollback_to_previous_static"
+        ) as rollback_call, patch(
+            "publisher.rollback.deployment.wait_for_active", return_value={"id": "restored"}
+        ):
+            automatic_rollback("worker", "old", "candidate", "expected")
+            rollback_call.assert_called_once_with("worker", "old", "candidate")
     def test_30_successful_postdeploy_no_rollback(self): self.assertTrue(True)
     def test_31_state_commit_order(self):
         with tempfile.TemporaryDirectory() as d:
@@ -80,15 +94,13 @@ class PublisherFullSuite(unittest.TestCase):
         self.assertEqual(public_path("/robots.txt"), "/robots.txt")
         self.assertEqual(public_path("/rss.xml"), "/rss.xml")
         self.assertEqual(public_path("/sitemap.xml"), "/sitemap.xml")
-    @patch("deployment.active_deployment", return_value={"id": "d", "versions": [{"version_id": "v", "percentage": 100}, {"version_id": "b660c7ff-9042-4b4e-ab14-63211aa9c1f1", "percentage": 0}]})
-    @patch("deployment.time.sleep")
-    def test_48_deployment_active_polling(self, sleep, active):
-        self.assertEqual("d", wait_for_active("v", 100, 0, timeout_seconds=1)["id"])
+    @patch("cloudflare_wrangler.read_deployment", return_value={"id": "d", "versions": [{"version_id": "v", "percentage": 100}, {"version_id": "old", "percentage": 0}]})
+    def test_48_deployment_active_polling(self, active):
+        self.assertEqual("d", wait_for_active("worker", {"v": 100, "old": 0}, timeout_seconds=1)["id"])
         active.assert_called_once()
-    @patch("deployment.active_deployment", return_value={"id": "d", "versions": [{"version_id": "v", "percentage": 0}, {"version_id": "b660c7ff-9042-4b4e-ab14-63211aa9c1f1", "percentage": 100}]})
-    @patch("deployment.time.sleep")
-    def test_49_deployment_propagation_timeout(self, sleep, active):
-        with self.assertRaises(RuntimeError): wait_for_active("v", 100, 0, timeout_seconds=0)
+    @patch("cloudflare_wrangler.read_deployment", return_value={"id": "d", "versions": [{"version_id": "v", "percentage": 0}, {"version_id": "old", "percentage": 100}]})
+    def test_49_deployment_propagation_timeout(self, active):
+        with self.assertRaises(RuntimeError): wait_for_active("worker", {"v": 100, "old": 0}, timeout_seconds=0)
     def test_43_zero_integer_is_valid_evidence(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "zero.json"
@@ -103,41 +115,42 @@ class PublisherFullSuite(unittest.TestCase):
         self.assertNotIn("secret-value", sanitize("token=secret-value"))
     def test_46_schedule_stays_check_only_after_rollback(self):
         self.assertIn("PUBLISHER_MODE", Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8"))
-    def test_50_pre_transaction_deployment_is_rollback_anchor(self):
-        anchor = rollback_anchor({"id": "a", "versions": [{"version_id": "ssr", "percentage": 100}, {"version_id": "old", "percentage": 0}]})
-        self.assertEqual("a", anchor["rollback_deployment_id"])
-    def test_51_zero_percent_deployment_changes_id(self):
-        self.assertNotEqual("a", "c")
-    def test_52_own_zero_percent_id_is_accepted(self):
-        current = {"id": "c", "versions": [{"version_id": "ssr", "percentage": 100}, {"version_id": "cand", "percentage": 0}]}
-        self.assertTrue(verify_promotion_precondition(current, promotion_precondition(current, "cand", "ssr"))[0])
-    def test_53_promotion_anchor_refreshes_after_zero_percent(self):
-        self.assertEqual("c", promotion_precondition({"id": "c"}, "cand", "ssr")["expected_current_deployment_id"])
-    def test_54_rollback_anchor_remains_unchanged(self):
-        anchor = rollback_anchor({"id": "a", "versions": [{"version_id": "ssr", "percentage": 100}]})
-        self.assertEqual("a", anchor["rollback_deployment_id"])
-    def test_55_unexpected_deployment_after_anchor_blocks(self):
-        current = {"id": "x", "versions": [{"version_id": "ssr", "percentage": 100}, {"version_id": "cand", "percentage": 0}]}
-        self.assertFalse(verify_promotion_precondition(current, promotion_precondition({"id": "c"}, "cand", "ssr"))[0])
-    def test_56_unexpected_ssr_version_blocks(self):
-        current = {"id": "c", "versions": [{"version_id": "other", "percentage": 100}, {"version_id": "cand", "percentage": 0}]}
-        self.assertFalse(verify_promotion_precondition(current, promotion_precondition(current, "cand", "ssr"))[0])
-    def test_57_unexpected_candidate_version_blocks(self):
-        current = {"id": "c", "versions": [{"version_id": "ssr", "percentage": 100}, {"version_id": "other", "percentage": 0}]}
-        self.assertFalse(verify_promotion_precondition(current, promotion_precondition({"id": "c"}, "cand", "ssr"))[0])
-    def test_58_unexpected_traffic_blocks(self):
-        current = {"id": "c", "versions": [{"version_id": "ssr", "percentage": 90}, {"version_id": "cand", "percentage": 10}]}
-        self.assertFalse(verify_promotion_precondition(current, promotion_precondition(current, "cand", "ssr"))[0])
-    def test_59_unknown_third_version_with_traffic_blocks(self):
-        current = {"id": "c", "versions": [{"version_id": "ssr", "percentage": 100}, {"version_id": "cand", "percentage": 0}, {"version_id": "third", "percentage": 1}]}
-        self.assertFalse(verify_promotion_precondition(current, promotion_precondition(current, "cand", "ssr"))[0])
-    def test_60_correct_ssr_static_state_allows_promotion(self):
-        current = {"id": "c", "versions": [{"version_id": "ssr", "percentage": 100}, {"version_id": "cand", "percentage": 0}]}
-        self.assertTrue(verify_promotion_precondition(current, promotion_precondition(current, "cand", "ssr"))[0])
-    def test_61_rollback_targets_original_anchor(self):
-        self.assertEqual("a", rollback_anchor({"id": "a", "versions": []})["deployment"]["id"])
-    def test_62_failed_validation_uses_original_rollback_anchor(self):
-        self.assertEqual("a", rollback_anchor({"id": "a", "versions": []})["rollback_deployment_id"])
+    def test_50_exact_live_static_baseline_is_required(self):
+        current = {"id": "d", "versions": [{"version_id": "old-static", "percentage": 100}]}
+        self.assertTrue(live_static_baseline(current, "old-static")[0])
+    def test_51_live_baseline_mismatch_fails_closed(self):
+        current = {"id": "d", "versions": [{"version_id": "other", "percentage": 100}]}
+        self.assertFalse(live_static_baseline(current, "old-static")[0])
+    def test_52_live_split_fails_closed(self):
+        current = {"id": "d", "versions": [{"version_id": "old-static", "percentage": 99}, {"version_id": "other", "percentage": 1}]}
+        self.assertFalse(live_static_baseline(current, "old-static")[0])
+    def test_53_pre_promotion_requires_exact_candidate_zero_split(self):
+        zero = {"id": "z", "versions": [{"version_id": "old-static", "percentage": 100}, {"version_id": "candidate", "percentage": 0}]}
+        anchor = promotion_precondition(zero, "old-static", "candidate")
+        self.assertTrue(verify_promotion_precondition(zero, anchor)[0])
+        self.assertFalse(verify_promotion_precondition({"id": "drift", "versions": zero["versions"]}, anchor)[0])
+    def test_54_unexpected_version_blocks_promotion(self):
+        zero = {"id": "z", "versions": [{"version_id": "old-static", "percentage": 100}, {"version_id": "candidate", "percentage": 0}]}
+        anchor = promotion_precondition(zero, "old-static", "candidate")
+        changed = {"id": "z", "versions": [{"version_id": "old-static", "percentage": 99}, {"version_id": "candidate", "percentage": 0}, {"version_id": "other", "percentage": 1}]}
+        self.assertFalse(verify_promotion_precondition(changed, anchor)[0])
+    def test_55_promote_candidate_and_previous_static_only(self):
+        current = {"id": "p", "versions": [{"version_id": "candidate", "percentage": 100}, {"version_id": "old-static", "percentage": 0}]}
+        self.assertTrue(verify_promoted_static(current, "candidate", "old-static")[0])
+    def test_56_post_promotion_drift_does_not_authorize_rollback(self):
+        changed = {"id": "someone-else", "versions": [{"version_id": "candidate", "percentage": 100}, {"version_id": "old-static", "percentage": 0}]}
+        with patch("publisher.rollback.deployment.active_deployment", return_value=changed), patch("publisher.rollback.deployment.rollback_to_previous_static") as rollback:
+            with self.assertRaises(RuntimeError): automatic_rollback("worker", "old-static", "candidate", "expected-id")
+            rollback.assert_not_called()
+    def test_57_post_promotion_validation_failure_uses_static_rollback(self):
+        current = {"id": "expected-id", "versions": [{"version_id": "candidate", "percentage": 100}, {"version_id": "old-static", "percentage": 0}]}
+        with patch("publisher.rollback.deployment.active_deployment", return_value=current), patch("publisher.rollback.deployment.rollback_to_previous_static") as rollback, patch("publisher.rollback.deployment.wait_for_active", return_value={"id": "rollback-id"}):
+            automatic_rollback("worker", "old-static", "candidate", "expected-id")
+            rollback.assert_called_once_with("worker", "old-static", "candidate")
+    def test_58_normal_runner_has_no_ssr_baseline(self):
+        source = Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8")
+        self.assertNotIn("MAHOON_SSR_VERSION", source)
+        self.assertNotIn("deployment.py", source)
     def test_63_no_state_persistence_after_rollback(self): self.assertFalse(False)
     def test_64_no_scheduled_activation_after_rollback(self):
         self.assertIn("auth_only", Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8"))
@@ -171,7 +184,7 @@ class PublisherFullSuite(unittest.TestCase):
     def test_82_error_serialization_does_not_raise(self):
         self.assertIsInstance(build_error("s", "c", "m", details={"observed": {"message": "x"}}), PublisherStageError)
     def test_83_rollback_anchor_order_is_pre_mutation(self):
-        self.assertIn("captured_before_direct_api", Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8"))
+        self.assertIn("PRE_ZERO_PERCENT_LIVE_READ", Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8"))
     def test_84_failure_injection_is_nonproduction_mode(self):
         self.assertIn("FAILURE_INJECTION", Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8"))
     def test_85_failure_injection_media_fixture_is_scoped(self):
@@ -179,7 +192,7 @@ class PublisherFullSuite(unittest.TestCase):
         self.assertIn("MAHOON_FAILURE_INJECTION_NO_PERSISTED_MEDIA", source)
     def test_86_failure_injection_uses_proof_baseline(self):
         source = Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8")
-        self.assertIn("proof_baseline", source)
+        self.assertIn("active = [item.get(\"version_id\") for item in pre_promotion.get(\"versions\", []) if item.get(\"percentage\") == 100]", source)
     def test_87_exact_old_collision_is_reproduced(self):
         with self.assertRaises(TypeError):
             build_error("s", "c", "m", **{"message": "detail"})

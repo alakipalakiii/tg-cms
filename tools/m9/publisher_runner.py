@@ -21,15 +21,18 @@ from publisher import static_build_adapter
 from publisher import cloudflare_wrangler as deployment
 from publisher.rollback import automatic_rollback
 from publisher.post_deploy_validator import capture_zero_origin, validate_public, validate_zero_origin
-from publisher.state_machine import promotion_precondition, rollback_anchor, verify_promotion_precondition
+from publisher.state_machine import (live_static_baseline, promotion_precondition,
+                                     verify_promotion_precondition, verify_promoted_static)
 from publisher.export_v2 import export_complete
 from publisher.media_bootstrap import bootstrap as bootstrap_media
 from publisher.candidate_route_manifest import build_candidate_route_manifest
+from publisher.promotion_gates import evaluate_local_candidate
 from publisher.content_revision import DEFAULT_ENDPOINT, fetch_public_content_revision
 from publisher.error_contract import PublisherStageError, build_error, safe_details
 
 API = os.environ.get("MAHOON_PUBLIC_CONTENT_API", "https://api.mahoonartmagazine.ir/posts-full-public-v2")
 STATE = Path(os.environ.get("MAHOON_PUBLISHER_STATE", "publisher-state/production-content-fingerprint.json"))
+STATIC_STATE = Path(os.environ.get("MAHOON_PUBLISHED_STATIC_STATE", "publisher-state/published-static-state.json"))
 
 
 def now() -> str:
@@ -151,7 +154,7 @@ def main() -> int:
     os.environ["MAHOON_PUBLISHED_CONTENT_SNAPSHOT"] = str(snapshot_path)
     os.environ["MAHOON_SNAPSHOT_REVISION"] = str(current_revision)
     out = Path(os.environ.get("MAHOON_BUILD_OUTPUT", "runner-build/static"))
-    media_bootstrap = bootstrap_media(exported["posts"])
+    media_bootstrap = bootstrap_media(exported["posts"], store=Path("runner-build/immutable-media-store"))
     os.environ["MAHOON_CURRENT_MEDIA_MANIFEST"] = str(media_bootstrap["manifest"])
     os.environ["MAHOON_IMMUTABLE_MEDIA_INDEX"] = str(media_bootstrap["index"])
     os.environ["MAHOON_IMMUTABLE_MEDIA_STORE"] = str(media_bootstrap["store"])
@@ -172,10 +175,18 @@ def main() -> int:
     # In particular, do not invoke delta_build_adapter: it used to perform a second V2 export.
     os.environ["MAHOON_MEDIA_MANIFEST"] = str(media_manifest)
     os.environ["MAHOON_ROUTE_MANIFEST"] = str(route_manifest)
+    os.environ["MAHOON_CANDIDATE_GATE_OUTPUT"] = "runner-evidence/local-candidate-gate.json"
     gate = static_build_adapter.validate(out)
     if not gate["PASS"]:
         print(json.dumps({"failure_code": "PUBLISHER_LOCAL_GATE_FAILED", "gate": gate}, ensure_ascii=False), file=sys.stderr)
         print("PUBLISHER_LOCAL_GATE_FAILED", file=sys.stderr)
+        return 12
+    measured_gates = evaluate_local_candidate(snapshot_path, out, route_manifest, Path("runner-build/production-media-manifest.json"))
+    Path("runner-evidence/prepromotion-local-gates.json").write_text(
+        json.dumps(measured_gates, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    if measured_gates.get("measured") is not True or measured_gates.get("PASS") is not True:
+        print("PUBLISHER_PREPROMOTION_LOCAL_GATES_FAILED", file=sys.stderr)
         return 12
     os.environ["MAHOON_ASSETS_DIRECTORY"] = str(out)
     os.environ["MAHOON_MEDIA_MANIFEST"] = str(media_manifest)
@@ -189,16 +200,29 @@ def main() -> int:
         os.environ["MAHOON_CRAWL_BASE"] = "https://mahoon-static-proof.morentoofficial.workers.dev"
         os.environ["MAHOON_OVERRIDE_WORKER"] = "mahoon-static-proof"
         os.environ["MAHOON_FAILURE_INJECTION_NO_PERSISTED_MEDIA"] = "1"
-    pre_promotion = deployment.active_deployment()
-    rollback_state = rollback_anchor(pre_promotion)
     if mode == "FAILURE_INJECTION":
-        proof_baseline = next((item.get("version_id") for item in pre_promotion.get("versions", []) if item.get("percentage") == 100), None)
-        if not proof_baseline:
-            print("FAILURE_INJECTION_BASELINE_MISSING", file=sys.stderr)
+        pre_promotion = deployment.active_deployment(target_worker)
+        active = [item.get("version_id") for item in pre_promotion.get("versions", []) if item.get("percentage") == 100]
+        current_static_version = active[0] if len(active) == 1 else ""
+        if not current_static_version:
+            print("FAILURE_INJECTION_STATIC_BASELINE_MISSING", file=sys.stderr)
             return 18
-        os.environ["MAHOON_SSR_VERSION"] = proof_baseline
+    else:
+        static_state = json.loads(STATIC_STATE.read_text(encoding="utf-8")) if STATIC_STATE.is_file() else {}
+        current_static_version = static_state.get("current_version", "")
+        if static_state.get("current_version_type") != "STATIC" or not current_static_version:
+            print("PUBLISHED_STATIC_STATE_INVALID", file=sys.stderr)
+            return 18
+        pre_promotion = deployment.active_deployment(target_worker)
+        baseline_pass, baseline_diagnostics = live_static_baseline(pre_promotion, current_static_version)
+        if not baseline_pass:
+            Path("runner-evidence").mkdir(parents=True, exist_ok=True)
+            Path("runner-evidence/pre-upload-static-baseline.json").write_text(json.dumps(baseline_diagnostics, ensure_ascii=False, indent=2), encoding="utf-8")
+            print("PUBLISHER_LIVE_STATIC_BASELINE_MISMATCH", file=sys.stderr)
+            return 18
     Path("runner-evidence").mkdir(parents=True, exist_ok=True)
-    Path("runner-evidence/rollback-anchor-order.json").write_text(json.dumps({"phase": "PRE_DEPLOYMENT_MUTATION", "rollback_anchor": rollback_state, "captured_before_direct_api": True}, ensure_ascii=False, indent=2), encoding="utf-8")
+    rollback_state = {"deployment_id": pre_promotion["id"], "static_version": current_static_version}
+    Path("runner-evidence/rollback-anchor-order.json").write_text(json.dumps({"phase": "PRE_CANDIDATE_UPLOAD", "rollback_anchor": rollback_state, "captured_before_traffic_mutation": True}, ensure_ascii=False, indent=2), encoding="utf-8")
     route_data = json.loads(route_manifest.read_text(encoding="utf-8"))
     sealed_root = Path("runner-evidence/publisher-sealed") / digest / "site"
     sealed_root.parent.mkdir(parents=True, exist_ok=True)
@@ -207,24 +231,34 @@ def main() -> int:
         shutil.copytree(out, sealed_root)
     seal_env = os.environ.copy()
     seal_env.update({"MAHOON_SEALED_SITE": str(sealed_root), "MAHOON_CONTENT_FINGERPRINT": digest,
-                     "MAHOON_ROUTE_HASH": fingerprint(route_data), "MAHOON_MEDIA_HASH": "runtime-media",
-                     "MAHOON_ASSET_HASH": "runtime-assets"})
-    sealed = subprocess.run([sys.executable, "tools/m9/seal_artifact.py"], text=True, capture_output=True, env=seal_env)
+                     "MAHOON_ROUTE_HASH": fingerprint(route_data)})
+    sealed = subprocess.run([sys.executable, "tools/publisher/seal_artifact.py"], text=True, capture_output=True, env=seal_env)
     if sealed.returncode:
         print("PUBLISHER_SEAL_FAILED", file=sys.stderr)
         return 13
     config_path = Path("runner-evidence/publisher-sealed-wrangler.jsonc")
-    config_path.write_text(json.dumps({"name": target_worker, "main": str(Path("runner-evidence/static-version-main.js").resolve()),
-                                       "compatibility_date": "2026-09-08", "assets": {"directory": str(sealed_root.resolve()), "html_handling": "auto-trailing-slash", "not_found_handling": "404-page"}}, ensure_ascii=False, indent=2), encoding="utf-8")
+    config_path.write_text(json.dumps({"name": target_worker, "main": str(Path("tools/publisher/static_version_main.js").resolve()),
+                                       "compatibility_date": "2026-09-08", "assets": {"directory": str(sealed_root.resolve()), "binding": "ASSETS", "html_handling": "auto-trailing-slash", "not_found_handling": "404-page"}}, ensure_ascii=False, indent=2), encoding="utf-8")
     try:
         version_id = deployment.upload_version(target_worker, sealed_root, config_path, "MAHOON-publisher-sealed-candidate")
     except Exception as exc:
         print("PUBLISHER_WRANGLER_UPLOAD_FAILED: " + sanitize(str(exc)), file=sys.stderr)
         return 14
-    zero_percent_response = deployment.deployment(version_id, os.environ.get("MAHOON_SSR_VERSION", "b660c7ff-9042-4b4e-ab14-63211aa9c1f1"), 0, 100)
-    zero_percent_deployment_id = (zero_percent_response.get("result") or {}).get("id") if isinstance(zero_percent_response, dict) else None
-    zero_percent_state = deployment.wait_for_active(version_id, 0, 100)
-    promotion_anchor = promotion_precondition(zero_percent_state, version_id, os.environ.get("MAHOON_SSR_VERSION", "b660c7ff-9042-4b4e-ab14-63211aa9c1f1"))
+    before_zero = deployment.active_deployment(target_worker)
+    baseline_pass, baseline_diagnostics = live_static_baseline(before_zero, current_static_version)
+    if not baseline_pass:
+        print("PUBLISHER_PRE_ZERO_PERCENT_LIVE_DRIFT", file=sys.stderr)
+        return 18
+    rollback_state = {"deployment_id": before_zero["id"], "static_version": current_static_version}
+    Path("runner-evidence/rollback-anchor-order.json").write_text(json.dumps({"phase": "PRE_ZERO_PERCENT_LIVE_READ", "rollback_anchor": rollback_state, "captured_before_traffic_mutation": True}, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        deployment.deploy_pair(target_worker, version_id, 0, current_static_version, 100)
+        zero_percent_state = deployment.wait_for_active(target_worker, {current_static_version: 100, version_id: 0})
+        zero_percent_deployment_id = zero_percent_state.get("id")
+        promotion_anchor = promotion_precondition(zero_percent_state, current_static_version, version_id)
+    except Exception as exc:
+        print("PUBLISHER_ZERO_PERCENT_DEPLOYMENT_FAILED: " + sanitize(str(exc)), file=sys.stderr)
+        return 18
     os.environ["MAHOON_CANDIDATE_VERSION"] = version_id
     os.environ["MAHOON_ASSETS_DIRECTORY"] = str(out)
     crawl = subprocess.run([sys.executable, "tools/publisher/candidate_override_crawl.py"], text=True, capture_output=True)
@@ -238,13 +272,25 @@ def main() -> int:
     route_binding = (route_data.get("route_count") == len(route_data.get("routes", []))
                      and not route_data.get("old_routes_missing_from_candidate")
                      and not route_data.get("new_snapshot_routes_missing_from_candidate")
-                     and route_data.get("snapshot_derived_route_count") == expected_post_routes
+                     and not route_data.get("new_snapshot_tag_routes_missing_from_candidate")
+                     and route_data.get("snapshot_post_route_count") == expected_post_routes
                      and expected_post_routes == 2 * exported["count"])
-    validated = route_binding and summary.get("html_final_200") == summary.get("html_routes") and summary.get("post_final_200") == summary.get("post_routes") and not any(summary.get(key, 0) for key in ("broken_critical_links", "orphan_posts", "duplicate_canonicals", "redirect_loops", "remote_reader_media_dependencies", "workers_dev_leaks", "preview_url_leaks", "post_seo_failures"))
+    validated = route_binding and summary.get("PASS") is True and summary.get("measured") is True
     Path("runner-evidence/candidate-validation.json").parent.mkdir(parents=True, exist_ok=True)
     Path("runner-evidence/candidate-validation.json").write_text(json.dumps({"candidate_version": version_id, "fingerprint": digest, "build": build, "local_gate": gate, "override": summary, "route_binding": {"route_count": route_data.get("route_count"), "post_routes": expected_post_routes, "content_posts": exported["count"], "PASS": route_binding}, "PASS": validated}, ensure_ascii=False, indent=2), encoding="utf-8")
     if not validated:
         print("PUBLISHER_CANDIDATE_VALIDATION_FAILED", file=sys.stderr)
+        return 16
+    browser_gate = subprocess.run([
+        "node", "tools/publisher/prepromotion_browser_gate.mjs",
+        "--base-url", os.environ.get("MAHOON_PRODUCTION_ORIGIN", "https://mahoonartmagazine.ir"),
+        "--candidate-version", version_id,
+        "--snapshot", str(snapshot_path),
+        "--routes", str(route_manifest),
+        "--output", "runner-evidence/prepromotion-browser-gate.json",
+    ], text=True, capture_output=True)
+    if browser_gate.returncode != 0:
+        print("PUBLISHER_PREPROMOTION_BROWSER_GATE_FAILED", file=sys.stderr)
         return 16
     if mode == "PROOF_ZERO_PERCENT":
         proof_routes = [public_path(route) for route in json.loads(route_source.read_text(encoding="utf-8")).get("routes", [])]
@@ -269,21 +315,20 @@ def main() -> int:
         error = build_error("DEPLOYMENT_STATE_VERIFICATION", "ERR_DEPLOYMENT_STATE_DRIFT", "promotion precondition changed after intentional zero-percent deployment", details={"expected": guard_diagnostics.get("expected"), "observed": guard_diagnostics.get("observed"), "state_machine_phase":"STATE_3_IMMEDIATE_PRE_PROMOTION_READ"})
         write_safe_error(error.stage, error.code, error, version_id, current_before.get("id"), **getattr(error, "details", {}))
         return 18
-    previous = rollback_state["deployment"]
-    transaction = {"previous_deployment": previous, "candidate_version": version_id,
+    transaction = {"previous_static_version": current_static_version, "pre_zero_deployment_id": rollback_state["deployment_id"], "candidate_version": version_id,
                    "fingerprint": digest, "validated_candidate": version_id}
     Path("runner-evidence/promotion-transaction.json").write_text(json.dumps(transaction, ensure_ascii=False, indent=2), encoding="utf-8")
     try:
-        promoted_response = deployment.deployment(version_id, os.environ.get("MAHOON_SSR_VERSION", "b660c7ff-9042-4b4e-ab14-63211aa9c1f1"), 100, 0)
-        promoted_deployment_id = (promoted_response.get("result") or {}).get("id") if isinstance(promoted_response, dict) else None
+        promoted_response = deployment.deploy_pair(target_worker, version_id, 100, current_static_version, 0)
+        promoted_deployment_id = promoted_response.get("id")
         try:
-            promoted = deployment.wait_for_active(version_id, 100, 0)
+            promoted = deployment.wait_for_active(target_worker, {version_id: 100, current_static_version: 0})
         except Exception as exc:
-            raise build_error("DEPLOYMENT_STATE_VERIFICATION", "ERR_DEPLOYMENT_PROPAGATION_TIMEOUT", str(exc), details={"expected": {version_id: 100}, "observed": None}) from exc
+            raise build_error("DEPLOYMENT_STATE_VERIFICATION", "ERR_DEPLOYMENT_PROPAGATION_TIMEOUT", str(exc), details={"expected": {version_id: 100, current_static_version: 0}, "observed": None}) from exc
         promoted_deployment_id = promoted.get("id") or promoted_deployment_id
         if mode == "FAILURE_INJECTION":
             raise build_error("POST_PROMOTION_FAILURE_INJECTION", "ERR_TEST_POST_PROMOTION", "controlled post-promotion failure", details={"candidate_version": version_id, "deployment_id": promoted_deployment_id})
-        route_data = json.loads(route_source.read_text(encoding="utf-8"))
+        route_data = json.loads(route_manifest.read_text(encoding="utf-8"))
         routes = [public_path(route) for route in route_data.get("routes", [])]
         public = validate_public(os.environ.get("MAHOON_PRODUCTION_ORIGIN", "https://mahoonartmagazine.ir"), routes)
         zero_evidence = capture_zero_origin(os.environ.get("MAHOON_PRODUCTION_ORIGIN", "https://mahoonartmagazine.ir"), routes)
@@ -300,10 +345,11 @@ def main() -> int:
         production_env = os.environ.copy()
         production_env["MAHOON_DISABLE_VERSION_OVERRIDE"] = "1"
         production_env["MAHOON_CRAWL_OUTPUT"] = "runner-evidence/production-crawl"
+        production_env["MAHOON_ROUTE_MANIFEST"] = str(route_manifest)
         production_crawl = subprocess.run([sys.executable, "tools/publisher/candidate_override_crawl.py"], text=True, capture_output=True, env=production_env)
         production_summary_path = Path("runner-evidence/production-crawl/production-override-crawl-summary.json")
         production_summary = json.loads(production_summary_path.read_text(encoding="utf-8")) if production_summary_path.exists() else {}
-        production_crawl_pass = production_crawl.returncode == 0 and production_summary.get("html_final_200") == production_summary.get("html_routes") and production_summary.get("post_final_200") == production_summary.get("post_routes") and not any(production_summary.get(key, 0) for key in ("broken_critical_links", "orphan_posts", "duplicate_canonicals", "redirect_loops", "remote_reader_media_dependencies", "workers_dev_leaks", "preview_url_leaks", "post_seo_failures"))
+        production_crawl_pass = production_crawl.returncode == 0 and production_summary.get("PASS") is True and production_summary.get("measured") is True
         if not production_crawl_pass:
             raise build_error("POST_PROMOTION_ROUTE_CRAWL", "ERR_PRODUCTION_CRAWL", "production crawl failed", details={"expected": "all canonical routes and posts PASS", "observed": production_summary})
         Path("runner-evidence/production-validation.json").write_text(json.dumps({"public": public, "zero_origin": zero, "production_crawl": production_summary, "PASS": True}, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -321,6 +367,15 @@ def main() -> int:
         (published_state / "immutable-media-index.json").write_text(
             Path(media_bootstrap["index"]).read_text(encoding="utf-8"), encoding="utf-8"
         )
+        seal_payload = json.loads((sealed_root.parent / "artifact-seal.json").read_text(encoding="utf-8"))
+        (published_state / "published-static-state.json").write_text(json.dumps({
+            "current_version": version_id,
+            "previous_version": current_static_version,
+            "current_version_type": "STATIC",
+            "deployment_id": promoted_deployment_id,
+            "artifact_seal": seal_payload.get("artifact_sha256", "UNKNOWN"),
+            "content_fingerprint": digest,
+        }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(json.dumps({"mode": mode, "promotion": "PASS", "candidate_version": version_id,
                           "validated_version": version_id, "fingerprint": digest,
                           "validated_fingerprint": digest, "production_validation": "PASS",
@@ -331,15 +386,15 @@ def main() -> int:
         code = exc.code if isinstance(exc, PublisherStageError) else "ERR_VALIDATOR_INTERNAL"
         write_safe_error(stage, code, exc, version_id, locals().get("promoted_deployment_id"), **getattr(exc, "details", {}))
         try:
-            rollback_response = automatic_rollback(previous)
-            rollback_result_id = (rollback_response.get("result") or {}).get("id") if isinstance(rollback_response, dict) else None
-            restored = deployment.active_deployment()
-            expected_versions = {item.get("version_id"): item.get("percentage") for item in previous.get("versions", [])}
+            rollback_response = automatic_rollback(target_worker, current_static_version, version_id, locals().get("promoted_deployment_id"))
+            rollback_result_id = rollback_response.get("id")
+            restored = deployment.active_deployment(target_worker)
+            expected_versions = {current_static_version: 100, version_id: 0}
             observed_versions = {item.get("version_id"): item.get("percentage") for item in restored.get("versions", [])}
             rollback_pass = expected_versions == observed_versions
-            Path("runner-evidence/rollback-semantic-verification.json").write_text(json.dumps({"rollback_target_deployment_id": previous.get("id"), "rollback_result_deployment_id": rollback_result_id or restored.get("id"), "expected_versions": expected_versions, "observed_versions": observed_versions, "ROLLBACK_SEMANTIC_RESTORE": rollback_pass}, ensure_ascii=False, indent=2), encoding="utf-8")
+            Path("runner-evidence/rollback-semantic-verification.json").write_text(json.dumps({"rollback_target_static_version": current_static_version, "failed_candidate_version": version_id, "rollback_result_deployment_id": rollback_result_id or restored.get("id"), "expected_versions": expected_versions, "observed_versions": observed_versions, "ROLLBACK_SEMANTIC_RESTORE": rollback_pass}, ensure_ascii=False, indent=2), encoding="utf-8")
             if isinstance(exc, PublisherStageError):
-                write_safe_error(stage, code, exc, version_id, locals().get("promoted_deployment_id"), rollback_target_deployment_id=previous.get("id"), rollback_result_deployment_id=rollback_result_id or restored.get("id"), rollback_semantic_restore=rollback_pass, **exc.details)
+                write_safe_error(stage, code, exc, version_id, locals().get("promoted_deployment_id"), rollback_target_static_version=current_static_version, rollback_result_deployment_id=rollback_result_id or restored.get("id"), rollback_semantic_restore=rollback_pass, **exc.details)
         except Exception:
             print("AUTOMATIC_ROLLBACK_FAILED", file=sys.stderr)
             return 20

@@ -29,6 +29,12 @@ const pageDescription = categoryDefinition
 const canonicalUrl = categoryDefinition
   ? SITE.url + "/category/" + encodeURIComponent(displayCategory)
   : SITE.url + Astro.url.pathname;
+const requestedPage = Number(Astro.url.searchParams.get("page") || "1");
+const initialOffset = Number.isSafeInteger(requestedPage)
+  && requestedPage > 1
+  && requestedPage <= Math.floor(Number.MAX_SAFE_INTEGER / PAGE_SIZE)
+  ? (requestedPage - 1) * PAGE_SIZE
+  : 0;
 
 if (!categoryDefinition) {
   Astro.response.status = 404;
@@ -40,7 +46,7 @@ const initialArchive = categoryDefinition
       apiBase,
       category: displayCategory,
       limit: PAGE_SIZE,
-      offset: 0,
+      offset: initialOffset,
       timeoutMs: 5000
     })
   : {

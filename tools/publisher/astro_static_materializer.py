@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 try:
     from .content_taxonomy import canonical_category, exact_hashtags
@@ -96,7 +96,7 @@ def _source_route(route: str) -> str:
 
 
 def _artifact_path(out: Path, route: str) -> Path:
-    clean = "/" + route.lstrip("/")
+    clean = "/" + unquote(route.lstrip("/"))
     clean = clean.rstrip("/")
     if clean in {"/robots.txt", "/rss.xml", "/sitemap.xml"}:
         return out / clean.lstrip("/")
