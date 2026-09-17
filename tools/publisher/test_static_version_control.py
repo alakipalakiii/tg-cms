@@ -4,8 +4,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tools.publisher import cloudflare_wrangler as wrangler
+from tools.publisher import rollback
 from tools.publisher.seal_artifact import create_seal, verify_seal
-from tools.publisher.state_machine import static_deployment_plan
+from tools.publisher.state_machine import live_static_baseline, static_deployment_plan
 
 
 class StaticVersionControlTests(unittest.TestCase):
@@ -35,6 +36,41 @@ class StaticVersionControlTests(unittest.TestCase):
         self.assertEqual({"known-static": 100, "candidate-static": 0}, plan["rollback"])
         self.assertFalse(plan["contains_ssr_version"])
         self.assertNotIn("SSR", str(plan))
+
+    def test_failed_transaction_rolls_back_to_pre_promotion_live_not_old_history(self):
+        pre_promotion_version = "7c6570b4-dbf5-42d3-84d6-acdb0da63092"
+        stale_historical_version = "d25d1131-ec90-4efb-90c8-a62f9721fe6c"
+        candidate_version = "candidate-static-not-uploaded"
+        pre_promotion = {
+            "id": "pre-promotion-deployment",
+            "versions": [{"version_id": pre_promotion_version, "percentage": 100}],
+        }
+        promoted = {
+            "id": "promoted-deployment",
+            "versions": [
+                {"version_id": candidate_version, "percentage": 100},
+                {"version_id": pre_promotion_version, "percentage": 0},
+            ],
+        }
+        self.assertTrue(live_static_baseline(pre_promotion, pre_promotion_version)[0])
+
+        runner = Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8")
+        self.assertIn('active = [item.get("version_id") for item in pre_promotion.get("versions", []) if item.get("percentage") == 100]', runner)
+        self.assertIn('"previous_static_version": current_static_version', runner)
+        self.assertIn('automatic_rollback(target_worker, current_static_version, version_id', runner)
+
+        with patch.object(rollback.deployment, "active_deployment", return_value=promoted), \
+             patch.object(rollback.deployment, "rollback_to_previous_static") as restore, \
+             patch.object(rollback.deployment, "wait_for_active", return_value={"id": "rollback-deployment"}):
+            rollback.automatic_rollback(
+                "mahoon-art-magazine", pre_promotion_version, candidate_version,
+                "promoted-deployment",
+            )
+
+        restore.assert_called_once_with(
+            "mahoon-art-magazine", pre_promotion_version, candidate_version,
+        )
+        self.assertNotEqual(stale_historical_version, restore.call_args.args[1])
 
     def test_wrangler_uses_newest_deployment_not_oldest_history_entry(self):
         history = [
