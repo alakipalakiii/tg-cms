@@ -69,6 +69,29 @@ def public_path(route: str) -> str:
     return quote(logical, safe="/%:@!$&'()*+,;=-._~")
 
 
+def sealed_static_worker_config(target_worker: str, sealed_root: Path) -> dict:
+    site_config = json.loads(Path("website/dreary-disk/wrangler.jsonc").read_text(encoding="utf-8"))
+    asset_config = site_config.get("assets", {})
+    run_worker_first = asset_config.get("run_worker_first")
+    version_metadata = site_config.get("version_metadata", {})
+    if (not isinstance(run_worker_first, list) or not run_worker_first
+            or version_metadata.get("binding") != "CF_VERSION_METADATA"):
+        raise ValueError("STATIC_VERSION_ATTRIBUTION_CONFIG_MISSING")
+    return {
+        "name": target_worker,
+        "main": str(Path("tools/publisher/static_version_main.js").resolve()),
+        "compatibility_date": "2026-09-08",
+        "assets": {
+            "directory": str(sealed_root.resolve()),
+            "binding": "ASSETS",
+            "html_handling": "auto-trailing-slash",
+            "not_found_handling": "404-page",
+            "run_worker_first": run_worker_first,
+        },
+        "version_metadata": version_metadata,
+    }
+
+
 def export_content(snapshot_path: Path | None = None) -> tuple[dict, str]:
     exported, proof = export_complete(API)
     Path("runner-evidence").mkdir(parents=True, exist_ok=True)
@@ -310,8 +333,8 @@ def main() -> int:
         print("PUBLISHER_SEAL_FAILED", file=sys.stderr)
         return 13
     config_path = Path("runner-evidence/publisher-sealed-wrangler.jsonc")
-    config_path.write_text(json.dumps({"name": target_worker, "main": str(Path("tools/publisher/static_version_main.js").resolve()),
-                                       "compatibility_date": "2026-09-08", "assets": {"directory": str(sealed_root.resolve()), "binding": "ASSETS", "html_handling": "auto-trailing-slash", "not_found_handling": "404-page"}}, ensure_ascii=False, indent=2), encoding="utf-8")
+    config_path.write_text(json.dumps(sealed_static_worker_config(target_worker, sealed_root),
+                                      ensure_ascii=False, indent=2), encoding="utf-8")
     live_before_upload = deployment.active_deployment(target_worker)
     baseline_pass, baseline_diagnostics = live_static_baseline(live_before_upload, current_static_version)
     Path("runner-evidence/pre-upload-static-baseline.json").write_text(

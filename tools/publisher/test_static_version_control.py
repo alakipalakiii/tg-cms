@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -5,6 +6,7 @@ from unittest.mock import patch
 
 from tools.publisher import cloudflare_wrangler as wrangler
 from tools.publisher import rollback
+from tools.m9.publisher_runner import sealed_static_worker_config
 from tools.publisher.seal_artifact import create_seal, verify_seal
 from tools.publisher.state_machine import live_static_baseline, static_deployment_plan, verify_promoted_static
 from tools.publisher.resumable_transaction import split_is_baseline_zero
@@ -20,6 +22,18 @@ class StaticVersionControlTests(unittest.TestCase):
         self.assertIn('"binding": "ASSETS"', runner)
         self.assertIn('tools/publisher/static_version_main.js', runner)
         self.assertNotIn('runner-evidence/static-version-main.js', runner)
+
+    def test_sealed_upload_config_enables_actual_version_metadata_and_worker_first_routes(self):
+        config = sealed_static_worker_config("mahoon-art-magazine", Path("sealed-site"))
+        site_config = json.loads(
+            Path("website/dreary-disk/wrangler.jsonc").read_text(encoding="utf-8")
+        )
+        self.assertEqual("CF_VERSION_METADATA", config["version_metadata"]["binding"])
+        self.assertEqual(site_config["assets"]["run_worker_first"], config["assets"]["run_worker_first"])
+        self.assertEqual(str(Path("sealed-site").resolve()), config["assets"]["directory"])
+        worker = Path("tools/publisher/static_version_main.js").read_text(encoding="utf-8")
+        self.assertIn("env.CF_VERSION_METADATA?.id", worker)
+        self.assertIn("withVersionMetadata(response", worker)
 
     def test_initial_rollback_anchor_is_captured_before_upload(self):
         runner = Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8")
