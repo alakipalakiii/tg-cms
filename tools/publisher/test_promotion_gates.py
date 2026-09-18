@@ -1,11 +1,17 @@
 import hashlib
+import io
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
+from urllib.parse import unquote, urlsplit
 
+from tools.publisher import candidate_override_crawl as candidate_crawl
 from tools.publisher.promotion_gates import (
     category_parity, content_parity, latest_parity, listing_uniqueness,
     media_gate, seo_gate, _read_page,
@@ -76,6 +82,181 @@ def _fixture(with_media=False):
 
 
 class PromotionGateTests(unittest.TestCase):
+    def test_request_override_and_cache_nonce_follow_attribution_mode(self):
+        candidate = "candidate-fixture-version"
+        with patch.object(candidate_crawl, "VERSION", candidate), \
+             patch.object(candidate_crawl, "request_with_version_pinning", return_value={"status": 200}) as request:
+            with patch.dict(os.environ, {"MAHOON_DISABLE_VERSION_OVERRIDE": "1"}):
+                candidate_crawl._pinned_request("https://mahoonartmagazine.ir/")
+                self.assertEqual("", request.call_args.kwargs["version"])
+                self.assertIsNone(request.call_args.kwargs["cache_bust_nonce"])
+                with patch.object(candidate_crawl, "request_with_version_pinning", return_value={
+                    "status": 200, "content_type": "image/jpeg",
+                }) as media_request:
+                    candidate_crawl._head_media("/media/example.jpg")
+                    self.assertEqual("", media_request.call_args.kwargs["version"])
+
+            with patch.dict(os.environ, {"MAHOON_DISABLE_VERSION_OVERRIDE": "0"}):
+                candidate_crawl._pinned_request("https://mahoonartmagazine.ir/")
+                self.assertEqual(candidate, request.call_args.kwargs["version"])
+                self.assertTrue(request.call_args.kwargs["cache_bust_nonce"])
+
+    def test_production_mode_full_remote_validator_fixture_does_not_require_attribution(self):
+        root, snapshot, manifest, media = _fixture()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_path = Path(tmp)
+                routes_path = tmp_path / "routes.json"
+                snapshot_path = tmp_path / "snapshot.json"
+                media_path = tmp_path / "media.json"
+                out_path = tmp_path / "crawl"
+                routes_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+                snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+                media_path.write_text(json.dumps(media, ensure_ascii=False), encoding="utf-8")
+
+                home = root / "index.html"
+                home.write_text(
+                    home.read_text(encoding="utf-8").replace(
+                        "</main>", '<a href="/tag/arya">tag</a></main>'
+                    ),
+                    encoding="utf-8",
+                )
+                route_reads = {}
+
+                def production_response(url, method="GET"):
+                    from tools.publisher.promotion_gates import _route_file
+
+                    path = unquote(urlsplit(url).path)
+                    route_reads[path] = route_reads.get(path, 0) + 1
+                    if path == "/search/search-index.json":
+                        body = (root / "search/search-index.json").read_bytes()
+                        content_type = "application/json"
+                    elif path == "/tag/arya":
+                        body = b"<html><head><title>Tag</title></head><body><h1>Tag</h1></body></html>"
+                        content_type = "text/html"
+                    else:
+                        target = _route_file(root, path)
+                        body = target.read_bytes()
+                        content_type = {
+                            ".txt": "text/plain",
+                            ".xml": "application/xml",
+                        }.get(target.suffix, "text/html")
+                    return {
+                        "status": 200,
+                        "body": body,
+                        "content_type": content_type,
+                        "final_url": url,
+                        "headers": {},
+                        "actual_version": "production-current",
+                        "version_attribution_status": "NOT_REQUIRED",
+                        "override_preserved_on_every_hop": False,
+                        "redirect_hop_count": 0,
+                        "redirect_chain": [],
+                        "cache_busted": False,
+                    }
+
+                version = "9b422b45-71b0-49fd-b5d7-da63ea7039b9"
+                with patch.dict(os.environ, {"MAHOON_DISABLE_VERSION_OVERRIDE": "1"}), \
+                     patch.object(candidate_crawl, "BASE", "https://mahoonartmagazine.ir"), \
+                     patch.object(candidate_crawl, "VERSION", version), \
+                     patch.object(candidate_crawl, "ROUTES_PATH", routes_path), \
+                     patch.object(candidate_crawl, "SNAPSHOT_PATH", snapshot_path), \
+                     patch.object(candidate_crawl, "EXPECTATIONS_PATH", None), \
+                     patch.object(candidate_crawl, "MEDIA_PATH", media_path), \
+                     patch.object(candidate_crawl, "OUT", out_path), \
+                     patch.object(candidate_crawl, "STATE_PATH", out_path / "state.json"), \
+                     patch.object(candidate_crawl, "_pinned_request", side_effect=production_response), \
+                     redirect_stdout(io.StringIO()):
+                    self.assertFalse(candidate_crawl._version_attribution_required())
+                    candidate_crawl.main()
+                    first_route_reads = {path: route_reads.get(path, 0) for path in manifest["routes"]}
+                    candidate_crawl.main()
+                    second_route_reads = {path: route_reads.get(path, 0) for path in manifest["routes"]}
+
+                summary = json.loads((out_path / "production-override-crawl-summary.json").read_text(encoding="utf-8"))
+                state = json.loads((out_path / "state.json").read_text(encoding="utf-8"))
+                self.assertEqual(2, summary["search_index_ids"])
+                self.assertEqual(0, summary["search_index_parity_failures"])
+                self.assertTrue(summary["robots_sitemap_directive"])
+                self.assertEqual(0, summary["missing_sitemap_posts"])
+                self.assertEqual(0, summary["broken_critical_links"])
+                self.assertTrue(summary["gates"]["remote_content_parity"]["PASS"])
+                self.assertTrue(summary["gates"]["remote_seo"]["PASS"])
+                self.assertEqual(200, state["link_checks"]["/tag/arya"]["status"])
+                self.assertEqual("NOT_REQUIRED", state["supplemental_search"]["version_attribution_status"])
+                self.assertTrue(all(count >= 1 for count in first_route_reads.values()))
+                for path in manifest["routes"]:
+                    expected_second_read = 1 if path in {"/robots.txt", "/sitemap.xml"} else 0
+                    self.assertEqual(expected_second_read, second_route_reads[path] - first_route_reads[path], path)
+        finally:
+            shutil.rmtree(root)
+
+    def test_candidate_mode_requires_proven_matching_route_attribution(self):
+        root, snapshot, manifest, media = _fixture()
+        try:
+            from tools.publisher.promotion_gates import _facts, _route_file
+
+            remote_routes = {}
+            for route in manifest["routes"]:
+                target = _route_file(root, route)
+                if target.suffix in {".txt", ".xml"}:
+                    remote_routes[route] = {
+                        "status": "PASS", "http_status": 200, "is_html": False,
+                        "content_type": "text/plain" if target.suffix == ".txt" else "application/xml",
+                    }
+                else:
+                    facts = _facts(target.read_text(encoding="utf-8"))
+                    remote_routes[route] = {
+                        "status": "PASS", "http_status": 200, "is_html": True, "content_type": "text/html",
+                        "canonical": facts.canonicals[0] if facts.canonicals else "",
+                        "title": bool(facts.titles), "h1": bool(facts.h1s), "meta": bool(facts.descriptions),
+                        "og": bool(facts.descriptions), "jsonld": facts.jsonld, "robots_noindex": False,
+                        "card_routes": facts.cards, "anchor_links": facts.anchors, "latest_rows": facts.latest_rows,
+                        "workers_dev": False, "preview_url": False, "remote_media": False,
+                    }
+            remote_routes["/robots.txt"]["robots_sitemap"] = True
+            remote_routes["/sitemap.xml"]["sitemap_posts"] = ["/post/new-post", "/post/old-post"]
+            search = json.loads((root / "search/search-index.json").read_text(encoding="utf-8"))
+            search["http_status"] = 200
+            version = "candidate-fixture-version"
+            with patch.dict(os.environ, {"MAHOON_DISABLE_VERSION_OVERRIDE": "0"}), \
+                 patch.object(candidate_crawl, "VERSION", version):
+                missing_proof = {
+                    "status": 200, "body": b"<html><head><title>Page</title></head><body></body></html>",
+                    "content_type": "text/html", "final_url": "https://mahoonartmagazine.ir/",
+                    "headers": {}, "actual_version": None, "version_attribution_status": "NOT_PROVEN",
+                    "override_preserved_on_every_hop": False, "redirect_hop_count": 0,
+                    "redirect_chain": [], "cache_busted": True,
+                }
+                with patch.object(candidate_crawl, "_pinned_request", return_value=missing_proof):
+                    self.assertEqual("FAIL", candidate_crawl.fetch_url("https://mahoonartmagazine.ir/")["status"])
+                with patch.object(candidate_crawl, "fetch_url", return_value={
+                    "http_status": 200, "content_type": "text/html",
+                    "version_attribution_status": "NOT_PROVEN",
+                }):
+                    link_check = candidate_crawl._measure_link_targets(
+                        ["/"], {"routes": {"/": {"anchor_links": ["/tag/arya"]}}},
+                    )
+                    self.assertIsNone(link_check["/tag/arya"]["status"])
+
+                proven = {path: dict(value, version_attribution_status="PROVEN", actual_version=version)
+                          for path, value in remote_routes.items()}
+                self.assertTrue(_measure(manifest["routes"], {"routes": proven}, snapshot, search, media)["PASS"])
+
+                missing = {path: dict(value) for path, value in proven.items()}
+                missing["/"]["version_attribution_status"] = "NOT_PROVEN"
+                missing_result = _measure(manifest["routes"], {"routes": missing}, snapshot, search, media)
+                self.assertGreater(missing_result["version_attribution_failures"], 0)
+                self.assertFalse(missing_result["PASS"])
+
+                mismatched = {path: dict(value) for path, value in proven.items()}
+                mismatched["/"]["actual_version"] = "other-candidate"
+                mismatch_result = _measure(manifest["routes"], {"routes": mismatched}, snapshot, search, media)
+                self.assertGreater(mismatch_result["version_attribution_failures"], 0)
+                self.assertFalse(mismatch_result["PASS"])
+        finally:
+            shutil.rmtree(root)
+
     def test_url_leak_gates_classify_hosts_not_prose(self):
         from tools.publisher.promotion_gates import _facts, _url_evidence as classify_urls
         prose = _url_evidence("<p>Preview the artwork at any time.</p>", _facts("<p>Preview the artwork at any time.</p>"))

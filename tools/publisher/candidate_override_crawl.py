@@ -41,6 +41,10 @@ UA = "MAHOON-M10-Measured-Static-Candidate-Crawl/1.0"
 PAGE_SIZE = 20
 
 
+def _version_attribution_required() -> bool:
+    return bool(VERSION) and os.environ.get("MAHOON_DISABLE_VERSION_OVERRIDE") != "1"
+
+
 def _url(path: str) -> str:
     return BASE + quote("/" + path.lstrip("/"), safe="/%:@!$&'()*+,;=-._~")
 
@@ -62,7 +66,7 @@ def _crawl_headers() -> dict[str, str]:
 
 
 def _pinned_request(url: str, method: str = "GET") -> dict:
-    version = VERSION if os.environ.get("MAHOON_DISABLE_VERSION_OVERRIDE") != "1" else ""
+    version = VERSION if _version_attribution_required() else ""
     return request_with_version_pinning(
         url, worker=WORKER, version=version, method=method, headers=_crawl_headers(),
         cache_bust_nonce=uuid.uuid4().hex if version else None,
@@ -93,7 +97,7 @@ def fetch_url(url: str) -> dict:
             url_evidence = _url_evidence(text, facts) if facts else {
                 "workers_dev": False, "preview_url": False, "remote_media": False
             }
-            attribution_ok = proof["version_attribution_status"] == "PROVEN" if VERSION and os.environ.get("MAHOON_DISABLE_VERSION_OVERRIDE") != "1" else True
+            attribution_ok = proof["version_attribution_status"] == "PROVEN" if _version_attribution_required() else True
             return {
                 "status": "PASS" if proof["status"] == 200 and attribution_ok else "FAIL",
                 "http_status": proof["status"], "final_url": proof["final_url"],
@@ -163,7 +167,9 @@ def _ids(hrefs: list[str], by_slug: dict[str, int], by_id: dict[str, int]) -> li
 def _head_media(path: str) -> dict:
     try:
         proof = request_with_version_pinning(
-            _url(path), worker=WORKER, version=VERSION, headers=_crawl_headers(), method="HEAD", timeout=30,
+            _url(path), worker=WORKER,
+            version=VERSION if _version_attribution_required() else "",
+            headers=_crawl_headers(), method="HEAD", timeout=30,
         )
         return {"status": proof["status"], "content_type": proof["content_type"]}
     except Exception as exc:
@@ -194,7 +200,7 @@ def _measure_link_targets(route_list: list[str], state: dict) -> dict[str, dict]
             return path, {**_head_media(path), "source": "http_head"}
         route = fetch_url(_url(path))
         status = route.get("http_status")
-        if VERSION and route.get("version_attribution_status") != "PROVEN":
+        if _version_attribution_required() and route.get("version_attribution_status") != "PROVEN":
             status = None
         return path, {
             "status": status, "content_type": route.get("content_type"),
@@ -347,7 +353,7 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
     media_unresolved = media_manifest.get("stats", {}).get("unresolved") if isinstance(media_manifest, dict) else None
     if not isinstance(media_unresolved, int):
         media_unresolved = None
-    attribution_required = bool(VERSION) and os.environ.get("MAHOON_DISABLE_VERSION_OVERRIDE") != "1"
+    attribution_required = _version_attribution_required()
     version_attribution_failures = sum(
         value.get("version_attribution_status") != "PROVEN" or value.get("actual_version") != VERSION
         for value in state["routes"].values()
@@ -419,7 +425,8 @@ def main() -> None:
         raise ValueError("remote proof expectations contract is invalid")
     media_manifest = json.loads(MEDIA_PATH.read_text(encoding="utf-8")) if MEDIA_PATH.is_file() else {}
     route_hash = hashlib.sha256(json.dumps(expected, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
-    state = {"base": BASE, "override_worker": WORKER, "override_version": VERSION if os.environ.get("MAHOON_DISABLE_VERSION_OVERRIDE") != "1" else "PRODUCTION",
+    state = {"base": BASE, "override_worker": WORKER,
+             "override_version": VERSION if _version_attribution_required() else "PRODUCTION",
              "version_attribution_protocol": "CF_VERSION_METADATA_V1",
              "route_hash": route_hash, "routes": {path: {"status": "PENDING"} for path in expected}}
     if STATE_PATH.exists():
@@ -430,9 +437,14 @@ def main() -> None:
                 and old.get("route_hash") == route_hash):
             for path in expected:
                 prior = old.get("routes", {}).get(path, {})
+                attribution_checkpoint_valid = (
+                    prior.get("version_attribution_status") == "PROVEN"
+                    and prior.get("actual_version") == VERSION
+                    if _version_attribution_required()
+                    else prior.get("version_attribution_status") == "NOT_REQUIRED"
+                )
                 if (prior.get("status") == "PASS" and prior.get("http_status") == 200
-                        and prior.get("version_attribution_status") == "PROVEN"
-                        and prior.get("actual_version") == VERSION):
+                        and attribution_checkpoint_valid):
                     state["routes"][path] = prior
     pending = [path for path in expected if state["routes"][path].get("status") != "PASS"]
     _save(state)
@@ -472,7 +484,7 @@ def main() -> None:
     if search_result.get("http_status") == 200:
         try:
             search_body = _pinned_request(_url("/search/search-index.json"))
-            if VERSION and search_body["version_attribution_status"] != "PROVEN":
+            if _version_attribution_required() and search_body["version_attribution_status"] != "PROVEN":
                 raise ValueError("search index response version attribution is not proven")
             search_result["records"] = json.loads(search_body["body"].decode("utf-8")).get("records", [])
         except Exception as exc:
@@ -484,7 +496,7 @@ def main() -> None:
     for path, target in (("/sitemap.xml", sitemap), ("/robots.txt", robots)):
         try:
             proof = _pinned_request(_url(path))
-            if VERSION and proof["version_attribution_status"] != "PROVEN":
+            if _version_attribution_required() and proof["version_attribution_status"] != "PROVEN":
                 raise ValueError("control resource response version attribution is not proven")
             body = proof["body"].decode("utf-8", "replace")
             if path.endswith("robots.txt"):
