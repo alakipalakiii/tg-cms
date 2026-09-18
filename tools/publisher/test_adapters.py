@@ -121,13 +121,175 @@ class PublisherAdapterTests(unittest.TestCase):
         self.assertTrue((base / "search" / "search-index.json").exists())
         self.assertFalse(any(p.suffix.lower() in {".mp3", ".mp4", ".jpg", ".png", ".webp"} for p in base.rglob("*")))
 
+    def assert_current_media_manifest(self, data: dict, index: dict):
+        self.assertEqual(data.get("contract"), "CURRENT_MEDIA_RESOLUTION_V1")
+        records = data.get("records")
+        stats = data.get("stats")
+        self.assertIsInstance(records, list)
+        self.assertIsInstance(stats, dict)
+
+        for key in ("required_distinct", "published", "new", "fallback", "unresolved"):
+            self.assertIs(type(stats.get(key)), int, key)
+            self.assertGreaterEqual(stats[key], 0, key)
+        self.assertEqual(stats["required_distinct"], len(records))
+        self.assertGreater(stats["required_distinct"], 0)
+        self.assertEqual(stats["unresolved"], 0)
+        self.assertEqual(stats["published"] + stats["new"] + stats["fallback"], stats["required_distinct"])
+
+        source_ids = []
+        fallback_count = 0
+        immutable_count = 0
+        for record in records:
+            self.assertIsInstance(record, dict)
+            source_id = record.get("source_identifier")
+            self.assertIsInstance(source_id, str)
+            self.assertTrue(source_id.strip())
+            source_ids.append(source_id)
+            self.assertIsInstance(record.get("post_ids"), list)
+            self.assertTrue(all(type(post_id) is int and post_id > 0 for post_id in record["post_ids"]))
+            self.assertIs(type(record.get("fallback")), bool)
+            if record["fallback"]:
+                fallback_count += 1
+                self.assertIsInstance(record.get("fallback_reason"), str)
+                self.assertTrue(record["fallback_reason"].strip())
+                continue
+
+            immutable_count += 1
+            immutable_path = record.get("immutable_path")
+            sha256 = record.get("sha256")
+            mime = record.get("mime")
+            self.assertIsInstance(immutable_path, str)
+            self.assertTrue(immutable_path.startswith("/media/"))
+            self.assertIsInstance(sha256, str)
+            self.assertRegex(sha256, r"\A[0-9a-f]{64}\Z")
+            path = Path(immutable_path)
+            self.assertEqual(path.stem, sha256)
+            self.assertEqual(path.parts[-2], sha256[:2])
+            self.assertIsInstance(mime, str)
+            self.assertTrue(mime.strip())
+            if "detected_mime" in record:
+                self.assertEqual(record["detected_mime"], mime)
+
+        self.assertEqual(len(source_ids), len(set(source_ids)))
+        self.assertEqual(fallback_count, stats["fallback"])
+        self.assertEqual(immutable_count, stats["published"] + stats["new"])
+
+        self.assertEqual(index.get("contract"), "IMMUTABLE_MEDIA_INDEX_V1")
+        entries = index.get("entries")
+        self.assertIsInstance(entries, list)
+        entries_by_source = {}
+        for entry in entries:
+            self.assertIsInstance(entry, dict)
+            source_id = entry.get("source_identifier")
+            if source_id:
+                self.assertNotIn(source_id, entries_by_source)
+                entries_by_source[source_id] = entry
+        for record in records:
+            if record["fallback"]:
+                continue
+            indexed = entries_by_source.get(record["source_identifier"])
+            self.assertIsNotNone(indexed, record["source_identifier"])
+            for key in ("immutable_path", "sha256", "mime"):
+                self.assertEqual(indexed.get(key), record.get(key), record["source_identifier"])
+
+    @staticmethod
+    def current_media_fixture():
+        sha256 = "a" * 64
+        immutable_path = f"/media/{sha256[:2]}/{sha256}.jpg"
+        immutable = {
+            "source_identifier": "fixture-photo-1",
+            "post_ids": [101],
+            "immutable_path": immutable_path,
+            "sha256": sha256,
+            "mime": "image/jpeg",
+            "detected_mime": "image/jpeg",
+            "media_type": "photo",
+            "fallback": False,
+        }
+        same_content = {**immutable, "source_identifier": "fixture-photo-2", "post_ids": [102]}
+        fallback = {
+            "source_identifier": "fixture-fallback",
+            "post_ids": [103],
+            "fallback": True,
+            "fallback_reason": "SOURCE_HTTP_404",
+        }
+        records = [immutable, same_content, fallback]
+        manifest = {
+            "contract": "CURRENT_MEDIA_RESOLUTION_V1",
+            "records": records,
+            "stats": {
+                "required_distinct": len(records),
+                "published": 1,
+                "new": 1,
+                "fallback": 1,
+                "unresolved": 0,
+            },
+        }
+        index = {
+            "contract": "IMMUTABLE_MEDIA_INDEX_V1",
+            "entries": [
+                {key: item[key] for key in ("source_identifier", "immutable_path", "sha256", "mime")}
+                for item in records[:2]
+            ],
+        }
+        return manifest, index
+
     def test_metadata_manifest_has_immutable_media_proof(self):
         data = json.loads(Path("publisher-state/production-media-manifest.json").read_text(encoding="utf-8"))
-        media = {k: v for k, v in data.items() if k.startswith("/media/")}
-        # The accepted P0-closed media manifest contains six additional immutable
-        # entries compared with the older 489-entry fixture.
-        self.assertEqual(len(media), 495)
-        self.assertTrue(all(len(v["mahoon_sha256"]) == 64 and len(v["cloudflare_hash"]) == 32 for v in media.values()))
+        index = json.loads(Path("publisher-state/immutable-media-index.json").read_text(encoding="utf-8"))
+        self.assert_current_media_manifest(data, index)
+
+    def test_current_media_resolution_v1_synthetic_fixture(self):
+        manifest, index = self.current_media_fixture()
+        self.assert_current_media_manifest(manifest, index)
+        self.assertEqual(manifest["stats"]["required_distinct"], len(manifest["records"]))
+        self.assertNotIn("immutable_path", manifest["records"][-1])
+        self.assertNotIn("sha256", manifest["records"][-1])
+
+    def test_current_media_resolution_v1_rejects_contract_violations(self):
+        cases = (
+            ("manifest-index mismatch", self._mutate_media_index_mismatch),
+            ("invalid SHA-256", self._mutate_media_invalid_sha),
+            ("wrong immutable path shard", self._mutate_media_wrong_shard),
+            ("unresolved media", self._mutate_media_unresolved),
+            ("duplicate source identifier", self._mutate_media_duplicate_source),
+            ("incorrect accounting", self._mutate_media_incorrect_accounting),
+        )
+        for label, mutate in cases:
+            with self.subTest(label=label):
+                manifest, index = self.current_media_fixture()
+                mutate(manifest, index)
+                with self.assertRaises(AssertionError):
+                    self.assert_current_media_manifest(manifest, index)
+
+    @staticmethod
+    def _mutate_media_index_mismatch(manifest: dict, index: dict):
+        index["entries"][0]["mime"] = "image/png"
+
+    @staticmethod
+    def _mutate_media_invalid_sha(manifest: dict, index: dict):
+        manifest["records"][0]["sha256"] = "g" * 64
+
+    @staticmethod
+    def _mutate_media_wrong_shard(manifest: dict, index: dict):
+        immutable_path = manifest["records"][0]["immutable_path"]
+        wrong_path = "/media/bb/" + immutable_path.rsplit("/", 1)[-1]
+        manifest["records"][0]["immutable_path"] = wrong_path
+        index["entries"][0]["immutable_path"] = wrong_path
+
+    @staticmethod
+    def _mutate_media_unresolved(manifest: dict, index: dict):
+        manifest["stats"]["unresolved"] = 1
+
+    @staticmethod
+    def _mutate_media_duplicate_source(manifest: dict, index: dict):
+        manifest["records"].append(dict(manifest["records"][-1]))
+        manifest["stats"]["required_distinct"] = len(manifest["records"])
+        manifest["stats"]["fallback"] += 1
+
+    @staticmethod
+    def _mutate_media_incorrect_accounting(manifest: dict, index: dict):
+        manifest["stats"]["new"] -= 1
 
     def test_local_build_route_and_unicode_gate(self):
         with tempfile.TemporaryDirectory(prefix="mahoon-adapter-") as directory:
