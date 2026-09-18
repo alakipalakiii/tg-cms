@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 import inspect
+import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from tools.publisher.resumable_transaction import (
     create_proof_bundle,
@@ -144,10 +147,12 @@ class ResumableTransactionTests(unittest.TestCase):
     def test_workflow_has_independent_timeouts_and_keeps_schedule_check_only(self):
         workflow = Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8")
         transaction_job = workflow.split("  build-and-zero-percent:", 1)[1].split("  remote-proof:", 1)[0]
+        promotion_job = workflow.split("  promote-and-validate:", 1)[1].split("  persist-state:", 1)[0]
         self.assertIn("BUILD_AND_ZERO_PERCENT, REMOTE_PROOF, PROMOTE_AND_VALIDATE", workflow)
         self.assertIn("timeout-minutes: 45", workflow)
         self.assertIn("timeout-minutes: 60", workflow)
-        self.assertIn("timeout-minutes: 20", workflow)
+        self.assertIn("timeout-minutes: 60", promotion_job)
+        self.assertNotIn("timeout-minutes: 20", promotion_job)
         self.assertIn("timeout-minutes: 10", workflow)
         self.assertIn("vars.PUBLISHER_MODE_SCHEDULED != 'PUBLISH'", workflow)
         self.assertIn("vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH'", workflow)
@@ -158,6 +163,141 @@ class ResumableTransactionTests(unittest.TestCase):
         self.assertIn("path: ${{ runner.temp }}/proof-bundle", workflow)
         self.assertIn("path: ${{ runner.temp }}/remote-proof", workflow)
         self.assertIn("path: ${{ runner.temp }}/production-result", workflow)
+
+    def test_promotion_timeout_budgets_include_rollback_reserve(self):
+        workflow = Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8")
+        promotion_job = workflow.split("  promote-and-validate:", 1)[1].split("  persist-state:", 1)[0]
+        timeout_line = next(line for line in promotion_job.splitlines()
+                            if "timeout-minutes:" in line)
+        job_seconds = int(timeout_line.split(":", 1)[1].strip()) * 60
+        crawl_seconds = resumable_stage_runner.PRODUCTION_FULL_CRAWL_TIMEOUT_SECONDS
+        browser_seconds = resumable_stage_runner.PRODUCTION_BROWSER_GATE_TIMEOUT_SECONDS
+        reserve_seconds = 600
+        self.assertEqual(3600, job_seconds)
+        self.assertEqual(2400, crawl_seconds)
+        self.assertEqual(300, browser_seconds)
+        self.assertGreaterEqual(reserve_seconds, 600)
+        self.assertGreater(job_seconds, crawl_seconds + browser_seconds + reserve_seconds)
+
+    def test_production_validation_success_within_budget_does_not_rollback(self):
+        result, rollback, crawl, browser = self._run_promotion_validation("success")
+        self.assertEqual(0, result["exit_code"])
+        self.assertTrue(result["production"]["PASS"])
+        rollback.assert_not_called()
+        self.assertEqual(2400, crawl.call_args.kwargs["timeout"])
+        self.assertEqual(300, browser.call_args.kwargs["timeout"])
+
+    def test_production_crawl_internal_timeout_rolls_back(self):
+        result, rollback, crawl, browser = self._run_promotion_validation("crawl-timeout")
+        self.assertEqual(1, result["exit_code"])
+        self.assertTrue(result["production"]["rollback_performed"])
+        self.assertTrue(result["production"]["rollback_verified"])
+        rollback.assert_called_once()
+        self.assertEqual(2400, crawl.call_args.kwargs["timeout"])
+        browser.assert_not_called()
+
+    def test_production_browser_timeout_rolls_back(self):
+        result, rollback, crawl, browser = self._run_promotion_validation("browser-timeout")
+        self.assertEqual(1, result["exit_code"])
+        self.assertTrue(result["production"]["rollback_performed"])
+        self.assertTrue(result["production"]["rollback_verified"])
+        rollback.assert_called_once()
+        self.assertEqual(2400, crawl.call_args.kwargs["timeout"])
+        self.assertEqual(300, browser.call_args.kwargs["timeout"])
+
+    def _run_promotion_validation(self, scenario):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        bundle_dir = root / "bundle"
+        create_proof_bundle(bundle_dir, transaction=self.tx, routes=self.routes,
+                            media_manifest=self.media, media_index=self.index,
+                            seal=self.seal, local_evidence=self.evidence, posts=self.posts)
+        proof_dir = root / "proof"
+        proof_dir.mkdir()
+        bundle_transaction, bundle_sha = verify_proof_bundle(bundle_dir)
+        (proof_dir / "remote-proof-result.json").write_text(json.dumps({
+            "contract": "MAHOON_REMOTE_PROOF_RESULT_V1",
+            "REMOTE_PROOF_PASS": True,
+            "transaction_id": bundle_transaction["transaction_id"],
+            "candidate_version": bundle_transaction["candidate_static_version"],
+            "bundle_sha256": bundle_sha,
+        }), encoding="utf-8")
+
+        fake_root = root / "repo"
+        state_dir = fake_root / "publisher-state"
+        state_dir.mkdir(parents=True)
+        (state_dir / "published-static-state.json").write_text(json.dumps({
+            "current_version_type": "STATIC",
+            "current_version": self.tx["baseline_static_version"],
+        }), encoding="utf-8")
+        evidence_dir = root / "evidence"
+
+        baseline = {"id": "baseline-deployment", "versions": [
+            {"version_id": "baseline-v1", "percentage": 100},
+            {"version_id": "candidate-v1", "percentage": 0},
+        ]}
+        promoted = {"id": "promoted-deployment", "versions": [
+            {"version_id": "candidate-v1", "percentage": 100},
+            {"version_id": "baseline-v1", "percentage": 0},
+        ]}
+        restored = {"id": "restored-deployment", "versions": [
+            {"version_id": "baseline-v1", "percentage": 100},
+            {"version_id": "candidate-v1", "percentage": 0},
+        ]}
+        crawl = patch.object(resumable_stage_runner, "_crawl")
+        browser = patch.object(resumable_stage_runner, "_browser_gate")
+        crawl_summary = {
+            "measured": True, "expected_route_count": 7, "present_route_count": 7,
+            "missing_routes": [], "post_jsonld_missing": 0, "duplicate_canonicals": 0,
+            "workers_dev_leaks": 0, "remote_reader_media_dependencies": 0,
+            "robots_sitemap_directive": True,
+            "gates": {key: {"measured": True, "PASS": True} for key in (
+                "remote_route_parity", "remote_content_parity", "remote_listing_uniqueness",
+                "remote_category_parity", "remote_latest_parity", "remote_seo", "remote_media",
+            )},
+        }
+        browser_summary = {
+            "zero_origin": {"PASS": True, "requests": {
+                "content_api": 0, "media_api": 0, "workers_dev_content": 0,
+                "telegram": 0, "search_backend": 0,
+            }},
+            "visual": {"PASS": True},
+            "checks": [{"name": "admin-shell", "visual_pass": True}],
+        }
+        crawl_state = evidence_dir / "production-crawl" / "production-override-crawl"
+        crawl_state.mkdir(parents=True)
+        (crawl_state / "production-override-crawl-state.json").write_text(json.dumps({
+            "routes": {
+                "/rss.xml": {"http_status": 200, "content_type": "application/rss+xml"},
+                "/admin": {"http_status": 200},
+                "/admin/analytics": {"http_status": 200},
+            },
+        }), encoding="utf-8")
+
+        active = patch.object(resumable_stage_runner, "_active_deployment_with_retry",
+                              side_effect=[baseline, promoted])
+        rollback = patch.object(resumable_stage_runner, "automatic_rollback", return_value=restored)
+        with patch.object(resumable_stage_runner, "ROOT", fake_root), \
+             patch.object(resumable_stage_runner, "EVIDENCE", evidence_dir), \
+             patch.object(resumable_stage_runner, "_head_sha", return_value=self.tx["source_sha"]), \
+             patch.dict(os.environ, {"MAHOON_PUBLISH_READY": "YES"}), \
+             patch.object(resumable_stage_runner.deployment, "deploy_pair",
+                          return_value={"id": "promoted-deployment"}), \
+             patch.object(resumable_stage_runner.deployment, "wait_for_active", return_value=promoted), \
+             active, rollback as rollback_mock, crawl as crawl_mock, browser as browser_mock:
+            crawl_mock.side_effect = (subprocess.TimeoutExpired("crawl", 2400)
+                                      if scenario == "crawl-timeout" else None)
+            if scenario != "crawl-timeout":
+                crawl_mock.return_value = crawl_summary
+            browser_mock.side_effect = (subprocess.TimeoutExpired("browser", 300)
+                                        if scenario == "browser-timeout" else None)
+            if scenario != "browser-timeout":
+                browser_mock.return_value = browser_summary
+            exit_code = resumable_stage_runner.run_promotion(
+                bundle_dir, proof_dir, self.tx["transaction_id"])
+            production = json.loads((evidence_dir / "production-result.json").read_text(encoding="utf-8"))
+        return {"exit_code": exit_code, "production": production}, rollback_mock, crawl_mock, browser_mock
 
     def test_remote_failure_logger_prints_sanitized_json_to_stderr(self):
         source = inspect.getsource(resumable_stage_runner.main)

@@ -27,6 +27,8 @@ from publisher.state_machine import live_static_baseline, verify_promoted_static
 WORKER = "mahoon-art-magazine"
 ORIGIN = "https://mahoonartmagazine.ir"
 EVIDENCE = Path("runner-evidence")
+PRODUCTION_FULL_CRAWL_TIMEOUT_SECONDS = 2400
+PRODUCTION_BROWSER_GATE_TIMEOUT_SECONDS = 300
 
 
 def _read(path: Path) -> dict:
@@ -197,8 +199,10 @@ def run_remote(bundle_dir: Path, transaction_id: str) -> int:
 def _production_validation(bundle_dir: Path, transaction: dict, bundle_sha: str,
                            remote_result: dict) -> dict:
     routes = _read(bundle_dir / "candidate-route-manifest.json")
-    summary = _crawl(bundle_dir, transaction, production=True, timeout=840)
-    browser = _browser_gate(bundle_dir, transaction, production=True, timeout=240)
+    summary = _crawl(bundle_dir, transaction, production=True,
+                     timeout=PRODUCTION_FULL_CRAWL_TIMEOUT_SECONDS)
+    browser = _browser_gate(bundle_dir, transaction, production=True,
+                            timeout=PRODUCTION_BROWSER_GATE_TIMEOUT_SECONDS)
     gates = _measured_gates(summary, browser, routes["route_count"])
     robots = bool(summary.get("robots_sitemap_directive"))
     rss_route = summary.get("routes", {}).get("/rss.xml", {}) if isinstance(summary.get("routes"), dict) else {}

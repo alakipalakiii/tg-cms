@@ -266,7 +266,7 @@ jobs:
     needs: [build-and-zero-percent, remote-proof]
     if: ${{ always() && (((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES')) && needs.build-and-zero-percent.result == 'success' && needs.remote-proof.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     outputs:
       production_pass: ${{ steps.result.outputs.production_pass }}
       transaction_id: ${{ steps.meta.outputs.transaction_id }}
