@@ -137,6 +137,26 @@ class StaticRedirectPolicyTests(unittest.TestCase):
                 candidate.read_text(encoding="utf-8"),
             )
 
+    def test_non_html_file_is_not_mistaken_for_a_materialized_html_route(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "robots.txt").write_text("User-agent: *", encoding="utf-8")
+            historical = root / "historical"
+            historical.write_text("/robots.txt /robots 301\n", encoding="utf-8")
+            policy = {
+                "/robots.txt": {
+                    "destination": "/robots",
+                    "status": 301,
+                    "reason": "Preserve the supported robots.txt compatibility route.",
+                    "required": True,
+                }
+            }
+            proof = generate_candidate_redirects(
+                historical, root / "_redirects", ["/robots.txt"], root, policy
+            )
+            self.assertEqual(0, proof["candidate_shadowing_redirect_rules"])
+            self.assertEqual(1, proof["compatibility_rules_classified"])
+
     def test_wildcard_mixing_current_and_noncurrent_routes_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

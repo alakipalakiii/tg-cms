@@ -79,13 +79,12 @@ def _source_matches(source: str, route: str) -> bool:
 
 def _direct_html_path(asset_root: Path, route: str) -> Path | None:
     normalized = normalize_route(route)
+    if normalized in {"/robots.txt", "/rss.xml", "/sitemap.xml"}:
+        return None
     relative = normalized.lstrip("/")
     if not relative:
         return asset_root / "index.html"
-    route_path = Path(relative)
-    if route_path.suffix:
-        return asset_root / route_path if route_path.suffix.lower() == ".html" else None
-    return asset_root / route_path / "index.html"
+    return asset_root / Path(relative) / "index.html"
 
 
 def _policy_entry(
