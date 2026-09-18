@@ -1,18 +1,8 @@
 {
-  "current_version": "7c6570b4-dbf5-42d3-84d6-acdb0da63092",
-  "previous_version": "d25d1131-ec90-4efb-90c8-a62f9721fe6c",
+  "current_version": "a520b75a-e191-40ef-bfd2-87a2b5b889ef",
+  "previous_version": "7c6570b4-dbf5-42d3-84d6-acdb0da63092",
   "current_version_type": "STATIC",
-  "deployment_id": "7864ec0f-8bb6-4d75-bcbc-72b8629a7220",
-  "deployment_created_at": "2026-09-14T12:41:59.168665Z",
-  "version_created_at": "2026-09-14T12:41:21.022Z",
-  "artifact_seal": "UNKNOWN",
-  "content_fingerprint": "UNKNOWN",
-  "previous_artifact_seal": "b9e151bfa1abdea781a8efda8819490a610f50beae7b440533313b24e66c9d4f",
-  "previous_content_fingerprint": "9a432cb77b8bf5af0dbd8d6363c4a82af633481975628ead1aad44140a7134bb",
-  "reconciliation_evidence": {
-    "source": "read-only Wrangler deployment/version history and accepted M9/M10 evidence",
-    "live_percentage": 100,
-    "previous_version_annotation": "M9-accepted-sealed-primary-1327",
-    "live_version_artifact_hashes": "UNKNOWN"
-  }
+  "deployment_id": "9800c510-b3a7-4ee3-a140-692d4cc0a6c3",
+  "artifact_seal": "a12fa87a90f71a4bd4cc8018899e12368275faa1a342ffa4913cadaaa394336b",
+  "content_fingerprint": "32023e5d9a19993ca55e517a0549a42c177fc8f6db7fb20798b258a0219846c8"
 }
