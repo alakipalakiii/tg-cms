@@ -5927,6 +5927,18 @@
       "detected_mime": "image/jpeg"
     },
     {
+      "source_identifier": "AgACAgQAAyEFAASOdxB-AAIGR2qtZyHbjYdSyaStUaI7QLS0D72PAAJ2D2sboeZoUR9UA9ZbqPRCAQADAgADeQADPQQ",
+      "immutable_path": "/media/0b/0be7f5d026d965d8947328a280539cbd98b8c7fadd152c9112a8b4a655d748bf.jpg",
+      "sha256": "0be7f5d026d965d8947328a280539cbd98b8c7fadd152c9112a8b4a655d748bf",
+      "mime": "image/jpeg",
+      "media_type": "photo",
+      "fallback": false,
+      "post_ids": [
+        1842
+      ],
+      "detected_mime": "image/jpeg"
+    },
+    {
       "source_identifier": "AgACAgQAAyEFAASOdxB-AAIGRGqr-YEr_p41FKZDGRM9jlwLcb11AAI_EGsbYdBgUbkjSPPO5KBsAQADAgADeQADPQQ",
       "immutable_path": "/media/8d/8d87d2060c25c144fb7bf5fd643564fe23f51ff1dcb1200708b12e54125a6fa2.jpg",
       "sha256": "8d87d2060c25c144fb7bf5fd643564fe23f51ff1dcb1200708b12e54125a6fa2",
@@ -5947,6 +5959,18 @@
       "fallback": false,
       "post_ids": [
         1840
+      ],
+      "detected_mime": "image/jpeg"
+    },
+    {
+      "source_identifier": "AgACAgQAAyEFAASOdxB-AAIGRmqtSwEW_bpC7ZcqAcsbPFIjYVK1AAJND2sboeZoUXMYRUWRvrW9AQADAgADeQADPQQ",
+      "immutable_path": "/media/f0/f09111c299ac1d977641a5bbfefe6f159635d05f09bc33f09cd93cbd65553a66.jpg",
+      "sha256": "f09111c299ac1d977641a5bbfefe6f159635d05f09bc33f09cd93cbd65553a66",
+      "mime": "image/jpeg",
+      "media_type": "photo",
+      "fallback": false,
+      "post_ids": [
+        1841
       ],
       "detected_mime": "image/jpeg"
     },
@@ -7318,9 +7342,9 @@
   ],
   "stats": {
     "mode": "REQUIRED_SET_ONLY",
-    "required_distinct": 560,
-    "published": 439,
-    "new": 102,
+    "required_distinct": 562,
+    "published": 541,
+    "new": 2,
     "fallback": 19,
     "unresolved": 0,
     "source_redownloads": 0,
