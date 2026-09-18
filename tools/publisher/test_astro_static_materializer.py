@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -30,6 +31,9 @@ class AstroStaticMaterializerTests(unittest.TestCase):
                 snapshot = root / "snapshot.json"
                 routes = root / "routes.json"
                 output = root / "site"
+                publisher_base = root / "publisher-base"
+                publisher_base.mkdir()
+                (publisher_base / "_redirects").write_text("", encoding="utf-8")
                 snapshot.write_text(json.dumps({
                     "contract": "POSTS_FULL_PUBLIC_SNAPSHOT_V2",
                     "snapshot_total_count": 1,
@@ -48,7 +52,8 @@ class AstroStaticMaterializerTests(unittest.TestCase):
                     "MAHOON_PUBLISHED_CONTENT_SNAPSHOT": str(snapshot),
                     "MAHOON_ROUTE_MANIFEST": str(routes),
                 })
-                result = materializer.build(output)
+                with patch.object(materializer, "BASE", publisher_base):
+                    result = materializer.build(output)
                 self.assertEqual(result["snapshot_api_starts"], 0)
                 self.assertEqual(result["snapshot_binding"], "DIRECT_LOCKED_SNAPSHOT")
                 self.assertTrue((output / "index.html").is_file())
