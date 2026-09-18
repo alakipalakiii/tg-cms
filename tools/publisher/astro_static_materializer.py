@@ -27,6 +27,10 @@ try:
     from .static_media_resolver import PublishedMediaResolver
 except ImportError:
     from publisher.static_media_resolver import PublishedMediaResolver
+try:
+    from .static_redirect_policy import generate_candidate_redirects
+except ImportError:
+    from publisher.static_redirect_policy import generate_candidate_redirects
 
 ROOT = Path(__file__).resolve().parents[2]
 PROJECT = ROOT / "website" / "dreary-disk"
@@ -309,6 +313,7 @@ def build(out: Path) -> dict:
     state_path = ROOT / os.environ.get("MAHOON_ROUTE_MANIFEST", "publisher-state/current-accepted-route-manifest.json")
     if not snapshot_path.is_file():
         raise RuntimeError("PUBLISHER_SNAPSHOT_MISSING")
+    routes = sorted(set(json.loads(state_path.read_text(encoding="utf-8"))["routes"]))
     _write_locked_snapshot_module(snapshot_path)
     build_env["PUBLIC_MAHOON_SNAPSHOT_BINDING"] = "1"
     build_command = [npm, "run", "build"]
@@ -323,7 +328,7 @@ def build(out: Path) -> dict:
         shutil.rmtree(out)
     out.mkdir(parents=True, exist_ok=True)
     for item in BASE.iterdir():
-        if item.name in {"_redirects", "_headers", "robots.txt", "rss.xml", "sitemap.xml"}:
+        if item.name in {"_headers", "robots.txt", "rss.xml", "sitemap.xml"}:
             target = out / item.name
             shutil.copytree(item, target) if item.is_dir() else shutil.copy2(item, target)
     if (BASE / "media").is_dir():
@@ -332,7 +337,6 @@ def build(out: Path) -> dict:
         target = out / item.name
         shutil.copytree(item, target, dirs_exist_ok=True) if item.is_dir() else shutil.copy2(item, target)
 
-    routes = sorted(set(json.loads(state_path.read_text(encoding="utf-8"))["routes"]))
     media_manifest: dict[str, dict] = {}
     prior_media = ROOT / os.environ.get("MAHOON_MEDIA_MANIFEST", "publisher-state/production-media-manifest.json")
     if prior_media.is_file():
@@ -355,6 +359,7 @@ def build(out: Path) -> dict:
                 target.write_text(html, encoding="utf-8")
     finally:
         renderer.close()
+    redirect_policy = generate_candidate_redirects(BASE / "_redirects", out / "_redirects", routes, out)
     smoke = _preview_smoke(routes)
     _write_search_index(out, snapshot_path)
     media_path = out.parent / "production-media-manifest.json"
@@ -375,4 +380,7 @@ def build(out: Path) -> dict:
         "full_route_preview_request_count": 0,
         "preview_smoke_route_count": smoke["route_count"],
         "preview_smoke": smoke["PASS"],
+        "candidate_redirects_generated": True,
+        "candidate_redirects_blindly_copied": False,
+        "redirect_policy": redirect_policy,
     }

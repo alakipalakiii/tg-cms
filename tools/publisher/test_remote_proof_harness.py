@@ -131,6 +131,8 @@ class RemoteProofHarnessTests(unittest.TestCase):
         self.assertEqual("CF_VERSION_METADATA", config["version_metadata"]["binding"])
         self.assertEqual("./src/worker.js", config["main"])
         patterns = config["assets"]["run_worker_first"]
+        for route in ("/about", "/about/", "/contact", "/contact/"):
+            self.assertIn(route, patterns, f"Worker-first attribution is missing {route}")
         routes_path = root / "publisher-state/current-accepted-route-manifest.json"
         routes = json.loads(routes_path.read_text(encoding="utf-8"))["routes"]
         uncovered = [route for route in routes if not any(fnmatch.fnmatchcase(route, pattern) for pattern in patterns)]
