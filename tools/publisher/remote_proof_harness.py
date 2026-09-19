@@ -9,6 +9,15 @@ VERSION_OVERRIDE_HEADER = "Cloudflare-Workers-Version-Overrides"
 VERSION_RESPONSE_HEADER = "X-Mahoon-Worker-Version"
 
 
+def is_worker_first_route(path: str) -> bool:
+    normalized = urlsplit(path).path.rstrip("/") or "/"
+    return (
+        normalized == "/"
+        or normalized in {"/about", "/contact", "/robots.txt", "/rss.xml", "/sitemap.xml"}
+        or normalized.startswith(("/posts", "/post/", "/category/", "/tag/", "/admin", "/search"))
+    )
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -75,8 +84,14 @@ def request_with_version_pinning(
     headers: dict[str, str] | None = None,
     cache_bust_nonce: str | None = None,
     max_redirects: int = 8,
+    send_version_override: bool | None = None,
+    require_actual_version: bool | None = None,
 ) -> dict:
-    """Request a URL with an explicit version pin reapplied at every same-origin hop."""
+    """Request a URL with independently controlled override and attribution gates."""
+    if send_version_override is None:
+        send_version_override = bool(version)
+    if require_actual_version is None:
+        require_actual_version = bool(version)
     request_url = cache_busted_url(url, version, cache_bust_nonce) if cache_bust_nonce else url
     pinned_header = f'{worker}="{version}"'
     current = request_url
@@ -87,7 +102,7 @@ def request_with_version_pinning(
 
     for hop in range(max_redirects + 1):
         request_headers = dict(headers or {})
-        if version:
+        if send_version_override:
             request_headers[VERSION_OVERRIDE_HEADER] = pinned_header
         request = urllib.request.Request(current, headers=request_headers, method=method)
         try:
@@ -102,7 +117,7 @@ def request_with_version_pinning(
         chain.append({
             "hop": hop,
             "requested_url": current,
-            "override_header_sent": request.get_header("Cloudflare-workers-version-overrides") if version else None,
+            "override_header_sent": request.get_header("Cloudflare-workers-version-overrides") if send_version_override else None,
             "status": status,
             "location": location,
             "actual_version": actual_version,
@@ -122,8 +137,8 @@ def request_with_version_pinning(
     body = response.read()
     response_headers = response.headers
     actual_version = response_headers.get(VERSION_RESPONSE_HEADER)
-    every_hop_pinned = bool(chain) and all(item["override_header_sent"] == pinned_header for item in chain) if version else True
-    attribution_proven = bool(version) and every_hop_pinned and all(
+    every_hop_pinned = bool(chain) and all(item["override_header_sent"] == pinned_header for item in chain) if send_version_override else True
+    attribution_proven = bool(require_actual_version and version) and all(
         item["actual_version"] == version for item in chain
     )
     content_type = response_headers.get_content_type() if hasattr(response_headers, "get_content_type") else response_headers.get("Content-Type", "")
@@ -135,10 +150,12 @@ def request_with_version_pinning(
         "body": body,
         "content_type": str(content_type or ""),
         "actual_version": actual_version,
-        "version_attribution_status": "PROVEN" if attribution_proven else ("NOT_REQUIRED" if not version else "NOT_PROVEN"),
+        "version_attribution_status": "PROVEN" if attribution_proven else ("NOT_REQUIRED" if not require_actual_version else "NOT_PROVEN"),
         "redirect_chain": chain,
         "redirect_hop_count": len(chain) - 1,
         "override_preserved_on_every_hop": every_hop_pinned,
+        "override_header_sent": bool(send_version_override),
+        "actual_version_required": bool(require_actual_version),
         "cache_busted": bool(cache_bust_nonce),
     }
     response.close()

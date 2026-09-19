@@ -16,14 +16,14 @@ try:
     from .promotion_gates import _expected_posts, _id_for_href, _posts, _url_evidence
     from .remote_proof_harness import (
         category_page_matches, classify_link_target,
-        link_contract_fails, request_with_version_pinning,
+        is_worker_first_route, link_contract_fails, request_with_version_pinning,
     )
 except ImportError:
     from content_taxonomy import CATEGORY_DEFINITIONS, canonical_category
     from promotion_gates import _expected_posts, _id_for_href, _posts, _url_evidence
     from remote_proof_harness import (
         category_page_matches, classify_link_target,
-        link_contract_fails, request_with_version_pinning,
+        is_worker_first_route, link_contract_fails, request_with_version_pinning,
     )
 
 SOURCE = Path(os.environ.get("MAHOON_ASSETS_DIRECTORY", "publisher-base"))
@@ -41,8 +41,16 @@ UA = "MAHOON-M10-Measured-Static-Candidate-Crawl/1.0"
 PAGE_SIZE = 20
 
 
-def _version_attribution_required() -> bool:
+def _send_version_override() -> bool:
     return bool(VERSION) and os.environ.get("MAHOON_DISABLE_VERSION_OVERRIDE") != "1"
+
+
+def _version_attribution_required() -> bool:
+    return bool(VERSION)
+
+
+def _requires_version_attribution(path: str) -> bool:
+    return bool(VERSION) and is_worker_first_route(path)
 
 
 def _url(path: str) -> str:
@@ -66,10 +74,14 @@ def _crawl_headers() -> dict[str, str]:
 
 
 def _pinned_request(url: str, method: str = "GET") -> dict:
-    version = VERSION if _version_attribution_required() else ""
+    path = urlsplit(url).path
+    worker_first = is_worker_first_route(path)
+    send_override = _send_version_override() and worker_first
     return request_with_version_pinning(
-        url, worker=WORKER, version=version, method=method, headers=_crawl_headers(),
-        cache_bust_nonce=uuid.uuid4().hex if version else None,
+        url, worker=WORKER, version=VERSION, method=method, headers=_crawl_headers(),
+        send_version_override=send_override,
+        require_actual_version=bool(VERSION) and worker_first,
+        cache_bust_nonce=uuid.uuid4().hex if send_override else None,
     )
 
 
@@ -97,7 +109,11 @@ def fetch_url(url: str) -> dict:
             url_evidence = _url_evidence(text, facts) if facts else {
                 "workers_dev": False, "preview_url": False, "remote_media": False
             }
-            attribution_ok = proof["version_attribution_status"] == "PROVEN" if _version_attribution_required() else True
+            attribution_required = proof.get(
+                "actual_version_required",
+                _requires_version_attribution(urlsplit(url).path),
+            )
+            attribution_ok = proof["version_attribution_status"] == "PROVEN" if attribution_required else True
             return {
                 "status": "PASS" if proof["status"] == 200 and attribution_ok else "FAIL",
                 "http_status": proof["status"], "final_url": proof["final_url"],
@@ -118,6 +134,7 @@ def fetch_url(url: str) -> dict:
                 "actual_version": proof["actual_version"],
                 "version_attribution_status": proof["version_attribution_status"],
                 "override_preserved_on_every_hop": proof["override_preserved_on_every_hop"],
+                "override_header_sent": proof.get("override_header_sent", False),
                 "redirect_hop_count": proof["redirect_hop_count"],
                 "redirect_chain": proof["redirect_chain"],
                 "cache_busted": proof["cache_busted"],
@@ -168,7 +185,8 @@ def _head_media(path: str) -> dict:
     try:
         proof = request_with_version_pinning(
             _url(path), worker=WORKER,
-            version=VERSION if _version_attribution_required() else "",
+            version=VERSION,
+            send_version_override=False, require_actual_version=False,
             headers=_crawl_headers(), method="HEAD", timeout=30,
         )
         return {"status": proof["status"], "content_type": proof["content_type"]}
@@ -200,7 +218,7 @@ def _measure_link_targets(route_list: list[str], state: dict) -> dict[str, dict]
             return path, {**_head_media(path), "source": "http_head"}
         route = fetch_url(_url(path))
         status = route.get("http_status")
-        if _version_attribution_required() and route.get("version_attribution_status") != "PROVEN":
+        if _requires_version_attribution(path) and route.get("version_attribution_status") != "PROVEN":
             status = None
         return path, {
             "status": status, "content_type": route.get("content_type"),
@@ -353,11 +371,12 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
     media_unresolved = media_manifest.get("stats", {}).get("unresolved") if isinstance(media_manifest, dict) else None
     if not isinstance(media_unresolved, int):
         media_unresolved = None
-    attribution_required = _version_attribution_required()
+    attribution_required = bool(VERSION)
     version_attribution_failures = sum(
         value.get("version_attribution_status") != "PROVEN" or value.get("actual_version") != VERSION
-        for value in state["routes"].values()
+        for path, value in state["routes"].items() if _requires_version_attribution(path)
     ) if attribution_required else 0
+    override_header_sent = any(bool(value.get("override_header_sent")) for value in state["routes"].values())
     all_status = len(route_status_failures) == 0 and version_attribution_failures == 0
     route_parity = all_status and not missing_source_routes and not unexpected_routes and not html_failures and not post_route_failures
     content_pass = route_parity and canonical_failures == 0 and search_parity_failures == 0 and search_duplicate == 0
@@ -378,7 +397,13 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
         "broken_link_false_positive_targets": len(false_positive_link_targets),
         "unverified_link_targets": sum(item.get("reason") == "UNVERIFIED_TARGET" for item in broken_link_targets),
         "version_attribution_failures": version_attribution_failures,
-        "remote_crawler_version_pinning": {"required_version": VERSION or None, "PASS": not attribution_required or version_attribution_failures == 0},
+        "remote_crawler_version_pinning": {
+            "required_version": VERSION or None,
+            "attribution_required": "YES" if attribution_required else "NO",
+            "override_sent": "YES" if override_header_sent else "NO",
+            "override_expected": "YES" if _send_version_override() else "NO",
+            "PASS": not attribution_required or version_attribution_failures == 0,
+        },
         "duplicate_canonicals": duplicate_canonicals, "duplicate_listing_ids": duplicate_card_ids,
         "pagination_overlap": overlap + category_overlap, "listing_page_parity_failures": coverage_failures,
         "category_wrong_membership": category_wrong, "category_missing_membership": category_missing,
@@ -426,7 +451,7 @@ def main() -> None:
     media_manifest = json.loads(MEDIA_PATH.read_text(encoding="utf-8")) if MEDIA_PATH.is_file() else {}
     route_hash = hashlib.sha256(json.dumps(expected, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
     state = {"base": BASE, "override_worker": WORKER,
-             "override_version": VERSION if _version_attribution_required() else "PRODUCTION",
+             "override_version": VERSION if _send_version_override() else "PRODUCTION",
              "version_attribution_protocol": "CF_VERSION_METADATA_V1",
              "route_hash": route_hash, "routes": {path: {"status": "PENDING"} for path in expected}}
     if STATE_PATH.exists():
@@ -440,8 +465,8 @@ def main() -> None:
                 attribution_checkpoint_valid = (
                     prior.get("version_attribution_status") == "PROVEN"
                     and prior.get("actual_version") == VERSION
-                    if _version_attribution_required()
-                    else prior.get("version_attribution_status") == "NOT_REQUIRED"
+                    if _requires_version_attribution(path)
+                    else prior.get("version_attribution_status") in {"NOT_REQUIRED", "PROVEN"}
                 )
                 if (prior.get("status") == "PASS" and prior.get("http_status") == 200
                         and attribution_checkpoint_valid):
@@ -484,7 +509,7 @@ def main() -> None:
     if search_result.get("http_status") == 200:
         try:
             search_body = _pinned_request(_url("/search/search-index.json"))
-            if _version_attribution_required() and search_body["version_attribution_status"] != "PROVEN":
+            if _requires_version_attribution("/search/search-index.json") and search_body["version_attribution_status"] != "PROVEN":
                 raise ValueError("search index response version attribution is not proven")
             search_result["records"] = json.loads(search_body["body"].decode("utf-8")).get("records", [])
         except Exception as exc:
@@ -496,7 +521,7 @@ def main() -> None:
     for path, target in (("/sitemap.xml", sitemap), ("/robots.txt", robots)):
         try:
             proof = _pinned_request(_url(path))
-            if _version_attribution_required() and proof["version_attribution_status"] != "PROVEN":
+            if _requires_version_attribution(path) and proof["version_attribution_status"] != "PROVEN":
                 raise ValueError("control resource response version attribution is not proven")
             body = proof["body"].decode("utf-8", "replace")
             if path.endswith("robots.txt"):

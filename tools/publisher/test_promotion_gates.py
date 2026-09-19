@@ -88,17 +88,23 @@ class PromotionGateTests(unittest.TestCase):
              patch.object(candidate_crawl, "request_with_version_pinning", return_value={"status": 200}) as request:
             with patch.dict(os.environ, {"MAHOON_DISABLE_VERSION_OVERRIDE": "1"}):
                 candidate_crawl._pinned_request("https://mahoonartmagazine.ir/")
-                self.assertEqual("", request.call_args.kwargs["version"])
+                self.assertEqual(candidate, request.call_args.kwargs["version"])
+                self.assertFalse(request.call_args.kwargs["send_version_override"])
+                self.assertTrue(request.call_args.kwargs["require_actual_version"])
                 self.assertIsNone(request.call_args.kwargs["cache_bust_nonce"])
                 with patch.object(candidate_crawl, "request_with_version_pinning", return_value={
                     "status": 200, "content_type": "image/jpeg",
                 }) as media_request:
                     candidate_crawl._head_media("/media/example.jpg")
-                    self.assertEqual("", media_request.call_args.kwargs["version"])
+                    self.assertEqual(candidate, media_request.call_args.kwargs["version"])
+                    self.assertFalse(media_request.call_args.kwargs["send_version_override"])
+                    self.assertFalse(media_request.call_args.kwargs["require_actual_version"])
 
             with patch.dict(os.environ, {"MAHOON_DISABLE_VERSION_OVERRIDE": "0"}):
                 candidate_crawl._pinned_request("https://mahoonartmagazine.ir/")
                 self.assertEqual(candidate, request.call_args.kwargs["version"])
+                self.assertTrue(request.call_args.kwargs["send_version_override"])
+                self.assertTrue(request.call_args.kwargs["require_actual_version"])
                 self.assertTrue(request.call_args.kwargs["cache_bust_nonce"])
 
     def test_production_mode_full_remote_validator_fixture_does_not_require_attribution(self):
@@ -147,9 +153,11 @@ class PromotionGateTests(unittest.TestCase):
                         "content_type": content_type,
                         "final_url": url,
                         "headers": {},
-                        "actual_version": "production-current",
-                        "version_attribution_status": "NOT_REQUIRED",
-                        "override_preserved_on_every_hop": False,
+                        "actual_version": version,
+                        "version_attribution_status": "PROVEN",
+                        "override_header_sent": False,
+                        "actual_version_required": True,
+                        "override_preserved_on_every_hop": True,
                         "redirect_hop_count": 0,
                         "redirect_chain": [],
                         "cache_busted": False,
@@ -167,7 +175,8 @@ class PromotionGateTests(unittest.TestCase):
                      patch.object(candidate_crawl, "STATE_PATH", out_path / "state.json"), \
                      patch.object(candidate_crawl, "_pinned_request", side_effect=production_response), \
                      redirect_stdout(io.StringIO()):
-                    self.assertFalse(candidate_crawl._version_attribution_required())
+                    self.assertTrue(candidate_crawl._version_attribution_required())
+                    self.assertFalse(candidate_crawl._send_version_override())
                     candidate_crawl.main()
                     first_route_reads = {path: route_reads.get(path, 0) for path in manifest["routes"]}
                     candidate_crawl.main()
@@ -183,7 +192,7 @@ class PromotionGateTests(unittest.TestCase):
                 self.assertTrue(summary["gates"]["remote_content_parity"]["PASS"])
                 self.assertTrue(summary["gates"]["remote_seo"]["PASS"])
                 self.assertEqual(200, state["link_checks"]["/tag/arya"]["status"])
-                self.assertEqual("NOT_REQUIRED", state["supplemental_search"]["version_attribution_status"])
+                self.assertEqual("PROVEN", state["supplemental_search"]["version_attribution_status"])
                 self.assertTrue(all(count >= 1 for count in first_route_reads.values()))
                 for path in manifest["routes"]:
                     expected_second_read = 1 if path in {"/robots.txt", "/sitemap.xml"} else 0

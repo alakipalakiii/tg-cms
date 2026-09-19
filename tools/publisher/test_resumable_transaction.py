@@ -247,11 +247,17 @@ class ResumableTransactionTests(unittest.TestCase):
         ]}
         crawl = patch.object(resumable_stage_runner, "_crawl")
         browser = patch.object(resumable_stage_runner, "_browser_gate")
+        convergence = patch.object(resumable_stage_runner, "_production_version_convergence", return_value={
+            "PASS": True, "rounds": 3, "seconds": 20, "mismatches": [],
+        })
         crawl_summary = {
             "measured": True, "expected_route_count": 7, "present_route_count": 7,
             "missing_routes": [], "post_jsonld_missing": 0, "duplicate_canonicals": 0,
             "workers_dev_leaks": 0, "remote_reader_media_dependencies": 0,
             "robots_sitemap_directive": True,
+            "remote_crawler_version_pinning": {
+                "PASS": True, "attribution_required": "YES", "override_sent": "NO",
+            },
             "gates": {key: {"measured": True, "PASS": True} for key in (
                 "remote_route_parity", "remote_content_parity", "remote_listing_uniqueness",
                 "remote_category_parity", "remote_latest_parity", "remote_seo", "remote_media",
@@ -285,7 +291,7 @@ class ResumableTransactionTests(unittest.TestCase):
              patch.object(resumable_stage_runner.deployment, "deploy_pair",
                           return_value={"id": "promoted-deployment"}), \
              patch.object(resumable_stage_runner.deployment, "wait_for_active", return_value=promoted), \
-             active, rollback as rollback_mock, crawl as crawl_mock, browser as browser_mock:
+             convergence, active, rollback as rollback_mock, crawl as crawl_mock, browser as browser_mock:
             crawl_mock.side_effect = (subprocess.TimeoutExpired("crawl", 2400)
                                       if scenario == "crawl-timeout" else None)
             if scenario != "crawl-timeout":

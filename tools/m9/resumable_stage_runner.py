@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -21,6 +24,8 @@ from publisher.resumable_transaction import (
     verify_proof_bundle,
     verify_remote_result,
 )
+from publisher.production_convergence import probe_convergence
+from publisher.remote_proof_harness import request_with_version_pinning
 from publisher.rollback import automatic_rollback
 from publisher.state_machine import live_static_baseline, verify_promoted_static
 
@@ -29,6 +34,8 @@ ORIGIN = "https://mahoonartmagazine.ir"
 EVIDENCE = Path("runner-evidence")
 PRODUCTION_FULL_CRAWL_TIMEOUT_SECONDS = 2400
 PRODUCTION_BROWSER_GATE_TIMEOUT_SECONDS = 300
+PRODUCTION_VERSION_CONVERGENCE_TIMEOUT_SECONDS = 300
+PRODUCTION_VERSION_CONVERGENCE_INTERVAL_SECONDS = 10
 
 
 def _read(path: Path) -> dict:
@@ -81,6 +88,86 @@ def _browser_gate(bundle_dir: Path, transaction: dict, *, production: bool,
         command.extend(["--candidate-version", transaction["candidate_static_version"]])
     _command(command, timeout)
     return _read(output)
+
+
+def _convergence_routes(bundle_dir: Path) -> list[str]:
+    manifest = _read(bundle_dir / "candidate-route-manifest.json")
+    available = set(manifest.get("routes", []))
+    selected = ["/", "/posts", "/post/32", "/search", "/search/search-index.json",
+                "/robots.txt", "/sitemap.xml", "/admin"]
+    archive_pages = sorted(
+        (route for route in available if route.startswith("/posts/page/")),
+        key=lambda route: int(route.rstrip("/").rsplit("/", 1)[-1]),
+    )
+    if archive_pages:
+        selected.append(archive_pages[0])
+    category_pages = sorted(route for route in available if route.startswith("/category/"))
+    if category_pages:
+        selected.append(category_pages[0])
+        paginated = [route for route in category_pages if "/page/" in route]
+        if paginated:
+            selected.append(paginated[0])
+    expectations = _read(bundle_dir / "remote-expectations.json")
+    posts = expectations.get("posts", []) if isinstance(expectations, dict) else []
+    slugs = [str(post.get("slug")) for post in posts if post.get("slug")]
+    if slugs:
+        selected.append("/post/" + slugs[0])
+    return list(dict.fromkeys(selected))
+
+
+def _convergence_request(path: str, expected_version: str) -> dict:
+    timestamp = datetime.now(timezone.utc).isoformat()
+    try:
+        url = ORIGIN.rstrip("/") + quote("/" + path.lstrip("/"), safe="/%:@!$&'()*+,;=-._~")
+        proof = request_with_version_pinning(
+            url,
+            worker=WORKER,
+            version=expected_version,
+            headers={"User-Agent": "MAHOON-M10-Production-Version-Convergence/1.0",
+                     "Accept": "text/html,application/json,application/xml,text/plain,*/*"},
+            send_version_override=False,
+            require_actual_version=True,
+        )
+        body = proof.get("body", b"")
+        return {
+            "route": path,
+            "http_status": proof.get("status"),
+            "expected_version": expected_version,
+            "actual_version": proof.get("actual_version"),
+            "version_attribution_status": proof.get("version_attribution_status"),
+            "override_header_sent": bool(proof.get("override_header_sent")),
+            "cf_cache_status": proof.get("headers", {}).get("CF-Cache-Status"),
+            "body_sha256": hashlib.sha256(body).hexdigest(),
+            "redirect_chain": proof.get("redirect_chain", []),
+            "content_type": proof.get("content_type"),
+            "timestamp_utc": timestamp,
+        }
+    except Exception as exc:
+        return {
+            "route": path,
+            "http_status": None,
+            "expected_version": expected_version,
+            "actual_version": None,
+            "version_attribution_status": "NOT_PROVEN",
+            "override_header_sent": False,
+            "cf_cache_status": None,
+            "body_sha256": None,
+            "redirect_chain": [],
+            "content_type": None,
+            "timestamp_utc": timestamp,
+            "error_class": type(exc).__name__,
+        }
+
+
+def _production_version_convergence(bundle_dir: Path, transaction: dict) -> dict:
+    return probe_convergence(
+        _convergence_request,
+        _convergence_routes(bundle_dir),
+        transaction["candidate_static_version"],
+        rounds_required=3,
+        timeout_seconds=PRODUCTION_VERSION_CONVERGENCE_TIMEOUT_SECONDS,
+        interval_seconds=PRODUCTION_VERSION_CONVERGENCE_INTERVAL_SECONDS,
+    )
 
 
 def _crawl(bundle_dir: Path, transaction: dict, *, production: bool,
@@ -218,8 +305,15 @@ def _production_validation(bundle_dir: Path, transaction: dict, bundle_sha: str,
     admin_pass = (visual_checks.get("admin-shell", {}).get("visual_pass") is True
                   and production_routes.get("/admin", {}).get("http_status") == 200
                   and production_routes.get("/admin/analytics", {}).get("http_status") == 200)
+    pinning = summary.get("remote_crawler_version_pinning") or {}
+    page_attribution_pass = (
+        pinning.get("PASS") is True
+        and pinning.get("override_sent") == "NO"
+        and pinning.get("attribution_required") == "YES"
+    )
     requirements = {
         "route_parity": gates["full_route_crawl"],
+        "page_attribution": page_attribution_pass,
         "content_parity": gates["content_parity"],
         "listing_uniqueness": gates["listing_uniqueness"],
         "category_parity": gates["category_parity"],
@@ -278,7 +372,27 @@ def run_promotion(bundle_dir: Path, proof_dir: Path, transaction_id: str) -> int
         if not promotion_confirmed:
             raise RuntimeError("PROMOTION_READBACK_MISMATCH")
         promoted_id = promoted.get("id") or promoted_id
-        result = _production_validation(bundle_dir, transaction, bundle_sha, proof)
+        convergence = _production_version_convergence(bundle_dir, transaction)
+        convergence_fields = {
+            "PRODUCTION_VERSION_CONVERGENCE": "PASS" if convergence["PASS"] else "FAIL",
+            "PRODUCTION_VERSION_CONVERGENCE_ROUNDS": convergence.get("rounds", 0),
+            "PRODUCTION_VERSION_CONVERGENCE_SECONDS": convergence.get("seconds", 0),
+            "PRODUCTION_VERSION_ATTRIBUTION_REQUIRED": "YES",
+            "PRODUCTION_VERSION_OVERRIDE_SENT": "NO",
+            "PRODUCTION_VERSION_MISMATCHES": convergence.get("mismatches", []),
+            "PRODUCTION_PAGE_ATTRIBUTION": "PENDING",
+        }
+        result = {
+            "contract": "MAHOON_PRODUCTION_RESULT_V1",
+            "transaction_id": transaction["transaction_id"],
+            "candidate_version": transaction["candidate_static_version"],
+            "bundle_sha256": bundle_sha,
+            **convergence_fields,
+        }
+        if not convergence["PASS"]:
+            raise RuntimeError("PRODUCTION_VERSION_CONVERGENCE_FAILED")
+        result = _production_validation(bundle_dir, transaction, bundle_sha, proof) | result
+        result["PRODUCTION_PAGE_ATTRIBUTION"] = "PASS" if result["production_gates"].get("page_attribution") else "FAIL"
         result["promotion_performed"] = True
         result["promotion_deployment_id"] = promoted_id
         result["promotion_readback"] = promotion_readback
