@@ -1,6 +1,6 @@
 {
   "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
-  "route_count": 4069,
+  "route_count": 4071,
   "routes": [
     "/",
     "/about",
@@ -1021,6 +1021,7 @@
     "/post/1840",
     "/post/1841",
     "/post/1842",
+    "/post/1843",
     "/post/185",
     "/post/186",
     "/post/187",
@@ -2894,6 +2895,7 @@
     "/post/شاید-خود-را-نمیبخشیم-1788255685806",
     "/post/شاید-کسی-را-که-1783461078528",
     "/post/شب-از-نیمه-گذشته-است-1787174903982",
+    "/post/شب-که-میشود،-1789773264019",
     "/post/شبهای-پاییز-1783487766133",
     "/post/شت-1783488650026",
     "/post/شخصيت-واقعى-يه-آدم-رو-1783461254215",
@@ -4072,9 +4074,9 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4064,
-  "snapshot_derived_route_count": 3890,
-  "snapshot_post_route_count": 3548,
+  "baseline_route_count": 4069,
+  "snapshot_derived_route_count": 3892,
+  "snapshot_post_route_count": 3550,
   "snapshot_tag_route_count": 342,
   "required_category_routes": [
     "/category/دیالوگ ها",
@@ -5019,6 +5021,7 @@
     "/post/1840",
     "/post/1841",
     "/post/1842",
+    "/post/1843",
     "/post/185",
     "/post/186",
     "/post/187",
@@ -6892,6 +6895,7 @@
     "/post/شاید-خود-را-نمیبخشیم-1788255685806",
     "/post/شاید-کسی-را-که-1783461078528",
     "/post/شب-از-نیمه-گذشته-است-1787174903982",
+    "/post/شب-که-میشود،-1789773264019",
     "/post/شبهای-پاییز-1783487766133",
     "/post/شت-1783488650026",
     "/post/شخصيت-واقعى-يه-آدم-رو-1783461254215",
@@ -7641,9 +7645,7 @@
     "/post/۷-تکنیک-ژاپنی-برای-مقابله-با-تنبلی-1783486077683"
   ],
   "new_snapshot_routes_missing_from_candidate": [],
-  "new_snapshot_tag_routes": [
-    "/tag/%D9%BE%D8%A7%D8%A6%D9%88%D9%84%D9%88_%DA%A9%D9%88%D8%A6%DB%8C%D9%84%D9%88"
-  ],
+  "new_snapshot_tag_routes": [],
   "new_snapshot_tag_routes_missing_from_candidate": [],
   "old_only_routes": [
     "/",
@@ -7820,10 +7822,8 @@
     "/sitemap.xml"
   ],
   "new_snapshot_routes": [
-    "/post/1841",
-    "/post/1842",
-    "/post/سلطت-تو-بر-من-نیست-1789741826013",
-    "/post/وقتی-چیزی-را-بخواهی،-1789749026013"
+    "/post/1843",
+    "/post/شب-که-میشود،-1789773264019"
   ],
   "new_control_routes": []
 }
