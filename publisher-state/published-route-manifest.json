@@ -4079,7 +4079,7 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4073,
+  "baseline_route_count": 4076,
   "snapshot_derived_route_count": 3897,
   "snapshot_post_route_count": 3554,
   "snapshot_tag_route_count": 343,
@@ -7654,9 +7654,7 @@
     "/post/۷-تکنیک-ژاپنی-برای-مقابله-با-تنبلی-1783486077683"
   ],
   "new_snapshot_routes_missing_from_candidate": [],
-  "new_snapshot_tag_routes": [
-    "/tag/%D8%A2%D8%A8%D8%B1%D8%A7%D9%87%D8%A7%D9%85_%D9%85%D8%B2%D9%84%D9%88"
-  ],
+  "new_snapshot_tag_routes": [],
   "new_snapshot_tag_routes_missing_from_candidate": [],
   "old_only_routes": [
     "/",
@@ -7832,9 +7830,6 @@
     "/search",
     "/sitemap.xml"
   ],
-  "new_snapshot_routes": [
-    "/post/1845",
-    "/post/آبراهام-مزلو-میگوید-که-رسیدن-1789923618219"
-  ],
+  "new_snapshot_routes": [],
   "new_control_routes": []
 }
