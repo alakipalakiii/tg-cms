@@ -470,35 +470,82 @@ def media_gate(snapshot: dict, root: Path, manifest: dict, media_manifest: dict)
                 media_paths.add(unquote(parsed.path))
             elif "api.mahoonartmagazine.ir/media/" in value:
                 unresolved_urls += 1
+
+    records = media_manifest.get("records", []) if isinstance(media_manifest, dict) else []
+    semantic_records = [
+        record for record in records
+        if isinstance(record, dict) and record.get("immutable_path") and not record.get("fallback")
+    ]
+    expected_by_path = {str(record["immutable_path"]): record for record in semantic_records}
+    required_paths = sorted(media_paths | set(expected_by_path))
     missing = invalid = hash_mismatch = 0
-    for public_path in media_paths:
+    inventory = []
+    for public_path in required_paths:
         target = root / public_path.lstrip("/")
+        expected = expected_by_path.get(public_path, {})
+        expected_mime = expected.get("detected_mime") or expected.get("mime")
+        expected_sha256 = str(expected.get("sha256") or Path(public_path).stem).lower()
+        expected_size = expected.get("size")
         if not target.is_file():
             missing += 1
+            inventory.append({"path": public_path, "sha256": expected_sha256, "size": expected_size,
+                              "mime": expected_mime, "present_in_sealed_artifact": False})
             continue
         data = target.read_bytes()
         detected = signature_mime(data)
         digest = __import__("hashlib").sha256(data).hexdigest()
         ext = target.suffix.lower()
-        expected_ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif", "audio/mpeg": ".mp3", "audio/ogg": ".ogg", "video/mp4": ".mp4"}.get(detected)
-        invalid += int(not detected or expected_ext != ext)
-        parts = target.stem.split(".")
-        if len(target.stem) == 64:
-            hash_mismatch += int(digest != target.stem.lower())
-    records = media_manifest.get("records", []) if isinstance(media_manifest, dict) else []
-    resolved_sources = {str(record.get("source_identifier")) for record in records if isinstance(record, dict) and record.get("source_identifier")}
+        expected_ext = {
+            "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
+            "image/gif": ".gif", "audio/mpeg": ".mp3", "audio/ogg": ".ogg",
+            "video/mp4": ".mp4",
+        }.get(detected)
+        signature_ok = bool(detected) and expected_ext == ext and (not expected_mime or detected == expected_mime)
+        hash_ok = digest == target.stem.lower() and (not expected_sha256 or digest == expected_sha256)
+        size_ok = expected_size is None or int(expected_size) == len(data)
+        invalid += int(not signature_ok or not size_ok)
+        hash_mismatch += int(not hash_ok)
+        inventory.append({"path": public_path, "sha256": digest, "size": len(data),
+                          "mime": detected, "present_in_sealed_artifact": True,
+                          "signature_mime_pass": signature_ok, "hash_pass": hash_ok, "size_pass": size_ok})
+
+    resolved_sources = {
+        str(record.get("source_identifier")) for record in records
+        if isinstance(record, dict) and record.get("source_identifier")
+    }
     required_sources = {identity for post in posts for identity, _kind in source_identifiers(post)}
     media_sources = len(required_sources)
     unresolved_count = media_manifest.get("stats", {}).get("unresolved") if isinstance(media_manifest, dict) else None
     missing_sources = len(required_sources - resolved_sources)
     unresolved = int(unresolved_count) if isinstance(unresolved_count, int) else None
-    return {"measured": True, "required_media_references": len(media_paths), "snapshot_media_sources": media_sources,
-            "missing_media_files": missing, "invalid_media_signatures_or_mime": invalid,
-            "media_hash_mismatches": hash_mismatch, "remote_media_api_references": unresolved_urls,
-            "media_source_ids_missing_from_manifest": missing_sources,
-            "media_manifest_unresolved": unresolved,
-            "PASS": unresolved is not None and not any((missing, invalid, hash_mismatch, unresolved_urls, missing_sources, unresolved))}
-
+    semantic_missing = sorted(set(expected_by_path) - {
+        entry["path"] for entry in inventory
+        if entry["present_in_sealed_artifact"] and entry.get("hash_pass")
+    })
+    inventory_pass = not missing and not invalid and not hash_mismatch
+    parity_pass = not semantic_missing and len(expected_by_path) <= len(inventory)
+    return {
+        "measured": True,
+        "required_media_references": len(media_paths),
+        "snapshot_media_sources": media_sources,
+        "missing_media_files": missing,
+        "invalid_media_signatures_or_mime": invalid,
+        "media_hash_mismatches": hash_mismatch,
+        "remote_media_api_references": unresolved_urls,
+        "media_source_ids_missing_from_manifest": missing_sources,
+        "media_manifest_unresolved": unresolved,
+        "SEALED_MEDIA_INVENTORY": {
+            "measured": True, "entries": inventory, "missing": missing,
+            "invalid": invalid, "PASS": inventory_pass,
+        },
+        "SEMANTIC_TO_SEALED_MEDIA_PARITY": {
+            "measured": True, "semantic_records": len(expected_by_path),
+            "sealed_records": len(inventory), "missing": semantic_missing,
+            "PASS": parity_pass,
+        },
+        "PASS": unresolved is not None and inventory_pass and parity_pass
+        and not any((unresolved_urls, missing_sources, unresolved)),
+    }
 
 def evaluate_local_candidate(snapshot_path: Path, root: Path, route_manifest_path: Path,
                              media_manifest_path: Path) -> dict:

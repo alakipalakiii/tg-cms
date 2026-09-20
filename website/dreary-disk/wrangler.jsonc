@@ -26,7 +26,8 @@
 			"/robots.txt",
 			"/rss.xml",
 			"/sitemap.xml",
-			"/search*"
+            "/search*",
+            "/__mahoon-proof/media/*"
 		]
 	},
 	"version_metadata": {

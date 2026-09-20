@@ -107,6 +107,44 @@ class PromotionGateTests(unittest.TestCase):
                 self.assertTrue(request.call_args.kwargs["require_actual_version"])
                 self.assertTrue(request.call_args.kwargs["cache_bust_nonce"])
 
+    def test_candidate_media_proof_uses_worker_first_route_and_version_override(self):
+        path = "/media/af/af961ddbe4c051211d454e91ea15230662129bc469ef6a366da517cc70e96bc0.jpg"
+        candidate = "candidate-media-version"
+        response = {
+            "status": 200, "content_type": "image/jpeg", "actual_version": candidate,
+            "version_attribution_status": "PROVEN",
+        }
+        with patch.object(candidate_crawl, "VERSION", candidate),              patch.dict(os.environ, {"MAHOON_DISABLE_VERSION_OVERRIDE": "0"}),              patch.object(candidate_crawl, "request_with_version_pinning", return_value=response) as request:
+            result = candidate_crawl._head_media(path, proof=True, expected_mime="image/jpeg")
+        self.assertEqual("PROVEN", result["version_attribution_status"])
+        self.assertEqual("https://mahoonartmagazine.ir/__mahoon-proof" + path, request.call_args.args[0])
+        self.assertTrue(request.call_args.kwargs["send_version_override"])
+        self.assertTrue(request.call_args.kwargs["require_actual_version"])
+        self.assertTrue(request.call_args.kwargs["cache_bust_nonce"])
+        self.assertNotIn("/media/af/", request.call_args.args[0].replace("/__mahoon-proof/media/af/", ""))
+
+    def test_candidate_only_new_media_is_not_proven_by_public_baseline_head(self):
+        path = "/media/af/af961ddbe4c051211d454e91ea15230662129bc469ef6a366da517cc70e96bc0.jpg"
+        candidate = "candidate-media-version"
+        calls = []
+        def request(url, **kwargs):
+            calls.append((url, kwargs))
+            if "/__mahoon-proof/media/" in url:
+                return {"status": 200, "content_type": "image/jpeg",
+                        "actual_version": candidate, "version_attribution_status": "PROVEN"}
+            return {"status": 404, "content_type": "text/plain",
+                    "actual_version": None, "version_attribution_status": "NOT_PROVEN"}
+        with patch.object(candidate_crawl, "VERSION", candidate),              patch.dict(os.environ, {"MAHOON_DISABLE_VERSION_OVERRIDE": "0"}),              patch.object(candidate_crawl, "request_with_version_pinning", side_effect=request):
+            proof = candidate_crawl._head_media(path, proof=True, expected_mime="image/jpeg")
+            public = candidate_crawl._head_media(path, expected_mime="image/jpeg")
+        self.assertEqual(200, proof["status"])
+        self.assertEqual(candidate, proof["actual_version"])
+        self.assertEqual(404, public["status"])
+        self.assertTrue("/__mahoon-proof/media/" in calls[0][0])
+        self.assertTrue("/media/af/" in calls[1][0])
+        self.assertTrue(calls[0][1]["send_version_override"])
+        self.assertFalse(calls[1][1]["send_version_override"])
+
     def test_production_mode_full_remote_validator_fixture_does_not_require_attribution(self):
         root, snapshot, manifest, media = _fixture()
         try:
@@ -365,7 +403,10 @@ class PromotionGateTests(unittest.TestCase):
     def test_media_passes_and_corrupt_signature_fails(self):
         root, snapshot, manifest, media = _fixture(with_media=True)
         try:
-            self.assertTrue(media_gate(snapshot, root, manifest, media)["PASS"])
+            measured = media_gate(snapshot, root, manifest, media)
+            self.assertTrue(measured["PASS"])
+            self.assertTrue(measured["SEALED_MEDIA_INVENTORY"]["PASS"])
+            self.assertTrue(measured["SEMANTIC_TO_SEALED_MEDIA_PARITY"]["PASS"])
             target = next((root / "media").rglob("*.jpg"))
             target.write_bytes(b"not-an-image")
             from tools.publisher.promotion_gates import _facts

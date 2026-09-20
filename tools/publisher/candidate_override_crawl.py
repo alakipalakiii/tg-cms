@@ -181,17 +181,36 @@ def _ids(hrefs: list[str], by_slug: dict[str, int], by_id: dict[str, int]) -> li
     return [value for href in hrefs if (value := _id_for_href(href, by_slug, by_id)) is not None]
 
 
-def _head_media(path: str) -> dict:
+def _media_proof_url(path: str) -> str:
+    return _url("/__mahoon-proof" + path)
+
+
+def _head_media(path: str, *, proof: bool = False, expected_mime: str | None = None) -> dict:
     try:
-        proof = request_with_version_pinning(
-            _url(path), worker=WORKER,
+        send_override = proof and _send_version_override()
+        proof_response = request_with_version_pinning(
+            _media_proof_url(path) if proof else _url(path), worker=WORKER,
             version=VERSION,
-            send_version_override=False, require_actual_version=False,
+            send_version_override=send_override,
+            require_actual_version=proof and bool(VERSION),
             headers=_crawl_headers(), method="HEAD", timeout=30,
+            cache_bust_nonce=uuid.uuid4().hex if send_override else None,
         )
-        return {"status": proof["status"], "content_type": proof["content_type"]}
+        actual_version = proof_response.get("actual_version")
+        attribution_status = proof_response.get("version_attribution_status")
+        content_type = proof_response.get("content_type", "")
+        mime_pass = expected_mime is None or content_type.split(";", 1)[0].strip().lower() == expected_mime.lower()
+        return {
+            "status": proof_response["status"],
+            "content_type": content_type,
+            "actual_version": actual_version,
+            "version_attribution_status": attribution_status,
+            "mime_pass": mime_pass,
+            "proof": proof,
+            "url": _media_proof_url(path) if proof else _url(path),
+        }
     except Exception as exc:
-        return {"status": None, "error_class": type(exc).__name__}
+        return {"status": None, "proof": proof, "error_class": type(exc).__name__}
 
 
 def _measure_link_targets(route_list: list[str], state: dict) -> dict[str, dict]:
@@ -215,6 +234,9 @@ def _measure_link_targets(route_list: list[str], state: dict) -> dict[str, dict]
     def check_target(item: tuple[str, str]) -> tuple[str, dict]:
         path, kind = item
         if kind in {"STATIC_MEDIA", "STATIC_ASSET"}:
+            if kind == "STATIC_MEDIA" and _send_version_override():
+                return path, {"status": 200, "content_type": "application/octet-stream",
+                              "source": "candidate_media_proof_deferred"}
             return path, {**_head_media(path), "source": "http_head"}
         route = fetch_url(_url(path))
         status = route.get("http_status")
@@ -362,12 +384,46 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
     sitemap_paths = set(sitemap_urls)
     missing_sitemap_posts = sum(f"/post/{post.get('slug')}" not in sitemap_paths for post in posts if post.get("slug"))
     media_records = media_manifest.get("records", []) if isinstance(media_manifest, dict) else []
-    media_paths = sorted({str(item.get("immutable_path")) for item in media_records if isinstance(item, dict) and item.get("immutable_path") and not item.get("fallback")})
+    media_specs = {
+        str(item.get("immutable_path")): item for item in media_records
+        if isinstance(item, dict) and item.get("immutable_path") and not item.get("fallback")
+    }
+    media_paths = sorted(media_specs)
     media_responses: dict[str, dict] = {}
     if media_paths:
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            media_responses = dict(zip(media_paths, executor.map(_head_media, media_paths)))
-    media_http_failures = sum(result.get("status") != 200 for result in media_responses.values())
+            media_responses = dict(zip(
+                media_paths,
+                executor.map(
+                    lambda path: _head_media(
+                        path, proof=True,
+                        expected_mime=media_specs[path].get("detected_mime") or media_specs[path].get("mime"),
+                    ),
+                    media_paths,
+                ),
+            ))
+    media_proof_http_failures = sum(result.get("status") != 200 for result in media_responses.values())
+    media_proof_version_mismatches = sum(
+        bool(VERSION) and (
+            result.get("version_attribution_status") != "PROVEN"
+            or result.get("actual_version") != VERSION
+        ) for result in media_responses.values()
+    )
+    media_proof_mime_failures = sum(result.get("mime_pass") is False for result in media_responses.values())
+    public_media_responses: dict[str, dict] = {}
+    if not _send_version_override() and media_paths:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            public_media_responses = dict(zip(
+                media_paths,
+                executor.map(
+                    lambda path: _head_media(
+                        path, expected_mime=media_specs[path].get("detected_mime") or media_specs[path].get("mime"),
+                    ),
+                    media_paths,
+                ),
+            ))
+    public_media_http_failures = sum(result.get("status") != 200 for result in public_media_responses.values())
+    media_http_failures = media_proof_http_failures + public_media_http_failures
     media_unresolved = media_manifest.get("stats", {}).get("unresolved") if isinstance(media_manifest, dict) else None
     if not isinstance(media_unresolved, int):
         media_unresolved = None
@@ -383,7 +439,14 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
     listing_pass = not any((duplicate_card_ids, search_duplicate, overlap, category_overlap, orphan_posts, coverage_failures))
     category_pass = not any((category_wrong, category_missing, category_extra, category_multi, category_overlap))
     seo_pass = not any((post_seo_failures, duplicate_canonicals, canonical_failures, workers_dev, missing_sitemap_posts)) and robots
-    media_pass = media_unresolved == 0 and media_http_failures == 0 and not reader_media
+    media_pass = (
+        media_unresolved == 0
+        and media_proof_http_failures == 0
+        and media_proof_version_mismatches == 0
+        and media_proof_mime_failures == 0
+        and public_media_http_failures == 0
+        and not reader_media
+    )
     return {
         "measured": True,
         "html_routes": len(html_routes), "html_final_200": len(html_routes) - len(html_failures),
@@ -417,6 +480,18 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
         "search_index_parity_failures": search_parity_failures,
         "robots_sitemap_directive": bool(robots), "missing_sitemap_posts": missing_sitemap_posts,
         "required_remote_media_objects": len(media_paths), "remote_media_http_failures": media_http_failures,
+        "remote_media_proof_http_failures": media_proof_http_failures,
+        "remote_media_proof_version_mismatches": media_proof_version_mismatches,
+        "remote_media_proof_mime_failures": media_proof_mime_failures,
+        "public_media_http_failures": public_media_http_failures,
+        "public_static_asset_propagation_failure": public_media_http_failures > 0,
+        "remote_media_candidate_proof": {
+            "measured": True,
+            "PASS": media_proof_http_failures == 0 and media_proof_version_mismatches == 0 and media_proof_mime_failures == 0,
+            "http_failures": media_proof_http_failures,
+            "version_mismatches": media_proof_version_mismatches,
+            "mime_failures": media_proof_mime_failures,
+        },
         "media_manifest_unresolved": media_unresolved,
         "expected_media_source_count": snapshot.get("media_source_count") if minimized else None,
         "gates": {
