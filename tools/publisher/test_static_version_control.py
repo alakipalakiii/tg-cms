@@ -1,4 +1,5 @@
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -31,9 +32,25 @@ class StaticVersionControlTests(unittest.TestCase):
         self.assertEqual("CF_VERSION_METADATA", config["version_metadata"]["binding"])
         self.assertEqual(site_config["assets"]["run_worker_first"], config["assets"]["run_worker_first"])
         self.assertEqual(str(Path("sealed-site").resolve()), config["assets"]["directory"])
+        self.assertEqual(str(Path("tools/publisher/static_version_main.js").resolve()), config["main"])
         worker = Path("tools/publisher/static_version_main.js").read_text(encoding="utf-8")
+        self.assertIn('import { handleMediaProof }', worker)
+        self.assertIn("handleMediaProof(", worker)
         self.assertIn("env.CF_VERSION_METADATA?.id", worker)
         self.assertIn("withVersionMetadata(response", worker)
+
+    def test_actual_static_entrypoint_media_proof_contract(self):
+        result = subprocess.run(
+            [
+                "node",
+                "--test",
+                "tools/publisher/static_version_main.test.mjs",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
     def test_preupload_baseline_health_checks_pages_and_linked_css_with_version_pin(self):
         def fake_request(url, *, worker, version, **_kwargs):
