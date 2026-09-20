@@ -1,6 +1,6 @@
 {
   "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
-  "route_count": 4073,
+  "route_count": 4076,
   "routes": [
     "/",
     "/about",
@@ -1023,6 +1023,7 @@
     "/post/1842",
     "/post/1843",
     "/post/1844",
+    "/post/1845",
     "/post/185",
     "/post/186",
     "/post/187",
@@ -1873,6 +1874,7 @@
     "/post/999",
     "/post/just-relax-deep-house-1789257611182",
     "/post/،-1783493793752",
+    "/post/آبراهام-مزلو-میگوید-که-رسیدن-1789923618219",
     "/post/آدرس-سایت-مجله-هنری-ماهون-1786947700457",
     "/post/آدم-بدبین-همیشه-پایینو-نگاه-میکنه-و-سرش-ضربه-میخوره،-آدم-خوشبین-همیشه-1783464562185",
     "/post/آدم-بعد-از-چند-بار-توضیح-دادن-1785572115075",
@@ -3733,6 +3735,7 @@
     "/rss.xml",
     "/search",
     "/sitemap.xml",
+    "/tag/%D8%A2%D8%A8%D8%B1%D8%A7%D9%87%D8%A7%D9%85_%D9%85%D8%B2%D9%84%D9%88",
     "/tag/%D8%A2%D8%AA%D8%B4_%D8%A8%D8%AF%D9%88%D9%86_%D8%AF%D9%88%D8%AF",
     "/tag/%D8%A2%D8%AF%D8%B1%DB%8C%E2%80%8C%D9%87%D9%BE%D8%A8%D9%88%D8%B1%D9%86",
     "/tag/%D8%A2%D8%AF%D9%85%E2%80%8C%D9%87%D8%A7%DB%8C_%D8%B3%D9%85%DB%8C",
@@ -4076,10 +4079,10 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4071,
-  "snapshot_derived_route_count": 3894,
-  "snapshot_post_route_count": 3552,
-  "snapshot_tag_route_count": 342,
+  "baseline_route_count": 4073,
+  "snapshot_derived_route_count": 3897,
+  "snapshot_post_route_count": 3554,
+  "snapshot_tag_route_count": 343,
   "required_category_routes": [
     "/category/دیالوگ ها",
     "/category/شعر و متن",
@@ -5025,6 +5028,7 @@
     "/post/1842",
     "/post/1843",
     "/post/1844",
+    "/post/1845",
     "/post/185",
     "/post/186",
     "/post/187",
@@ -5875,6 +5879,7 @@
     "/post/999",
     "/post/just-relax-deep-house-1789257611182",
     "/post/،-1783493793752",
+    "/post/آبراهام-مزلو-میگوید-که-رسیدن-1789923618219",
     "/post/آدرس-سایت-مجله-هنری-ماهون-1786947700457",
     "/post/آدم-بدبین-همیشه-پایینو-نگاه-میکنه-و-سرش-ضربه-میخوره،-آدم-خوشبین-همیشه-1783464562185",
     "/post/آدم-بعد-از-چند-بار-توضیح-دادن-1785572115075",
@@ -7649,7 +7654,9 @@
     "/post/۷-تکنیک-ژاپنی-برای-مقابله-با-تنبلی-1783486077683"
   ],
   "new_snapshot_routes_missing_from_candidate": [],
-  "new_snapshot_tag_routes": [],
+  "new_snapshot_tag_routes": [
+    "/tag/%D8%A2%D8%A8%D8%B1%D8%A7%D9%87%D8%A7%D9%85_%D9%85%D8%B2%D9%84%D9%88"
+  ],
   "new_snapshot_tag_routes_missing_from_candidate": [],
   "old_only_routes": [
     "/",
@@ -7826,8 +7833,8 @@
     "/sitemap.xml"
   ],
   "new_snapshot_routes": [
-    "/post/1844",
-    "/post/هیچوقت-نذار-کسی-کاری-کنه-که-فکر-کنی-1789807903624"
+    "/post/1845",
+    "/post/آبراهام-مزلو-میگوید-که-رسیدن-1789923618219"
   ],
   "new_control_routes": []
 }

@@ -3554,6 +3554,14 @@
       "fallback": false
     },
     {
+      "source_identifier": "AgACAgQAAyEFAASOdxB-AAIGSmqwESGTx2JzLOt8KizVMf8p0kGbAAKGEGsbfZiBUWA2jwmIvGZuAQADAgADeQADPQQ",
+      "immutable_path": "/media/d0/d0496051275dab13e52336b5fb6f4f0281afc3738b69bd0b9113b488e591d734.jpg",
+      "sha256": "d0496051275dab13e52336b5fb6f4f0281afc3738b69bd0b9113b488e591d734",
+      "mime": "image/jpeg",
+      "media_type": "photo",
+      "fallback": false
+    },
+    {
       "source_identifier": "AgACAgQAAyEFAASOdxB-AAM9ak4FJLYBThiHNp5SUyIV7ul9I38AAiCuMRtQw9hRB95q1_b548UBAAMCAAN4AAM8BA",
       "immutable_path": "/media/7f/7f1967d8502c353763e6a3678fb5979419c235c60937ef77cbe889a0d1997564.jpg",
       "sha256": "7f1967d8502c353763e6a3678fb5979419c235c60937ef77cbe889a0d1997564",
