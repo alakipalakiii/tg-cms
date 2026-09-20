@@ -189,13 +189,15 @@ def verify_proof_bundle(directory: Path, expected_transaction_id: str | None = N
             or tx_split.get(baseline) != 100 or tx_split.get(candidate) != 0
             or sum(tx_split.values()) != 100):
         raise ValueError("proof bundle transaction metadata or candidate split is invalid")
+    measured_local_gates = local.get("measured_local_gates") or {}
+    measured_media_gate = (measured_local_gates.get("gates") or {}).get("media") or {}
     if not all((
         (local.get("transaction_start_static_baseline") or {}).get("PASS") is True,
         (local.get("filesystem_gate") or {}).get("PASS") is True,
-        (local.get("measured_local_gates") or {}).get("measured") is True,
-        (local.get("measured_local_gates") or {}).get("PASS") is True,
-        ((local.get("measured_local_gates") or {}).get("SEALED_MEDIA_INVENTORY") or {}).get("PASS") is True,
-        ((local.get("measured_local_gates") or {}).get("SEMANTIC_TO_SEALED_MEDIA_PARITY") or {}).get("PASS") is True,
+        measured_local_gates.get("measured") is True,
+        measured_local_gates.get("PASS") is True,
+        (measured_media_gate.get("SEALED_MEDIA_INVENTORY") or {}).get("PASS") is True,
+        (measured_media_gate.get("SEMANTIC_TO_SEALED_MEDIA_PARITY") or {}).get("PASS") is True,
         (local.get("pre_upload_live_baseline") or {}).get("PASS") is True,
         (local.get("pre_zero_percent_live_read") or {}).get("PASS") is True,
         bool(local.get("rollback_anchor")),

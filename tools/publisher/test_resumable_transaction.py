@@ -60,8 +60,10 @@ class ResumableTransactionTests(unittest.TestCase):
             "transaction_start_static_baseline": {"PASS": True},
             "filesystem_gate": {"PASS": True},
             "measured_local_gates": {"measured": True, "PASS": True,
-                                     "SEALED_MEDIA_INVENTORY": {"measured": True, "PASS": True},
-                                     "SEMANTIC_TO_SEALED_MEDIA_PARITY": {"measured": True, "PASS": True}},
+                                     "gates": {"media": {
+                                         "SEALED_MEDIA_INVENTORY": {"measured": True, "PASS": True},
+                                         "SEMANTIC_TO_SEALED_MEDIA_PARITY": {"measured": True, "PASS": True},
+                                     }}},
             "pre_upload_live_baseline": {"PASS": True},
             "pre_zero_percent_live_read": {"PASS": True},
             "rollback_anchor": {"static_version": "baseline-v1"},
