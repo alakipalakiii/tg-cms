@@ -66,6 +66,22 @@ test("proof HEAD maps to the public media asset and keeps HEAD", async () => {
   assert.equal(await response.text(), "");
 });
 
+test("cache-busted proof maps through the actual static entrypoint and strips the query", async () => {
+  const seen = [];
+  const query = `?__mahoon_proof=${VERSION}-${"a".repeat(32)}`;
+  const response = await staticWorker.fetch(
+    new Request("https://example.test" + PROOF_PATH + query, { method: "HEAD" }),
+    makeEnv(() => new Response(null, { status: 200, headers: { "Content-Type": "image/jpeg" } }), seen),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Content-Type"), "image/jpeg");
+  assert.equal(response.headers.get("X-Mahoon-Worker-Version"), VERSION);
+  assert.equal(new URL(seen[0].url).pathname, MEDIA_PATH);
+  assert.equal(new URL(seen[0].url).search, "");
+  assert.equal(seen[0].method, "HEAD");
+});
+
 test("missing mapped media remains 404 and carries the version header", async () => {
   const seen = [];
   const response = await staticWorker.fetch(

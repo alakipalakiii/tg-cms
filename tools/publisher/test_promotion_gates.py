@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -122,6 +123,32 @@ class PromotionGateTests(unittest.TestCase):
         self.assertTrue(request.call_args.kwargs["require_actual_version"])
         self.assertTrue(request.call_args.kwargs["cache_bust_nonce"])
         self.assertNotIn("/media/af/", request.call_args.args[0].replace("/__mahoon-proof/media/af/", ""))
+
+    def test_bulk_media_proof_harness_emits_cache_bust_contract_and_passes(self):
+        path = "/media/aa/" + "a" * 64 + ".jpg"
+        candidate = "candidate-v2"
+        nonce = "c" * 32
+        captured = {}
+
+        def request(url, **kwargs):
+            captured["url"] = url
+            captured["kwargs"] = kwargs
+            return {"status": 200, "content_type": "image/jpeg",
+                    "actual_version": candidate, "version_attribution_status": "PROVEN"}
+
+        with patch.object(candidate_crawl, "VERSION", candidate), \
+             patch.dict(os.environ, {"MAHOON_DISABLE_VERSION_OVERRIDE": "0"}), \
+             patch.object(candidate_crawl.uuid, "uuid4", return_value=SimpleNamespace(hex=nonce)), \
+             patch.object(candidate_crawl, "request_with_version_pinning", side_effect=request):
+            result = candidate_crawl._head_media(path, proof=True, expected_mime="image/jpeg")
+
+        self.assertEqual(200, result["status"])
+        self.assertEqual(candidate, captured["kwargs"]["version"])
+        self.assertTrue(captured["kwargs"]["send_version_override"])
+        self.assertTrue(captured["kwargs"]["require_actual_version"])
+        self.assertEqual(nonce, captured["kwargs"]["cache_bust_nonce"])
+        self.assertEqual("HEAD", captured["kwargs"]["method"])
+        self.assertEqual("https://mahoonartmagazine.ir/__mahoon-proof" + path, captured["url"])
 
     def test_candidate_only_new_media_is_not_proven_by_public_baseline_head(self):
         path = "/media/af/af961ddbe4c051211d454e91ea15230662129bc469ef6a366da517cc70e96bc0.jpg"

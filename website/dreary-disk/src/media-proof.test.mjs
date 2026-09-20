@@ -7,6 +7,8 @@ const digest = "a".repeat(64);
 const publicPath = "/media/aa/" + digest + ".jpg";
 const proofPath = "/__mahoon-proof" + publicPath;
 const version = "candidate-v2";
+const nonce = "b".repeat(32);
+const validProofQuery = `?__mahoon_proof=${version}-${nonce}`;
 
 function makeEnv(status = 200) {
   const requests = [];
@@ -47,6 +49,21 @@ test("valid HEAD maps to the same asset without downloading a body", async () =>
   assert.equal(requests[0].method, "HEAD");
 });
 
+test("cache-busted proof accepts only the version-bound internal query and strips it from ASSETS", async () => {
+  const { env, requests } = makeEnv();
+  const response = await handleMediaProof(
+    new Request("https://example.test" + proofPath + validProofQuery, { method: "HEAD" }),
+    env,
+    version,
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Content-Type"), "image/jpeg");
+  assert.equal(response.headers.get("X-Mahoon-Worker-Version"), version);
+  assert.equal(requests[0].url, "https://example.test" + publicPath);
+  assert.equal(new URL(requests[0].url).search, "");
+  assert.equal(requests[0].method, "HEAD");
+});
+
 test("missing candidate asset remains a version-attributed 404", async () => {
   const { env } = makeEnv(404);
   const response = await handleMediaProof(new Request("https://example.test" + proofPath, { method: "HEAD" }), env, version);
@@ -54,13 +71,29 @@ test("missing candidate asset remains a version-attributed 404", async () => {
   assert.equal(response.headers.get("X-Mahoon-Worker-Version"), version);
 });
 
-test("malformed, query-based, traversal, and unsupported extension paths are rejected", async () => {
+test("media proof query security rejects every non-contract shape", async () => {
+  const rejectedQueries = [
+    "?alternate=/media/x",
+    `${validProofQuery}&extra=1`,
+    `${validProofQuery}&__mahoon_proof=${version}-${nonce}`,
+    `?__mahoon_proof=other-version-${nonce}`,
+    `?__mahoon_proof=${version}-`,
+    `?__mahoon_proof=${version}-/media/${digest}.jpg`,
+  ];
+  for (const query of rejectedQueries) {
+    const { env, requests } = makeEnv();
+    const response = await handleMediaProof(new Request("https://example.test" + proofPath + query), env, version);
+    assert.equal(response.status, 404, query);
+    assert.equal(requests.length, 0, query);
+  }
+});
+
+test("malformed, traversal, and unsupported extension paths are rejected", async () => {
   assert.deepEqual(parseMediaProofPath(proofPath), { assetPath: publicPath, extension: "jpg" });
   assert.equal(parseMediaProofPath("/__mahoon-proof/media/aa/" + digest + ".jpeg"), null);
   assert.equal(parseMediaProofPath("/__mahoon-proof/media/aa/" + digest.toUpperCase() + ".jpg"), null);
   assert.equal(parseMediaProofPath("/__mahoon-proof/media/aa/%2e%2e/" + digest + ".jpg"), null);
   const { env } = makeEnv();
-  assert.equal((await handleMediaProof(new Request("https://example.test" + proofPath + "?alternate=/media/x"), env, version)).status, 404);
   assert.equal((await handleMediaProof(new Request("https://example.test" + proofPath, { method: "POST" }), env, version)).status, 405);
   assert.equal((await handleMediaProof(new Request("https://example.test" + publicPath), env, version)), null);
 });
