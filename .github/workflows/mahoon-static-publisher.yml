@@ -117,12 +117,27 @@ jobs:
           echo "CI_DEPLOYMENT=NO"
           echo "CI_TRAFFIC_MUTATION=NO"
 
+  scheduled-policy-preflight:
+    if: ${{ github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      publish_allowed: ${{ steps.policy.outputs.publish_allowed }}
+      breaker_state: ${{ steps.policy.outputs.breaker_state }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate scheduled publish policy before build
+        id: policy
+        run: |
+          python tools/publisher/scheduled_circuit_breaker.py preflight --path publisher-state/scheduled-publish-circuit-breaker.json
+          echo "SCHEDULED_PUBLISH_POLICY=VARIABLE_AND_CIRCUIT_BREAKER"
   check-only:
-    if: ${{ (github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED != 'PUBLISH') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'CHECK_ONLY' && inputs.auth_only != true) }}
+    needs: scheduled-policy-preflight
+    if: ${{ always() && ((github.event_name == 'schedule' && (vars.PUBLISHER_MODE_SCHEDULED != 'PUBLISH' || needs.scheduled-policy-preflight.outputs.publish_allowed != 'true')) || (github.event_name == 'workflow_dispatch' && inputs.mode == 'CHECK_ONLY' && inputs.auth_only != true)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      PUBLISHER_MODE: ${{ github.event_name == 'schedule' && (vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && 'PUBLISH' || 'CHECK_ONLY') || inputs.mode }}
+      PUBLISHER_MODE: ${{ github.event_name == 'schedule' && (vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true' && 'PUBLISH' || 'CHECK_ONLY') || inputs.mode }}
       PUBLISHER_EXPECTED_FINGERPRINT: ${{ inputs.expected_fingerprint }}
       MAHOON_PUBLIC_CONTENT_REVISION_API: https://mahoon-content-revision.morentoofficial.workers.dev/public/content-revision-v1
     steps:
@@ -131,7 +146,8 @@ jobs:
         run: python tools/m9/publisher_runner.py
 
   build-and-zero-percent:
-    if: ${{ (github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH') || (github.event_name == 'workflow_dispatch' && ((inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || inputs.mode == 'BUILD_AND_ZERO_PERCENT')) }}
+    needs: scheduled-policy-preflight
+    if: ${{ always() && ((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true') || (github.event_name == 'workflow_dispatch' && ((inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || inputs.mode == 'BUILD_AND_ZERO_PERCENT'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     outputs:
@@ -396,3 +412,47 @@ jobs:
             git commit -m "chore: persist verified static publisher state"
             git push origin HEAD:main
           fi
+
+  scheduled-circuit-breaker:
+    needs: [scheduled-policy-preflight, build-and-zero-percent, remote-proof, promote-and-validate, persist-state]
+    if: ${{ always() && github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Open breaker after a scheduled transaction failure
+        env:
+          PREFLIGHT_STATE: ${{ needs.scheduled-policy-preflight.outputs.breaker_state }}
+          BUILD_RESULT: ${{ needs.build-and-zero-percent.result }}
+          REMOTE_RESULT: ${{ needs.remote-proof.result }}
+          PROMOTION_RESULT: ${{ needs.promote-and-validate.result }}
+          PERSIST_RESULT: ${{ needs.persist-state.result }}
+          RUN_ID: ${{ github.run_id }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          failed_job=""
+          if [ "$BUILD_RESULT" = "failure" ] || [ "$BUILD_RESULT" = "cancelled" ]; then failed_job="build-and-zero-percent"; fi
+          if [ -z "$failed_job" ] && { [ "$REMOTE_RESULT" = "failure" ] || [ "$REMOTE_RESULT" = "cancelled" ]; }; then failed_job="remote-proof"; fi
+          if [ -z "$failed_job" ] && { [ "$PROMOTION_RESULT" = "failure" ] || [ "$PROMOTION_RESULT" = "cancelled" ]; }; then failed_job="promote-and-validate"; fi
+          if [ -z "$failed_job" ] && { [ "$PERSIST_RESULT" = "failure" ] || [ "$PERSIST_RESULT" = "cancelled" ]; }; then failed_job="persist-state"; fi
+          if [ "$PREFLIGHT_STATE" != "CLOSED" ] || [ -z "$failed_job" ]; then
+            echo "scheduled breaker unchanged: state=$PREFLIGHT_STATE failed_job=$failed_job"
+            exit 0
+          fi
+          python tools/publisher/scheduled_circuit_breaker.py open \
+            --path publisher-state/scheduled-publish-circuit-breaker.json \
+            --run-id "$RUN_ID" \
+            --failed-job "$failed_job" \
+            --head-sha "$HEAD_SHA" \
+            --reason "scheduled run $RUN_ID ended $failed_job with failure/cancelled result"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add publisher-state/scheduled-publish-circuit-breaker.json
+          git diff --cached --quiet || git commit -m "chore: open scheduled publisher circuit breaker"
+          git push origin HEAD:main

@@ -160,7 +160,7 @@ class ResumableTransactionTests(unittest.TestCase):
         self.assertIn("timeout-minutes: 10", workflow)
         self.assertIn("vars.PUBLISHER_MODE_SCHEDULED != 'PUBLISH'", workflow)
         self.assertIn("vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH'", workflow)
-        self.assertIn("github.event_name == 'schedule' && (vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && 'PUBLISH' || 'CHECK_ONLY')", workflow)
+        self.assertIn("needs.scheduled-policy-preflight.outputs.publish_allowed == 'true'", workflow)
         self.assertNotIn("vars.PUBLISHER_MODE_SCHEDULED || 'PUBLISH'", workflow)
         self.assertNotIn("Build website from the pinned transaction snapshot", workflow)
         self.assertNotIn("run: npm run build --prefix website/dreary-disk", transaction_job)
