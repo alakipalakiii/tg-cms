@@ -1,9 +1,9 @@
 {
   "contract": "MAHOON_SCHEDULED_PUBLISH_CIRCUIT_BREAKER_V1",
-  "state": "CLOSED",
-  "reason": null,
-  "failed_run_id": null,
-  "failed_job": null,
-  "head_sha": null,
-  "updated_at": "2026-09-20T00:00:00Z"
+  "state": "OPEN",
+  "reason": "scheduled run 35610395685 ended build-and-zero-percent with failure/cancelled result",
+  "failed_run_id": "35610395685",
+  "failed_job": "build-and-zero-percent",
+  "head_sha": "df1c0f12c0ca926a44c76b0a1ef00c2ca57403bd",
+  "updated_at": "2026-09-21T14:29:10.933629Z"
 }
