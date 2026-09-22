@@ -6023,6 +6023,18 @@
       "detected_mime": "image/jpeg"
     },
     {
+      "source_identifier": "AgACAgQAAyEFAASOdxB-AAIGT2qyze8Mgsf7NWDZLuSKv9dSdLmxAAJgszEbnvTgURLD53GjNarwAQADAgADeQADPQQ",
+      "immutable_path": "/media/6b/6b9e56f52567f6fb9d4e663404b485e8e32f012c1c35063ea2913346e9c6ff53.jpg",
+      "sha256": "6b9e56f52567f6fb9d4e663404b485e8e32f012c1c35063ea2913346e9c6ff53",
+      "mime": "image/jpeg",
+      "media_type": "photo",
+      "fallback": false,
+      "post_ids": [
+        1850
+      ],
+      "detected_mime": "image/jpeg"
+    },
+    {
       "source_identifier": "AgACAgQAAyEFAASOdxB-AAIGTGqyPJdoLv7WUvgo-jCBwh8FmUTPAAKUEGsbE9aQURZG9d7nDc63AQADAgADeQADPQQ",
       "immutable_path": "/media/0f/0f82ed442fb65bdb797e46759423f52ab8165c2d65be22269fbe1b6d140ea0ea.jpg",
       "sha256": "0f82ed442fb65bdb797e46759423f52ab8165c2d65be22269fbe1b6d140ea0ea",
@@ -7426,9 +7438,9 @@
   ],
   "stats": {
     "mode": "REQUIRED_SET_ONLY",
-    "required_distinct": 569,
-    "published": 548,
-    "new": 2,
+    "required_distinct": 570,
+    "published": 550,
+    "new": 1,
     "fallback": 19,
     "unresolved": 0,
     "source_redownloads": 0,
