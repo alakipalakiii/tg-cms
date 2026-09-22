@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from tools.publisher.scheduled_circuit_breaker import (
-    CONTRACT, failed_job, load_state, opened_state, preflight, should_open_breaker,
+    CONTRACT, closed_state as close_state, failed_job, load_state, opened_state, preflight, should_open_breaker,
 )
 
 
@@ -60,6 +60,22 @@ class ScheduledCircuitBreakerTests(unittest.TestCase):
     def test_persist_failure_opens_breaker(self):
         self.assertTrue(should_open_breaker("CLOSED", {"persist-state": "cancelled"}))
 
+    def test_close_requires_complete_recovery_identity_and_clears_failure(self):
+        state = closed_state()
+        state["state"] = "OPEN"
+        closed = close_state(state, recovery_run_id="35712700208",
+                            transaction_id="revision-58-run-35708523802-attempt-1",
+                            candidate_version="candidate",
+                            production_run_id="35712700208",
+                            head_sha="a" * 40, reason="verified recovery",
+                            updated_at="2026-09-22T10:30:00Z")
+        self.assertEqual("CLOSED", closed["state"])
+        self.assertIsNone(closed["failed_run_id"])
+        self.assertIsNone(closed["failed_job"])
+        with self.assertRaises(ValueError):
+            close_state(state, recovery_run_id="", transaction_id="tx",
+                        candidate_version="candidate", production_run_id="run",
+                        head_sha="a" * 40, reason="bad")
     def test_open_breaker_does_not_reopen(self):
         results = {job: "skipped" for job in ("build-and-zero-percent", "remote-proof",
                    "promote-and-validate", "persist-state")}

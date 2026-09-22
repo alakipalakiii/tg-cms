@@ -76,6 +76,24 @@ def opened_state(state: dict, *, run_id: str, failed_stage: str, head_sha: str,
     }
 
 
+
+def closed_state(state: dict, *, recovery_run_id: str, transaction_id: str,
+                 candidate_version: str, production_run_id: str, head_sha: str,
+                 reason: str, updated_at: str | None = None) -> dict:
+    if not _valid_state(state):
+        raise ValueError("invalid circuit breaker state")
+    required = (recovery_run_id, transaction_id, candidate_version, production_run_id, head_sha)
+    if state["state"] != "OPEN" or any(not str(value).strip() for value in required):
+        raise ValueError("recovery close requires OPEN breaker and complete proof identity")
+    return {
+        **state,
+        "state": "CLOSED",
+        "reason": reason,
+        "failed_run_id": None,
+        "failed_job": None,
+        "head_sha": head_sha,
+        "updated_at": updated_at or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
 def _write_output(values: Mapping[str, object]) -> None:
     output = os.environ.get("GITHUB_OUTPUT")
     if output:
@@ -96,6 +114,14 @@ def main(argv: list[str] | None = None) -> int:
     open_parser.add_argument("--failed-job", required=True)
     open_parser.add_argument("--head-sha", required=True)
     open_parser.add_argument("--reason", required=True)
+    close_parser = sub.add_parser("close")
+    close_parser.add_argument("--path", type=Path, required=True)
+    close_parser.add_argument("--recovery-run-id", required=True)
+    close_parser.add_argument("--transaction-id", required=True)
+    close_parser.add_argument("--candidate-version", required=True)
+    close_parser.add_argument("--production-run-id", required=True)
+    close_parser.add_argument("--head-sha", required=True)
+    close_parser.add_argument("--reason", required=True)
     args = parser.parse_args(argv)
     if args.command == "preflight":
         result = preflight(args.path)
@@ -105,8 +131,19 @@ def main(argv: list[str] | None = None) -> int:
     state = load_state(args.path)
     if state is None:
         raise SystemExit("CIRCUIT_BREAKER_STATE_INVALID")
-    result = opened_state(state, run_id=args.run_id, failed_stage=args.failed_job,
-                          head_sha=args.head_sha, reason=args.reason)
+    if args.command == "close":
+        result = closed_state(
+            state,
+            recovery_run_id=args.recovery_run_id,
+            transaction_id=args.transaction_id,
+            candidate_version=args.candidate_version,
+            production_run_id=args.production_run_id,
+            head_sha=args.head_sha,
+            reason=args.reason,
+        )
+    else:
+        result = opened_state(state, run_id=args.run_id, failed_stage=args.failed_job,
+                              head_sha=args.head_sha, reason=args.reason)
     args.path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"state": result["state"], "failed_job": result["failed_job"]}, sort_keys=True))
     return 0
