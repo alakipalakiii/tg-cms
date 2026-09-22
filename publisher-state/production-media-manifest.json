@@ -146,6 +146,18 @@
       "detected_mime": "image/jpeg"
     },
     {
+      "source_identifier": "AAMCBAADIQUABI53EH4AAgZQarL48qgqlQd13_JRtPYayQAB1q5xAAIVJAACdSiQUTPCmaPRyP88AQAHbQADPQQ",
+      "immutable_path": "/media/e6/e607e6cdfcf4e12232c2f2f807479a06b3e708ae7944188766bc338f8e6240db.jpg",
+      "sha256": "e607e6cdfcf4e12232c2f2f807479a06b3e708ae7944188766bc338f8e6240db",
+      "mime": "image/jpeg",
+      "media_type": "photo",
+      "fallback": false,
+      "post_ids": [
+        1851
+      ],
+      "detected_mime": "image/jpeg"
+    },
+    {
       "source_identifier": "AAMCBAADIQUABI53EH4AAwxqTgABmQmOf9vmlonxoWq8OrF9hwADYBUAAnMoQFJi5yrjG07i0AEAB20AAzwE",
       "immutable_path": "/media/7a/7a34a0a2e0d2a78c003650a3869cbd0d9690fdb4f72af7281bb7fad0e70f80b9.jpg",
       "sha256": "7a34a0a2e0d2a78c003650a3869cbd0d9690fdb4f72af7281bb7fad0e70f80b9",
@@ -7352,6 +7364,18 @@
       "fallback_reason": "SOURCE_HTTP_404"
     },
     {
+      "source_identifier": "CQACAgQAAyEFAASOdxB-AAIGUGqy-PKoKpUHdd_yUbT2GskAAdaucQACFSQAAnUokFEzwpmj0cj_PD0E",
+      "immutable_path": "/media/be/be36cd25deb39ceec18c863bcacfbb333d01768f73eb96fb66b1a1404ed5c289.mp3",
+      "sha256": "be36cd25deb39ceec18c863bcacfbb333d01768f73eb96fb66b1a1404ed5c289",
+      "mime": "audio/mpeg",
+      "media_type": "audio",
+      "fallback": false,
+      "post_ids": [
+        1851
+      ],
+      "detected_mime": "audio/mpeg"
+    },
+    {
       "source_identifier": "CQACAgQAAyEFAASOdxB-AAM-ak4FL1dV0KmNiSXqFPHEncl_08MAAlISAAK1aHlQZvKYogdbCeU8BA",
       "immutable_path": "/media/21/2113b42b96625548471dbc962fc6ed5db5d6f46a7b99062cfad29f5ed1ce4626.mp3",
       "sha256": "2113b42b96625548471dbc962fc6ed5db5d6f46a7b99062cfad29f5ed1ce4626",
@@ -7438,9 +7462,9 @@
   ],
   "stats": {
     "mode": "REQUIRED_SET_ONLY",
-    "required_distinct": 570,
+    "required_distinct": 572,
     "published": 551,
-    "new": 0,
+    "new": 2,
     "fallback": 19,
     "unresolved": 0,
     "source_redownloads": 0,
