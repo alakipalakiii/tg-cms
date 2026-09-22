@@ -8,7 +8,7 @@ on:
         required: true
         default: CHECK_ONLY
         type: choice
-        options: [CHECK_ONLY, PUBLISH, BUILD_AND_ZERO_PERCENT, REMOTE_PROOF, PROMOTE_AND_VALIDATE, CONTENT_DIAGNOSTIC, SAFETY_TESTS_ONLY]
+        options: [CHECK_ONLY, AUTO_TICK, PUBLISH, BUILD_AND_ZERO_PERCENT, REMOTE_PROOF, PROMOTE_AND_VALIDATE, CONTENT_DIAGNOSTIC, SAFETY_TESTS_ONLY]
       expected_fingerprint:
         description: "Optional reviewed pending-candidate fingerprint for a no-change proof"
         required: false
@@ -118,7 +118,7 @@ jobs:
           echo "CI_TRAFFIC_MUTATION=NO"
 
   scheduled-policy-preflight:
-    if: ${{ github.event_name == 'schedule' }}
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -135,23 +135,24 @@ jobs:
           echo "SCHEDULED_PUBLISH_POLICY=VARIABLE_AND_CIRCUIT_BREAKER"
   check-only:
     needs: scheduled-policy-preflight
-    if: ${{ always() && ((github.event_name == 'schedule' && (vars.PUBLISHER_MODE_SCHEDULED != 'PUBLISH' || needs.scheduled-policy-preflight.outputs.publish_allowed != 'true')) || (github.event_name == 'workflow_dispatch' && inputs.mode == 'CHECK_ONLY' && inputs.auth_only != true)) }}
+    if: ${{ always() && ((github.event_name == 'schedule' && (vars.PUBLISHER_MODE_SCHEDULED != 'PUBLISH' || needs.scheduled-policy-preflight.outputs.publish_allowed != 'true')) || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK' && (vars.PUBLISHER_MODE_SCHEDULED != 'PUBLISH' || needs.scheduled-policy-preflight.outputs.publish_allowed != 'true')) || (github.event_name == 'workflow_dispatch' && inputs.mode == 'CHECK_ONLY' && inputs.auth_only != true)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      PUBLISHER_MODE: ${{ github.event_name == 'schedule' && (vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true' && 'PUBLISH' || 'CHECK_ONLY') || inputs.mode }}
+      PUBLISHER_MODE: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && (vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true' && 'PUBLISH' || 'CHECK_ONLY') || inputs.mode }}
       PUBLISHER_EXPECTED_FINGERPRINT: ${{ inputs.expected_fingerprint }}
+      MAHOON_AUTOMATION_SOURCE: ${{ github.event_name == 'schedule' && 'github_schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK' && 'cloudflare_cron' || 'manual') }}
       MAHOON_PUBLIC_CONTENT_REVISION_API: https://mahoon-content-revision.morentoofficial.workers.dev/public/content-revision-v1
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'schedule' && 'main' || github.ref }}
+          ref: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && 'main' || github.ref }}
       - name: Read revision only; scheduled mode remains CHECK_ONLY
         run: python tools/m9/publisher_runner.py
 
   build-and-zero-percent:
     needs: scheduled-policy-preflight
-    if: ${{ always() && ((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true') || (github.event_name == 'workflow_dispatch' && ((inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || inputs.mode == 'BUILD_AND_ZERO_PERCENT'))) }}
+    if: ${{ always() && (((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true') || (github.event_name == 'workflow_dispatch' && ((inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || inputs.mode == 'BUILD_AND_ZERO_PERCENT'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     outputs:
@@ -162,14 +163,15 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       MAHOON_WRANGLER: npx wrangler@4.83.0
-      MAHOON_PUBLISH_READY: ${{ github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && 'YES' || inputs.ready }}
+      MAHOON_PUBLISH_READY: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true' && 'YES' || inputs.ready }}
       MAHOON_PUBLIC_CONTENT_REVISION_API: https://mahoon-content-revision.morentoofficial.workers.dev/public/content-revision-v1
+      MAHOON_AUTOMATION_SOURCE: ${{ github.event_name == 'schedule' && 'github_schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK' && 'cloudflare_cron' || 'manual') }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'schedule' && 'main' || github.ref }}
+          ref: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && 'main' || github.ref }}
       - name: Record scheduled event and execution source SHA
-        if: ${{ github.event_name == 'schedule' }}
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK') }}
         run: |
           echo "SCHEDULE_EVENT_SHA=$GITHUB_SHA"
           execution_sha=$(git rev-parse HEAD)
@@ -221,7 +223,7 @@ jobs:
 
   remote-proof:
     needs: build-and-zero-percent
-    if: ${{ always() && (((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH')) && needs.build-and-zero-percent.result == 'success' && needs.build-and-zero-percent.outputs.transaction_id != '') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'REMOTE_PROOF')) }}
+    if: ${{ always() && (((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.mode == 'PUBLISH' || inputs.mode == 'AUTO_TICK'))) && needs.build-and-zero-percent.result == 'success' && needs.build-and-zero-percent.outputs.transaction_id != '') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'REMOTE_PROOF')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -235,15 +237,15 @@ jobs:
       - name: Download the exact immutable transaction bundle
         uses: actions/download-artifact@v4
         with:
-          name: mahoon-publish-proof-bundle-${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && needs.build-and-zero-percent.outputs.transaction_id || inputs.transaction_id }}
+          name: mahoon-publish-proof-bundle-${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH' || inputs.mode == 'AUTO_TICK') && needs.build-and-zero-percent.outputs.transaction_id || inputs.transaction_id }}
           path: ${{ runner.temp }}/proof-bundle
-          run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && github.run_id || inputs.source_run_id }}
+          run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH' || inputs.mode == 'AUTO_TICK') && github.run_id || inputs.source_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
       - name: Read bundle identity before checkout
         id: meta
         env:
-          REQUESTED_TRANSACTION_ID: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && needs.build-and-zero-percent.outputs.transaction_id || inputs.transaction_id }}
+          REQUESTED_TRANSACTION_ID: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH' || inputs.mode == 'AUTO_TICK') && needs.build-and-zero-percent.outputs.transaction_id || inputs.transaction_id }}
         run: |
           python - <<'PY'
           import json, os
@@ -293,7 +295,7 @@ jobs:
 
   promote-and-validate:
     needs: [build-and-zero-percent, remote-proof]
-    if: ${{ always() && (((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES')) && needs.build-and-zero-percent.result == 'success' && needs.remote-proof.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES')) }}
+    if: ${{ always() && ((((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES')) && needs.build-and-zero-percent.result == 'success' && needs.remote-proof.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -304,28 +306,28 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       MAHOON_WRANGLER: npx wrangler@4.83.0
-      MAHOON_PUBLISH_READY: ${{ github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && 'YES' || inputs.ready }}
+      MAHOON_PUBLISH_READY: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true' && 'YES' || inputs.ready }}
     steps:
       - name: Download the matching build proof bundle
         uses: actions/download-artifact@v4
         with:
-          name: mahoon-publish-proof-bundle-${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && needs.build-and-zero-percent.outputs.transaction_id || inputs.transaction_id }}
+          name: mahoon-publish-proof-bundle-${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH' || inputs.mode == 'AUTO_TICK') && needs.build-and-zero-percent.outputs.transaction_id || inputs.transaction_id }}
           path: ${{ runner.temp }}/proof-bundle
-          run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && github.run_id || inputs.source_run_id }}
+          run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH' || inputs.mode == 'AUTO_TICK') && github.run_id || inputs.source_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
       - name: Download the remote proof result
         uses: actions/download-artifact@v4
         with:
-          name: mahoon-remote-proof-result-${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && needs.remote-proof.outputs.transaction_id || inputs.transaction_id }}
+          name: mahoon-remote-proof-result-${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH' || inputs.mode == 'AUTO_TICK') && needs.remote-proof.outputs.transaction_id || inputs.transaction_id }}
           path: ${{ runner.temp }}/remote-proof
-          run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && github.run_id || inputs.source_proof_run_id }}
+          run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH' || inputs.mode == 'AUTO_TICK') && github.run_id || inputs.source_proof_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
       - name: Read transaction identity before checkout
         id: meta
         env:
-          REQUESTED_TRANSACTION_ID: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && needs.build-and-zero-percent.outputs.transaction_id || inputs.transaction_id }}
+          REQUESTED_TRANSACTION_ID: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH' || inputs.mode == 'AUTO_TICK') && needs.build-and-zero-percent.outputs.transaction_id || inputs.transaction_id }}
         run: |
           python - <<'PY'
           import json, os
@@ -387,7 +389,7 @@ jobs:
 
   persist-state:
     needs: promote-and-validate
-    if: ${{ always() && (((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES')) && needs.promote-and-validate.result == 'success' && needs.promote-and-validate.outputs.production_pass == 'true') }}
+    if: ${{ always() && (((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES')) && needs.promote-and-validate.result == 'success' && needs.promote-and-validate.outputs.production_pass == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -404,7 +406,7 @@ jobs:
         with:
           name: mahoon-publish-proof-bundle-${{ needs.promote-and-validate.outputs.transaction_id }}
           path: ${{ runner.temp }}/proof-bundle
-          run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH') && github.run_id || inputs.source_run_id }}
+          run-id: ${{ (github.event_name == 'schedule' || inputs.mode == 'PUBLISH' || inputs.mode == 'AUTO_TICK') && github.run_id || inputs.source_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
       - uses: actions/checkout@v4
@@ -428,7 +430,7 @@ jobs:
 
   scheduled-circuit-breaker:
     needs: [scheduled-policy-preflight, build-and-zero-percent, remote-proof, promote-and-validate, persist-state]
-    if: ${{ always() && github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' }}
+    if: ${{ always() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

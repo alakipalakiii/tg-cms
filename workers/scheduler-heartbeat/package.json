@@ -1,0 +1,8 @@
+{
+  "name": "mahoon-scheduler-heartbeat",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/heartbeat.test.mjs"
+  }
+}

@@ -46,6 +46,11 @@ def sanitize(message: str) -> str:
     return message.replace("CLOUDFLARE_API_TOKEN", "[REDACTED_SECRET]")[:500]
 
 
+def automation_source() -> str:
+    value = os.environ.get("MAHOON_AUTOMATION_SOURCE", "manual")
+    return value if value in {"github_schedule", "cloudflare_cron", "manual"} else "manual"
+
+
 def execution_source_identity() -> tuple[str, str]:
     execution_sha = os.environ.get("MAHOON_EXECUTION_SHA", "")
     if not execution_sha:
@@ -256,6 +261,7 @@ def main() -> int:
         "current_revision": current_revision,
         "changed_at": changed_at,
         "published_content_revision": published_revision,
+        "automation_source": automation_source(),
         "NO_CHANGE_DETECTED": current_revision == published_revision,
         "PASS": True
     }
@@ -268,6 +274,7 @@ def main() -> int:
         "mode": mode,
         "current_revision": current_revision,
         "published_content_revision": published_revision,
+        "automation_source": automation_source(),
         "unchanged": unchanged,
         "revision_request_count": 1,
         "state_present": True
@@ -277,7 +284,8 @@ def main() -> int:
             Path("runner-evidence").mkdir(parents=True, exist_ok=True)
             Path("runner-evidence/publish-transaction-summary.json").write_text(
                 json.dumps({"no_change": True, "source_revision": current_revision,
-                            "revision_requests": 1, "full_v2_exports": 0}, indent=2) + "\n",
+                            "revision_requests": 1, "full_v2_exports": 0,
+                            "automation_source": automation_source()}, indent=2) + "\n",
                 encoding="utf-8",
             )
         print(json.dumps({"mode": mode, "no_change_detected": True, "upload_performed": False,
@@ -463,6 +471,7 @@ def main() -> int:
                 "source_sha": source_sha,
                 "schedule_event_sha": schedule_event_sha or None,
                 "execution_main_sha": execution_main_sha,
+                "automation_source": automation_source(),
                 "source_revision": current_revision,
                 "revision_requests": 1,
                 "full_v2_exports": 1,
@@ -499,6 +508,7 @@ def main() -> int:
             json.dumps({"transaction_id": tx_id, "source_sha": source_sha,
                         "schedule_event_sha": schedule_event_sha or None,
                         "execution_main_sha": execution_main_sha,
+                "automation_source": automation_source(),
                         "candidate_version": version_id, "baseline_version": current_static_version,
                         "bundle_sha256": bundle["bundle_sha256"], "no_change": False},
                        ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
