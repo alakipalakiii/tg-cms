@@ -28,5 +28,16 @@ class AutoTickPolicyTests(unittest.TestCase):
         self.assertIn("cancel-in-progress: false", self.workflow)
 
 
+    def test_auto_tick_promotion_ready_wiring(self):
+        self.assertIn("needs: [scheduled-policy-preflight, build-and-zero-percent, remote-proof]", self.workflow)
+        self.assertIn("inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true' && 'YES' || inputs.ready", self.workflow)
+
+    def test_native_schedule_promotion_ready_wiring(self):
+        self.assertIn("github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')", self.workflow)
+        self.assertIn("needs.scheduled-policy-preflight.outputs.publish_allowed == 'true' && 'YES'", self.workflow)
+
+    def test_manual_resume_promotion_is_independent(self):
+        self.assertIn("always()", self.workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES'", self.workflow)
 if __name__ == "__main__":
     unittest.main()

@@ -294,7 +294,7 @@ jobs:
           retention-days: 90
 
   promote-and-validate:
-    needs: [build-and-zero-percent, remote-proof]
+    needs: [scheduled-policy-preflight, build-and-zero-percent, remote-proof]
     if: ${{ always() && (((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.build-and-zero-percent.result == 'success' && needs.remote-proof.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES' && needs.build-and-zero-percent.result == 'success' && needs.remote-proof.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
