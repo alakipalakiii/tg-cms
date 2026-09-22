@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 
 from tools.publisher.scheduled_circuit_breaker import (
-    CONTRACT, closed_state as close_state, failed_job, load_state, opened_state, preflight, should_open_breaker,
+    CONTRACT, PRETRANSACTION_RECOVERY_KIND, closed_state as close_state, failed_job, load_state,
+    opened_state, preflight, pretransaction_closed_state, should_open_breaker,
 )
 
 
@@ -102,6 +103,50 @@ class ScheduledCircuitBreakerTests(unittest.TestCase):
         self.assertNotIn("token", state)
         self.assertNotIn("authorization", state)
 
+
+    def test_pretransaction_recovery_requires_no_mutation_proof_and_records_audit(self):
+        state = closed_state()
+        state["state"] = "OPEN"
+        state["failed_run_id"] = "35737503414"
+        state["failed_job"] = "build-and-zero-percent"
+        recovered = pretransaction_closed_state(
+            state,
+            incident_run="35737503414",
+            failed_job="build-and-zero-percent",
+            transaction_created="NO",
+            candidate_created="NO",
+            upload_performed="NO",
+            promotion_performed="NO",
+            production_mutation="NO",
+            fix_sha="c5c067b3fbb5e562ea960a6c503b12b3c2c8ed9f",
+            safety_test_run_id="35746303814",
+            check_only_run_id="35746811763",
+            live_state_parity="PASS",
+            authorized=True,
+            updated_at="2026-09-22T15:30:00Z",
+        )
+        self.assertEqual("CLOSED", recovered["state"])
+        self.assertEqual(PRETRANSACTION_RECOVERY_KIND, recovered["recovery_kind"])
+        self.assertIsNone(recovered["failed_run_id"])
+        self.assertEqual("35746811763", recovered["check_only_run_id"])
+
+    def test_pretransaction_recovery_rejects_any_mutation_or_missing_authorization(self):
+        state = closed_state()
+        state["state"] = "OPEN"
+        state["failed_run_id"] = "35737503414"
+        state["failed_job"] = "build-and-zero-percent"
+        kwargs = dict(
+            incident_run="35737503414", failed_job="build-and-zero-percent",
+            transaction_created="NO", candidate_created="NO", upload_performed="NO",
+            promotion_performed="NO", production_mutation="NO",
+            fix_sha="c5c067b3fbb5e562ea960a6c503b12b3c2c8ed9f",
+            safety_test_run_id="35746303814", check_only_run_id="35746811763",
+            live_state_parity="PASS", authorized=True,
+        )
+        with self.assertRaises(ValueError):
+            pretransaction_closed_state(state, **{**kwargs, "upload_performed": "YES"})
+        with self.assertRaises(ValueError):
+            pretransaction_closed_state(state, **{**kwargs, "authorized": False})
 
 if __name__ == "__main__":
     unittest.main()
