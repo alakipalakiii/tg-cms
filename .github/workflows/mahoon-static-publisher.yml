@@ -295,7 +295,7 @@ jobs:
 
   promote-and-validate:
     needs: [build-and-zero-percent, remote-proof]
-    if: ${{ always() && ((((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES')) && needs.build-and-zero-percent.result == 'success' && needs.remote-proof.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES')) }}
+    if: ${{ always() && (((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.build-and-zero-percent.result == 'success' && needs.remote-proof.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES' && needs.build-and-zero-percent.result == 'success' && needs.remote-proof.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -389,7 +389,7 @@ jobs:
 
   persist-state:
     needs: promote-and-validate
-    if: ${{ always() && (((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES')) && needs.promote-and-validate.result == 'success' && needs.promote-and-validate.outputs.production_pass == 'true') }}
+    if: ${{ always() && (((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES')) && needs.promote-and-validate.result == 'success' && needs.promote-and-validate.outputs.production_pass == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
