@@ -19,6 +19,11 @@ PRETRANSACTION_RECOVERY_KIND = "PRETRANSACTION_TEST_FAILURE_RECOVERY_V1"
 PRETRANSACTION_AUDIT_KEYS = {
     "recovery_kind", "incident_run", "fix_sha", "safety_test_run_id", "check_only_run_id",
 }
+AUTO_TICK_PROMOTION_WIRING_RECOVERY_KIND = "AUTO_TICK_PROMOTION_WIRING_RECOVERY_V1"
+AUTO_TICK_PROMOTION_WIRING_AUDIT_KEYS = {
+    "recovery_kind", "incident_run", "transaction_id", "candidate_version", "fix_sha",
+    "promotion_resume_run_id", "production_pass",
+}
 RELEVANT_JOBS = (
     "build-and-zero-percent",
     "remote-proof",
@@ -31,7 +36,11 @@ def _valid_state(value: object) -> bool:
     keys = set(value) if isinstance(value, dict) else set()
     return (
         isinstance(value, dict)
-        and keys in (REQUIRED_KEYS, REQUIRED_KEYS | PRETRANSACTION_AUDIT_KEYS)
+        and keys in (
+            REQUIRED_KEYS,
+            REQUIRED_KEYS | PRETRANSACTION_AUDIT_KEYS,
+            REQUIRED_KEYS | AUTO_TICK_PROMOTION_WIRING_AUDIT_KEYS,
+        )
         and value.get("contract") == CONTRACT
         and value.get("state") in VALID_STATES
         and isinstance(value.get("updated_at"), str)
