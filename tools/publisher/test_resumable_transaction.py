@@ -168,6 +168,25 @@ class ResumableTransactionTests(unittest.TestCase):
         self.assertIn("path: ${{ runner.temp }}/remote-proof", workflow)
         self.assertIn("path: ${{ runner.temp }}/production-result", workflow)
 
+    def test_stale_schedule_event_uses_execution_main_sha(self):
+        event_sha = "a" * 40
+        execution_sha = "b" * 40
+        with patch.dict(os.environ, {"GITHUB_SHA": event_sha}, clear=False), \
+             patch.object(publisher_runner, "subprocess") as subprocess_mock:
+            subprocess_mock.run.return_value.stdout = execution_sha + "\n"
+            source_sha, observed_event_sha = publisher_runner.execution_source_identity()
+        self.assertEqual(execution_sha, source_sha)
+        self.assertEqual(event_sha, observed_event_sha)
+
+    def test_scheduled_workflow_uses_staggered_slots_and_latest_main(self):
+        workflow = Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8")
+        self.assertIn('cron: "17,47 * * * *"', workflow)
+        checkout_expr = "ref: " + chr(36) + "{{ github.event_name == 'schedule' && 'main' || github.ref }}"
+        self.assertEqual(2, workflow.count(checkout_expr))
+        self.assertIn("SCHEDULE_EVENT_SHA=$GITHUB_SHA", workflow)
+        self.assertIn("EXECUTION_MAIN_SHA=$execution_sha", workflow)
+        self.assertIn("MAHOON_EXECUTION_SHA=$execution_sha", workflow)
+
     def test_promotion_timeout_budgets_include_rollback_reserve(self):
         workflow = Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8")
         promotion_job = workflow.split("  promote-and-validate:", 1)[1].split("  persist-state:", 1)[0]

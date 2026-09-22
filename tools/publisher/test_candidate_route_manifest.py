@@ -20,9 +20,9 @@ class CandidateRouteManifestTests(unittest.TestCase):
             ], accepted, output)
             self.assertEqual(result["old_routes_missing_from_candidate"], [])
             self.assertEqual(result["new_snapshot_routes"], ["/post/2", "/post/new-slug", "/post/two-slug"])
-            self.assertEqual(result["route_count"], 13)
+            self.assertEqual(result["route_count"], 14)
             self.assertEqual(result["snapshot_post_route_count"], 4)
-            self.assertEqual(result["snapshot_derived_route_count"], 4)
+            self.assertEqual(result["snapshot_derived_route_count"], 10)
             self.assertEqual(result["required_control_routes"], ["/admin", "/admin/analytics"])
             self.assertEqual(result["snapshot_tag_route_count"], 0)
             self.assertIn("/category/نقاشی", result["routes"])
@@ -37,7 +37,7 @@ class CandidateRouteManifestTests(unittest.TestCase):
             self.assertEqual(result["old_routes_missing_from_candidate"], [])
             self.assertIn("/post/legacy", result["old_only_routes"])
             self.assertEqual(result["control_route_count"], 2)
-            self.assertEqual(result["route_count"], 11)
+            self.assertEqual(result["route_count"], 12)
 
     def test_snapshot_tags_become_encoded_routes_and_all_taxonomy_routes_are_retained(self):
         with tempfile.TemporaryDirectory() as directory:

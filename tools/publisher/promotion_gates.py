@@ -14,13 +14,15 @@ try:
     from .content_taxonomy import CATEGORY_DEFINITIONS, canonical_category
     from .media_bootstrap import signature_mime, source_identifiers
     from .public_listing_dedupe import dedupe_public_listing_posts
+    from .pagination_contract import PAGE_SIZE
 except ImportError:
     from content_taxonomy import CATEGORY_DEFINITIONS, canonical_category
     from media_bootstrap import signature_mime, source_identifiers
     from public_listing_dedupe import dedupe_public_listing_posts
+    from pagination_contract import PAGE_SIZE
 
 SITE = os.environ.get("MAHOON_SITE_URL", "https://mahoonartmagazine.ir").rstrip("/")
-PAGE_SIZE = 20
+
 POST_HREF = re.compile(r"^/post/[^?#]+/?$")
 
 
@@ -282,6 +284,8 @@ def listing_uniqueness(snapshot: dict, root: Path, manifest: dict) -> dict:
     overlaps = 0
     coverage_missing = 0
     checked_pages = 0
+    listing_samples: list[dict] = []
+    missing_pagination_routes: list[str] = []
     expected_ids = [int(post["id"]) for post in source]
     page_count = (len(expected_ids) + PAGE_SIZE - 1) // PAGE_SIZE
     groups: list[tuple[str, list[int]]] = []
@@ -291,6 +295,12 @@ def listing_uniqueness(snapshot: dict, root: Path, manifest: dict) -> dict:
         observed: list[int] = []
         if len(pages) != page_count:
             coverage_missing += abs(page_count - len(pages))
+            observed_numbers = {number for number, _route in pages}
+            missing_pagination_routes.extend(
+                f"{prefix}/page/{number}"
+                for number in range(2, page_count + 1)
+                if number not in observed_numbers
+            )
         for page_number, route in pages:
             ids, unknown = _route_ids(root, route, by_slug, by_id)
             checked_pages += 1
@@ -300,7 +310,17 @@ def listing_uniqueness(snapshot: dict, root: Path, manifest: dict) -> dict:
             seen.update(ids)
             observed.extend(ids)
             expected_chunk = expected_ids[(page_number - 1) * PAGE_SIZE:page_number * PAGE_SIZE]
-            coverage_missing += int(ids != expected_chunk)
+            if ids != expected_chunk:
+                coverage_missing += 1
+                if len(listing_samples) < 10:
+                    listing_samples.append({
+                        "route": route, "page_number": page_number,
+                        "expected_ids": expected_chunk, "actual_ids": ids,
+                        "missing_ids": sorted(set(expected_chunk) - set(ids)),
+                        "extra_ids": sorted(set(ids) - set(expected_chunk)),
+                        "expected_page_count": page_count,
+                        "observed_page_count": len(pages),
+                    })
         groups.append((prefix, observed))
     # Home has editorial category rails in addition to its latest list. The latest
     # ordering is measured separately from its dedicated m-list-row elements.
@@ -350,6 +370,9 @@ def listing_uniqueness(snapshot: dict, root: Path, manifest: dict) -> dict:
             "duplicate_canonical_cards": duplicate_pages + duplicate_search + related_duplicates,
             "pagination_overlap": overlaps + category_overlaps, "unrecognized_card_routes": unrecognized,
             "listing_page_parity_failures": coverage_missing,
+            "LISTING_PARITY_FAILURE_SAMPLES": listing_samples,
+            "CATEGORY_PARITY_FAILURE_SAMPLES": [],
+            "MISSING_EXPECTED_PAGINATION_ROUTES": sorted(set(missing_pagination_routes)),
             "PASS": not any((duplicate_pages, duplicate_search, related_duplicates, overlaps,
                               category_overlaps, unrecognized, coverage_missing))}
 
@@ -361,25 +384,49 @@ def category_parity(snapshot: dict, root: Path, manifest: dict) -> dict:
     by_id = {str(post["id"]): int(post["id"]) for post in _posts(snapshot) if str(post.get("id", "")).isdigit()}
     wrong = multi = missing = extra = 0
     membership_count = {}
+    category_samples: list[dict] = []
+    missing_pagination_routes: list[str] = []
     for label, _variants in CATEGORY_DEFINITIONS:
         expected = [int(post["id"]) for post in posts if canonical_category(post) == label]
-        pages = _pages_for_prefix(routes, "/category/" + label,
-                                  (len(expected) + PAGE_SIZE - 1) // PAGE_SIZE)
+        expected_page_count = (len(expected) + PAGE_SIZE - 1) // PAGE_SIZE
+        pages = _pages_for_prefix(routes, "/category/" + label, expected_page_count)
         observed: list[int] = []
-        if expected and len(pages) != (len(expected) + PAGE_SIZE - 1) // PAGE_SIZE:
+        if expected and len(pages) != expected_page_count:
             missing += 1
+        observed_numbers = {number for number, _route in pages}
+        missing_page_routes = [
+            f"/category/{label}/page/{number}"
+            for number in range(2, expected_page_count + 1)
+            if number not in observed_numbers
+        ]
+        missing_pagination_routes.extend(missing_page_routes)
         for _number, route in pages:
             ids, _ = _route_ids(root, route, by_slug, by_id)
             observed.extend(ids)
-        missing += len(set(expected) - set(observed))
-        extra += len(set(observed) - set(expected))
+        missing_post_ids = sorted(set(expected) - set(observed))
+        extra_post_ids = sorted(set(observed) - set(expected))
+        missing += len(missing_post_ids)
+        extra += len(extra_post_ids)
         wrong += sum(item not in set(expected) for item in observed)
+        if (missing_page_routes or missing_post_ids or extra_post_ids) and len(category_samples) < 10:
+            category_samples.append({
+                "category": label,
+                "expected_count": len(expected),
+                "expected_page_count": expected_page_count,
+                "observed_page_count": len(pages),
+                "missing_page_routes": missing_page_routes,
+                "missing_post_ids": missing_post_ids,
+                "extra_post_ids": extra_post_ids,
+            })
         for item in observed:
             membership_count[item] = membership_count.get(item, 0) + 1
     multi = sum(count > 1 for count in membership_count.values())
     expected_multi = sum(sum(canonical_category(post) == label for label, _ in CATEGORY_DEFINITIONS) > 1 for post in posts)
     return {"measured": True, "wrong_category_count": wrong, "multi_category_count": multi,
             "missing_category_membership": missing, "extra_category_membership": extra,
+            "LISTING_PARITY_FAILURE_SAMPLES": [],
+            "CATEGORY_PARITY_FAILURE_SAMPLES": category_samples,
+            "MISSING_EXPECTED_PAGINATION_ROUTES": sorted(set(missing_pagination_routes)),
             "PASS": not any((wrong, multi, missing, extra, expected_multi))}
 
 

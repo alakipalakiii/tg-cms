@@ -41,7 +41,7 @@ on:
         default: ""
         type: string
   schedule:
-    - cron: "17 * * * *"
+    - cron: "17,47 * * * *"
 
 permissions:
   contents: read
@@ -126,6 +126,8 @@ jobs:
       breaker_state: ${{ steps.policy.outputs.breaker_state }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - name: Validate scheduled publish policy before build
         id: policy
         run: |
@@ -142,6 +144,8 @@ jobs:
       MAHOON_PUBLIC_CONTENT_REVISION_API: https://mahoon-content-revision.morentoofficial.workers.dev/public/content-revision-v1
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'main' || github.ref }}
       - name: Read revision only; scheduled mode remains CHECK_ONLY
         run: python tools/m9/publisher_runner.py
 
@@ -162,6 +166,15 @@ jobs:
       MAHOON_PUBLIC_CONTENT_REVISION_API: https://mahoon-content-revision.morentoofficial.workers.dev/public/content-revision-v1
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'main' || github.ref }}
+      - name: Record scheduled event and execution source SHA
+        if: ${{ github.event_name == 'schedule' }}
+        run: |
+          echo "SCHEDULE_EVENT_SHA=$GITHUB_SHA"
+          execution_sha=$(git rev-parse HEAD)
+          echo "EXECUTION_MAIN_SHA=$execution_sha"
+          echo "MAHOON_EXECUTION_SHA=$execution_sha" >> "$GITHUB_ENV"
       - name: Require clean main for a controlled transaction
         run: test "$GITHUB_REF" = "refs/heads/main"
       - uses: actions/setup-node@v4

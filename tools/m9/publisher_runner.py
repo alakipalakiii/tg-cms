@@ -46,6 +46,15 @@ def sanitize(message: str) -> str:
     return message.replace("CLOUDFLARE_API_TOKEN", "[REDACTED_SECRET]")[:500]
 
 
+def execution_source_identity() -> tuple[str, str]:
+    execution_sha = os.environ.get("MAHOON_EXECUTION_SHA", "")
+    if not execution_sha:
+        execution_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], text=True,
+            capture_output=True, check=True,
+        ).stdout.strip()
+    return execution_sha, os.environ.get("GITHUB_SHA", "")
+
 def write_safe_error(stage: str, code: str, exc: Exception, candidate: str | None,
                      deployment_id: str | None, **details) -> dict:
     record = {"timestamp": now(), "failing_stage": stage, "failure_code": code,
@@ -443,10 +452,8 @@ def main() -> int:
     if mode == "BUILD_AND_ZERO_PERCENT":
         run_id = os.environ.get("GITHUB_RUN_ID", "")
         run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "")
-        source_sha = os.environ.get("GITHUB_SHA", "")
-        if not source_sha:
-            source_sha = subprocess.run(["git", "rev-parse", "HEAD"], text=True,
-                                        capture_output=True, check=True).stdout.strip()
+        source_sha, schedule_event_sha = execution_source_identity()
+        execution_main_sha = source_sha
         tx_id = transaction_id(current_revision, run_id, run_attempt)
         seal_payload = json.loads((sealed_root.parent / "artifact-seal.json").read_text(encoding="utf-8"))
         bundle = create_proof_bundle(
@@ -454,6 +461,8 @@ def main() -> int:
             transaction={
                 "transaction_id": tx_id,
                 "source_sha": source_sha,
+                "schedule_event_sha": schedule_event_sha or None,
+                "execution_main_sha": execution_main_sha,
                 "source_revision": current_revision,
                 "revision_requests": 1,
                 "full_v2_exports": 1,
@@ -488,6 +497,8 @@ def main() -> int:
         )
         Path("runner-evidence/publish-transaction-summary.json").write_text(
             json.dumps({"transaction_id": tx_id, "source_sha": source_sha,
+                        "schedule_event_sha": schedule_event_sha or None,
+                        "execution_main_sha": execution_main_sha,
                         "candidate_version": version_id, "baseline_version": current_static_version,
                         "bundle_sha256": bundle["bundle_sha256"], "no_change": False},
                        ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
