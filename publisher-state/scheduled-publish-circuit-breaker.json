@@ -1,14 +1,16 @@
 {
   "contract": "MAHOON_SCHEDULED_PUBLISH_CIRCUIT_BREAKER_V1",
-  "state": "OPEN",
-  "reason": "scheduled run 35748638768 ended promote-and-validate with failure/cancelled result",
-  "failed_run_id": "35748638768",
-  "failed_job": "promote-and-validate",
-  "head_sha": "e24a178af800bba453a9a98a57f966a00db4e3a4",
-  "updated_at": "2026-09-22T16:35:00.850497Z",
-  "recovery_kind": "PRETRANSACTION_TEST_FAILURE_RECOVERY_V1",
-  "incident_run": "35737503414",
-  "fix_sha": "c5c067b3fbb5e562ea960a6c503b12b3c2c8ed9f",
-  "safety_test_run_id": "35746303814",
-  "check_only_run_id": "35746811763"
+  "state": "CLOSED",
+  "reason": "AUTO_TICK_PROMOTION_WIRING_RECOVERY_V1 incident 35748638768 recovered after verified promotion",
+  "failed_run_id": null,
+  "failed_job": null,
+  "head_sha": "2333959aef4af2a0478f788356a61a53dd06ec41",
+  "updated_at": "2026-09-22T17:37:18.794637Z",
+  "recovery_kind": "AUTO_TICK_PROMOTION_WIRING_RECOVERY_V1",
+  "incident_run": "35748638768",
+  "transaction_id": "revision-61-run-35748638768-attempt-1",
+  "candidate_version": "71b023a1-68db-4c1e-93e6-8ece1b3562db",
+  "fix_sha": "2333959aef4af2a0478f788356a61a53dd06ec41",
+  "promotion_resume_run_id": "35757561290",
+  "production_pass": "PASS"
 }
