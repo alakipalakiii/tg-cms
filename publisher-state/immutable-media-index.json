@@ -3578,6 +3578,22 @@
       "fallback": false
     },
     {
+      "source_identifier": "AgACAgQAAyEFAASOdxB-AAIGTWqyZsfdWS6lIA80Xo-LMEHh3dcxAAKyEGsbE9aQUS4Twhmy17PdAQADAgADeQADPQQ",
+      "immutable_path": "/media/b9/b96eb6287c27aed1f3d1827d4fb5334a5a5cb0765a97fcf80bfd9761ea72415f.jpg",
+      "sha256": "b96eb6287c27aed1f3d1827d4fb5334a5a5cb0765a97fcf80bfd9761ea72415f",
+      "mime": "image/jpeg",
+      "media_type": "photo",
+      "fallback": false
+    },
+    {
+      "source_identifier": "AgACAgQAAyEFAASOdxB-AAIGTmqydqPoSY0__w_ZKs95_glOUmJ5AAK_EGsbE9aQUdIlkOLnHA9uAQADAgADeQADPQQ",
+      "immutable_path": "/media/41/418a4077b065630736f0b99d606ee70038d4f0b7741f7494a5e2a0236aaba4cf.jpg",
+      "sha256": "418a4077b065630736f0b99d606ee70038d4f0b7741f7494a5e2a0236aaba4cf",
+      "mime": "image/jpeg",
+      "media_type": "photo",
+      "fallback": false
+    },
+    {
       "source_identifier": "AgACAgQAAyEFAASOdxB-AAM9ak4FJLYBThiHNp5SUyIV7ul9I38AAiCuMRtQw9hRB95q1_b548UBAAMCAAN4AAM8BA",
       "immutable_path": "/media/7f/7f1967d8502c353763e6a3678fb5979419c235c60937ef77cbe889a0d1997564.jpg",
       "sha256": "7f1967d8502c353763e6a3678fb5979419c235c60937ef77cbe889a0d1997564",
