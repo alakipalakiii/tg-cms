@@ -1,9 +1,9 @@
 {
   "contract": "MAHOON_SCHEDULED_PUBLISH_CIRCUIT_BREAKER_V1",
-  "state": "CLOSED",
-  "reason": "closed after verified M10 recovery: production promotion, validation, persistence, and final parity PASS",
-  "failed_run_id": null,
-  "failed_job": null,
-  "head_sha": "f9dcb7c20d608be423999a2f8de34c5777645377",
-  "updated_at": "2026-09-22T10:28:54.900378Z"
+  "state": "OPEN",
+  "reason": "scheduled run 35737503414 ended build-and-zero-percent with failure/cancelled result",
+  "failed_run_id": "35737503414",
+  "failed_job": "build-and-zero-percent",
+  "head_sha": "cc08b636af157f987facf939bb353348d0e3d175",
+  "updated_at": "2026-09-22T14:03:07.176339Z"
 }
