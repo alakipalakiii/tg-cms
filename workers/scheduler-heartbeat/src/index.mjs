@@ -43,7 +43,7 @@ export async function tick(env, fetchImpl = fetch) {
   const dispatchPath = `/repos/${REPOSITORY}/actions/workflows/${WORKFLOW}/dispatches`;
   await requestGitHub(dispatchPath, env.GITHUB_ACTIONS_TOKEN, {
     method: "POST",
-    body: JSON.stringify({ ref: "main", inputs: { mode: "AUTO_TICK", automation_source: "cloudflare_cron" } }),
+    body: JSON.stringify({ ref: "main", inputs: { mode: "AUTO_TICK" } }),
     headers: { "content-type": "application/json" },
   }, fetchImpl);
   const result = { automation_source: "cloudflare_cron", outcome: "AUTO_TICK_DISPATCHED" };

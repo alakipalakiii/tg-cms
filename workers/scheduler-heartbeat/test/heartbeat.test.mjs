@@ -39,7 +39,7 @@ test("no active run dispatches exactly one AUTO_TICK to main", async () => {
   assert.match(calls[1].url, /dispatches$/);
   assert.deepEqual(JSON.parse(calls[1].init.body), {
     ref: "main",
-    inputs: { mode: "AUTO_TICK", automation_source: "cloudflare_cron" },
+    inputs: { mode: "AUTO_TICK" },
   });
 });
 
