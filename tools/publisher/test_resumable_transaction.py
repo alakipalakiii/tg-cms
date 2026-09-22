@@ -171,7 +171,7 @@ class ResumableTransactionTests(unittest.TestCase):
     def test_stale_schedule_event_uses_execution_main_sha(self):
         event_sha = "a" * 40
         execution_sha = "b" * 40
-        with patch.dict(os.environ, {"GITHUB_SHA": event_sha}, clear=False), \
+        with patch.dict(os.environ, {"GITHUB_SHA": event_sha, "MAHOON_EXECUTION_SHA": ""}, clear=False), \
              patch.object(publisher_runner, "subprocess") as subprocess_mock:
             subprocess_mock.run.return_value.stdout = execution_sha + "\n"
             source_sha, observed_event_sha = publisher_runner.execution_source_identity()
