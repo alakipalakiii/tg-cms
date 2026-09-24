@@ -3618,6 +3618,14 @@
       "fallback": false
     },
     {
+      "source_identifier": "AgACAgQAAyEFAASOdxB-AAIGVGq1M_aW5-Kx0HSAYLYlFZQ6rrjJAAI3D2sbJ7SpUVshJmt8yJFqAQADAgADeQADPQQ",
+      "immutable_path": "/media/ab/abfb1cb40fd13f567097734f3306c5d95def44034cb797667e58d5eaf4eb28df.jpg",
+      "sha256": "abfb1cb40fd13f567097734f3306c5d95def44034cb797667e58d5eaf4eb28df",
+      "mime": "image/jpeg",
+      "media_type": "photo",
+      "fallback": false
+    },
+    {
       "source_identifier": "AgACAgQAAyEFAASOdxB-AAM9ak4FJLYBThiHNp5SUyIV7ul9I38AAiCuMRtQw9hRB95q1_b548UBAAMCAAN4AAM8BA",
       "immutable_path": "/media/7f/7f1967d8502c353763e6a3678fb5979419c235c60937ef77cbe889a0d1997564.jpg",
       "sha256": "7f1967d8502c353763e6a3678fb5979419c235c60937ef77cbe889a0d1997564",
