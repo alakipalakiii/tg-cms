@@ -6587,6 +6587,18 @@
       "detected_mime": "video/mp4"
     },
     {
+      "source_identifier": "BAACAgEAAyEFAASOdxB-AAIGUmq0zf5yoGp9lU7TpUquUZZ7iIrtAAIGBwACPk6QRaRl3z_VhK4DPQQ",
+      "immutable_path": "/media/7c/7cd4ad6017323049cd3c6c45adea01c3bcf742c570dbc39b499bcd8ef5b1209f.mp4",
+      "sha256": "7cd4ad6017323049cd3c6c45adea01c3bcf742c570dbc39b499bcd8ef5b1209f",
+      "mime": "video/mp4",
+      "media_type": "video",
+      "fallback": false,
+      "post_ids": [
+        1853
+      ],
+      "detected_mime": "video/mp4"
+    },
+    {
       "source_identifier": "BAACAgQAAyEFAASOdxB-AAIC12pN91cDIgMvMcsJUdeHmHQMNk5zAALBCAACCzvlU1zKlxxf5ihfPAQ",
       "immutable_path": "/media/ee/eed929a7b41d978ed42713c3467d82e30d15b4e696626b6c85205ee6f1eb961f.mp4",
       "sha256": "eed929a7b41d978ed42713c3467d82e30d15b4e696626b6c85205ee6f1eb961f",
@@ -7462,9 +7474,9 @@
   ],
   "stats": {
     "mode": "REQUIRED_SET_ONLY",
-    "required_distinct": 572,
+    "required_distinct": 573,
     "published": 553,
-    "new": 0,
+    "new": 1,
     "fallback": 19,
     "unresolved": 0,
     "source_redownloads": 0,
