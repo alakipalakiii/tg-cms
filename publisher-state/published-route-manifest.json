@@ -4097,7 +4097,7 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4092,
+  "baseline_route_count": 4094,
   "snapshot_derived_route_count": 4005,
   "snapshot_post_route_count": 3570,
   "snapshot_tag_route_count": 344,
@@ -7782,9 +7782,6 @@
     "/search",
     "/sitemap.xml"
   ],
-  "new_snapshot_routes": [
-    "/post/1853",
-    "/post/یک-جلسه-تراپی-کوتاه-ولی-با-ارزش-1790234110568"
-  ],
+  "new_snapshot_routes": [],
   "new_control_routes": []
 }
