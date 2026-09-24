@@ -1,6 +1,6 @@
 {
   "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
-  "route_count": 4090,
+  "route_count": 4092,
   "routes": [
     "/",
     "/about",
@@ -1032,6 +1032,7 @@
     "/post/185",
     "/post/1850",
     "/post/1851",
+    "/post/1852",
     "/post/186",
     "/post/187",
     "/post/188",
@@ -2428,6 +2429,7 @@
     "/post/جای-ما-در-هر-مکان-خالیست-گویا-رفتهایم-1783461958401",
     "/post/جایی-در-زندگی-ام-1783488633659",
     "/post/جبران-میشود؛-1783462089661",
+    "/post/جبران-میشود؛-1790230013830",
     "/post/جبرواكی-هيچكس-هيولا-به-دنيا-نيومده-1783486153487",
     "/post/جدا-از-شروع-كردن،-1783489421227",
     "/post/جدایی-تاریک-است-و-گس-1783494585586",
@@ -4093,9 +4095,9 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4088,
-  "snapshot_derived_route_count": 4001,
-  "snapshot_post_route_count": 3566,
+  "baseline_route_count": 4090,
+  "snapshot_derived_route_count": 4003,
+  "snapshot_post_route_count": 3568,
   "snapshot_tag_route_count": 344,
   "snapshot_pagination_route_count": 91,
   "required_category_routes": [
@@ -5051,6 +5053,7 @@
     "/post/185",
     "/post/1850",
     "/post/1851",
+    "/post/1852",
     "/post/186",
     "/post/187",
     "/post/188",
@@ -6447,6 +6450,7 @@
     "/post/جای-ما-در-هر-مکان-خالیست-گویا-رفتهایم-1783461958401",
     "/post/جایی-در-زندگی-ام-1783488633659",
     "/post/جبران-میشود؛-1783462089661",
+    "/post/جبران-میشود؛-1790230013830",
     "/post/جبرواكی-هيچكس-هيولا-به-دنيا-نيومده-1783486153487",
     "/post/جدا-از-شروع-كردن،-1783489421227",
     "/post/جدایی-تاریک-است-و-گس-1783494585586",
@@ -7775,8 +7779,8 @@
     "/sitemap.xml"
   ],
   "new_snapshot_routes": [
-    "/post/1851",
-    "/post/آهنگ-جدید-هزار-امید-آرمان-گرشاسبی-1790114035017"
+    "/post/1852",
+    "/post/جبران-میشود؛-1790230013830"
   ],
   "new_control_routes": []
 }

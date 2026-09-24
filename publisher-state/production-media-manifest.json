@@ -7463,8 +7463,8 @@
   "stats": {
     "mode": "REQUIRED_SET_ONLY",
     "required_distinct": 572,
-    "published": 551,
-    "new": 2,
+    "published": 553,
+    "new": 0,
     "fallback": 19,
     "unresolved": 0,
     "source_redownloads": 0,
