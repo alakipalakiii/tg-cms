@@ -1,6 +1,6 @@
 {
   "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
-  "route_count": 4106,
+  "route_count": 4109,
   "routes": [
     "/",
     "/about",
@@ -1041,6 +1041,7 @@
     "/post/1858",
     "/post/1859",
     "/post/186",
+    "/post/1860",
     "/post/187",
     "/post/188",
     "/post/189",
@@ -2116,6 +2117,7 @@
     "/post/برگرد-و-گوش-کن-1783498385587",
     "/post/بزرگ-شدن،-1783422242248",
     "/post/بزرگترين-افتخار-ما-1783494135393",
+    "/post/بزرگترین-حماقتِ-انسان-در-زندگی،-1790531871252",
     "/post/بزرگترین-دشمن-آگاهی-جهل-نیست-1783494077429",
     "/post/بزرگترین-نبوغ-اینه-که-1783488555299",
     "/post/بزرگسالی-1785314032938",
@@ -3920,6 +3922,7 @@
     "/tag/%D8%B2%D9%88%DB%8C%D8%A7_%D9%BE%DB%8C%D8%B1%D8%B2%D8%A7%D8%AF",
     "/tag/%D8%B3%D8%A7%D9%84_%D8%A8%D9%84%D9%88%D8%A7",
     "/tag/%D8%B3%D8%A7%D9%85%D8%B1%D8%B3%D8%AA%E2%80%8C%D9%85%D9%88%D8%A2%D9%85",
+    "/tag/%D8%B3%D8%A7%D9%85%D9%88%D8%A6%D9%84_%D8%A8%DA%A9%D8%AA",
     "/tag/%D8%B3%D8%A8%DA%A9%DB%8C_%D8%AA%D8%AD%D9%85%D9%84_%D9%86%D8%A7%D9%BE%D8%B0%DB%8C%D8%B1_%D9%87%D8%B3%D8%AA%DB%8C",
     "/tag/%D8%B3%D8%B1%D9%88%D8%B4_%D8%A7%D9%85%DB%8C%D8%B1%D8%A7%D9%86",
     "/tag/%D8%B3%D8%B9%DB%8C%D8%AF_%D8%B9%D8%A8%D8%AF%D8%A7%D9%84%D9%87%DB%8C",
@@ -4109,10 +4112,10 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4104,
-  "snapshot_derived_route_count": 4018,
-  "snapshot_post_route_count": 3582,
-  "snapshot_tag_route_count": 344,
+  "baseline_route_count": 4106,
+  "snapshot_derived_route_count": 4021,
+  "snapshot_post_route_count": 3584,
+  "snapshot_tag_route_count": 345,
   "snapshot_pagination_route_count": 92,
   "required_category_routes": [
     "/category/دیالوگ ها",
@@ -5076,6 +5079,7 @@
     "/post/1858",
     "/post/1859",
     "/post/186",
+    "/post/1860",
     "/post/187",
     "/post/188",
     "/post/189",
@@ -6151,6 +6155,7 @@
     "/post/برگرد-و-گوش-کن-1783498385587",
     "/post/بزرگ-شدن،-1783422242248",
     "/post/بزرگترين-افتخار-ما-1783494135393",
+    "/post/بزرگترین-حماقتِ-انسان-در-زندگی،-1790531871252",
     "/post/بزرگترین-دشمن-آگاهی-جهل-نیست-1783494077429",
     "/post/بزرگترین-نبوغ-اینه-که-1783488555299",
     "/post/بزرگسالی-1785314032938",
@@ -7713,7 +7718,9 @@
     "/post/۷-تکنیک-ژاپنی-برای-مقابله-با-تنبلی-1783486077683"
   ],
   "new_snapshot_routes_missing_from_candidate": [],
-  "new_snapshot_tag_routes": [],
+  "new_snapshot_tag_routes": [
+    "/tag/%D8%B3%D8%A7%D9%85%D9%88%D8%A6%D9%84_%D8%A8%DA%A9%D8%AA"
+  ],
   "new_snapshot_tag_routes_missing_from_candidate": [],
   "new_snapshot_pagination_routes": [],
   "new_snapshot_pagination_routes_missing_from_candidate": [],
@@ -7806,8 +7813,8 @@
     "/sitemap.xml"
   ],
   "new_snapshot_routes": [
-    "/post/1859",
-    "/post/شکست،-شرف-داره-به-تسلیم-شدن-1790527473926"
+    "/post/1860",
+    "/post/بزرگترین-حماقتِ-انسان-در-زندگی،-1790531871252"
   ],
   "new_control_routes": []
 }
