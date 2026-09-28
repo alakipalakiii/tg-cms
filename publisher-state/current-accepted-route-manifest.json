@@ -1,6 +1,6 @@
 {
   "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
-  "route_count": 4112,
+  "route_count": 4114,
   "routes": [
     "/",
     "/about",
@@ -1043,6 +1043,7 @@
     "/post/186",
     "/post/1860",
     "/post/1861",
+    "/post/1862",
     "/post/187",
     "/post/188",
     "/post/189",
@@ -2453,6 +2454,7 @@
     "/post/حالا-به-وضوح-میبینم،-1783463919339",
     "/post/حالم-خوب-است-1784031549351",
     "/post/حالِ-من-همچو-درختیست-1783488112552",
+    "/post/حتی-اگر-برای-مردم-دراز-بکشید-1790607891687",
     "/post/حتی-فکرشم-نکن-در-مورد-من-قضاوت-کنی-1783464469846",
     "/post/حرکت-کنید-دَرها-باز-میشوند-1783461219565",
     "/post/حس-میکنم-توی-امواج-گیر-افتادم-1783488123605",
@@ -4115,9 +4117,9 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4109,
-  "snapshot_derived_route_count": 4024,
-  "snapshot_post_route_count": 3586,
+  "baseline_route_count": 4112,
+  "snapshot_derived_route_count": 4026,
+  "snapshot_post_route_count": 3588,
   "snapshot_tag_route_count": 346,
   "snapshot_pagination_route_count": 92,
   "required_category_routes": [
@@ -5084,6 +5086,7 @@
     "/post/186",
     "/post/1860",
     "/post/1861",
+    "/post/1862",
     "/post/187",
     "/post/188",
     "/post/189",
@@ -6494,6 +6497,7 @@
     "/post/حالا-به-وضوح-میبینم،-1783463919339",
     "/post/حالم-خوب-است-1784031549351",
     "/post/حالِ-من-همچو-درختیست-1783488112552",
+    "/post/حتی-اگر-برای-مردم-دراز-بکشید-1790607891687",
     "/post/حتی-فکرشم-نکن-در-مورد-من-قضاوت-کنی-1783464469846",
     "/post/حرکت-کنید-دَرها-باز-میشوند-1783461219565",
     "/post/حس-میکنم-توی-امواج-گیر-افتادم-1783488123605",
@@ -7723,9 +7727,7 @@
     "/post/۷-تکنیک-ژاپنی-برای-مقابله-با-تنبلی-1783486077683"
   ],
   "new_snapshot_routes_missing_from_candidate": [],
-  "new_snapshot_tag_routes": [
-    "/tag/%D9%87%D9%85%D8%A7_%DA%A9%D8%B4%D8%AA%DA%AF%D8%B1"
-  ],
+  "new_snapshot_tag_routes": [],
   "new_snapshot_tag_routes_missing_from_candidate": [],
   "new_snapshot_pagination_routes": [],
   "new_snapshot_pagination_routes_missing_from_candidate": [],
@@ -7818,8 +7820,8 @@
     "/sitemap.xml"
   ],
   "new_snapshot_routes": [
-    "/post/1861",
-    "/post/تو-همان-عطر-گل-یاس-نسیم-سحری-1790600239746"
+    "/post/1862",
+    "/post/حتی-اگر-برای-مردم-دراز-بکشید-1790607891687"
   ],
   "new_control_routes": []
 }
