@@ -1,6 +1,6 @@
 {
   "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
-  "route_count": 4109,
+  "route_count": 4112,
   "routes": [
     "/",
     "/about",
@@ -1042,6 +1042,7 @@
     "/post/1859",
     "/post/186",
     "/post/1860",
+    "/post/1861",
     "/post/187",
     "/post/188",
     "/post/189",
@@ -2425,6 +2426,7 @@
     "/post/تو-نه-دلداری-هستی-1783461850195",
     "/post/تو-نیامدی،-ولی-غیبتت-بیشتر-از-حضور-آدمهای-بسیاری-در-زندگیام-ماند-1783494067393",
     "/post/تو-همان-صبحِ-عزيزی-و-دلیلِ-نفسی-1783487810545",
+    "/post/تو-همان-عطر-گل-یاس-نسیم-سحری-1790600239746",
     "/post/تو-همون-چیزی-هستی-که-انجامش-میدی-1788857315850",
     "/post/تو-هميشه-در-نور-هم،-1783494777222",
     "/post/تو-هنوز-خیلی-جوونی-1783484984677",
@@ -4040,6 +4042,7 @@
     "/tag/%D9%87%D8%A7%DB%8C%D9%86%D8%B1%DB%8C%D8%B4_%D8%A8%D9%84",
     "/tag/%D9%87%D8%B1%D9%85%D8%A7%D9%86%E2%80%8C%D9%87%D8%B1%D8%B3%D9%87",
     "/tag/%D9%87%D8%B1%D9%85%D8%A7%D9%86_%D9%87%D8%B3%D9%87",
+    "/tag/%D9%87%D9%85%D8%A7_%DA%A9%D8%B4%D8%AA%DA%AF%D8%B1",
     "/tag/%D9%87%D9%85%D9%87%E2%80%8C%D9%86%D8%A7%D9%85%D9%87%D8%A7",
     "/tag/%D9%87%D9%86%D8%B1_%D8%B9%D8%B4%D9%82_%D9%88%D8%B1%D8%B2%DB%8C%D8%AF%D9%86",
     "/tag/%D9%87%D9%86%D9%88%D8%B2_%D8%AF%D8%B1_%D8%B3%D9%81%D8%B1%D9%85",
@@ -4112,10 +4115,10 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4106,
-  "snapshot_derived_route_count": 4021,
-  "snapshot_post_route_count": 3584,
-  "snapshot_tag_route_count": 345,
+  "baseline_route_count": 4109,
+  "snapshot_derived_route_count": 4024,
+  "snapshot_post_route_count": 3586,
+  "snapshot_tag_route_count": 346,
   "snapshot_pagination_route_count": 92,
   "required_category_routes": [
     "/category/دیالوگ ها",
@@ -5080,6 +5083,7 @@
     "/post/1859",
     "/post/186",
     "/post/1860",
+    "/post/1861",
     "/post/187",
     "/post/188",
     "/post/189",
@@ -6463,6 +6467,7 @@
     "/post/تو-نه-دلداری-هستی-1783461850195",
     "/post/تو-نیامدی،-ولی-غیبتت-بیشتر-از-حضور-آدمهای-بسیاری-در-زندگیام-ماند-1783494067393",
     "/post/تو-همان-صبحِ-عزيزی-و-دلیلِ-نفسی-1783487810545",
+    "/post/تو-همان-عطر-گل-یاس-نسیم-سحری-1790600239746",
     "/post/تو-همون-چیزی-هستی-که-انجامش-میدی-1788857315850",
     "/post/تو-هميشه-در-نور-هم،-1783494777222",
     "/post/تو-هنوز-خیلی-جوونی-1783484984677",
@@ -7719,7 +7724,7 @@
   ],
   "new_snapshot_routes_missing_from_candidate": [],
   "new_snapshot_tag_routes": [
-    "/tag/%D8%B3%D8%A7%D9%85%D9%88%D8%A6%D9%84_%D8%A8%DA%A9%D8%AA"
+    "/tag/%D9%87%D9%85%D8%A7_%DA%A9%D8%B4%D8%AA%DA%AF%D8%B1"
   ],
   "new_snapshot_tag_routes_missing_from_candidate": [],
   "new_snapshot_pagination_routes": [],
@@ -7813,8 +7818,8 @@
     "/sitemap.xml"
   ],
   "new_snapshot_routes": [
-    "/post/1860",
-    "/post/بزرگترین-حماقتِ-انسان-در-زندگی،-1790531871252"
+    "/post/1861",
+    "/post/تو-همان-عطر-گل-یاس-نسیم-سحری-1790600239746"
   ],
   "new_control_routes": []
 }
