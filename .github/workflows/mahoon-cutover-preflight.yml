@@ -1,0 +1,129 @@
+name: MAHOON cutover credential preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  read-token-preflight:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
+      CF_ACCOUNT_ID: 773d2dc31655b158d088296a14af5834
+      CF_WORKER_NAME: mahoon-art-magazine
+      CF_EXPECTED_HOSTNAME: mahoonartmagazine.ir
+    steps:
+      - name: Verify read credential and production resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import urlencode
+          from urllib.request import Request, urlopen
+
+          api = "https://api.cloudflare.com/client/v4"
+          account = os.environ["CF_ACCOUNT_ID"]
+          worker = os.environ["CF_WORKER_NAME"]
+          hostname = os.environ["CF_EXPECTED_HOSTNAME"]
+          token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+          if not token:
+              raise SystemExit("read-token credential is missing")
+
+          def get(label, path):
+              request = Request(
+                  api + path,
+                  headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
+                  method="GET",
+              )
+              try:
+                  with urlopen(request, timeout=30) as response:
+                      payload = json.load(response)
+              except HTTPError as error:
+                  raise SystemExit(f"{label}: GET failed with HTTP {error.code}") from None
+              except (URLError, TimeoutError, OSError):
+                  raise SystemExit(f"{label}: GET request failed") from None
+              if not isinstance(payload, dict) or payload.get("success") is not True:
+                  raise SystemExit(f"{label}: Cloudflare did not report success")
+              print(f"{label}: GET PASS")
+              return payload.get("result")
+
+          scripts = get("workers-scripts", f"/accounts/{account}/workers/scripts")
+          if not isinstance(scripts, list) or not any(
+              isinstance(item, dict) and item.get("id") == worker for item in scripts
+          ):
+              raise SystemExit("expected Worker script was not found")
+
+          versions = get(
+              "worker-versions",
+              f"/accounts/{account}/workers/scripts/{worker}/versions?per_page=1",
+          )
+          if not isinstance(versions, dict) or not isinstance(versions.get("result"), list) or not versions["result"]:
+              raise SystemExit("Worker versions were not returned")
+
+          deployments = get(
+              "worker-deployments",
+              f"/accounts/{account}/workers/scripts/{worker}/deployments?per_page=1",
+          )
+          if not isinstance(deployments, dict) or not isinstance(deployments.get("deployments"), list) or not deployments["deployments"]:
+              raise SystemExit("Worker deployments were not returned")
+
+          query = urlencode({"hostname": hostname, "environment": "production"})
+          domains = get("production-worker-domain", f"/accounts/{account}/workers/domains?{query}")
+          if not isinstance(domains, list) or not any(
+              isinstance(item, dict)
+              and item.get("hostname") == hostname
+              and item.get("service") == worker
+              and item.get("environment") == "production"
+              for item in domains
+          ):
+              raise SystemExit("expected production Worker domain mapping was not found")
+          PY
+
+  mutation-token-safe-auth:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Verify mutation credential with a read-only request
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+
+          token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+          if not token:
+              raise SystemExit("mutation-token credential is missing")
+          request = Request(
+              "https://api.cloudflare.com/client/v4/user/tokens/verify",
+              headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
+              method="GET",
+          )
+          try:
+              with urlopen(request, timeout=30) as response:
+                  payload = json.load(response)
+          except HTTPError as error:
+              raise SystemExit(f"mutation-token verification GET failed with HTTP {error.code}") from None
+          except (URLError, TimeoutError, OSError):
+              raise SystemExit("mutation-token verification GET request failed") from None
+          if (
+              not isinstance(payload, dict)
+              or payload.get("success") is not True
+              or not isinstance(payload.get("result"), dict)
+              or payload["result"].get("status") != "active"
+          ):
+              raise SystemExit("mutation token did not verify as active")
+          print("mutation-token-safe-auth: GET PASS")
+          PY
