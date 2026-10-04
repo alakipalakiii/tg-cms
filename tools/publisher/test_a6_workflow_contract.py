@@ -28,6 +28,8 @@ class A6WorkflowContractTests(unittest.TestCase):
         self.assertIn("github.sha", self.source)
         self.assertIn("ref: main", self.source)
         self.assertIn("path: state", self.source)
+        self.assertIn("--published-state state/publisher-state/production-content-fingerprint.json", self.source)
+        self.assertNotIn("--published-state state/publisher-state/published-static-state.json", self.source)
 
     def test_authoritative_cli_boundaries_are_present_in_order(self):
         for name in ("journal-bootstrap", "revision-resolve", "admission", "build-validate",

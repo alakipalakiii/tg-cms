@@ -482,7 +482,7 @@ jobs:
         with: { ref: main, path: state }
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
-      - run: python code/tools/publisher/workflow_stage_cli.py resolve-revision --published-state state/publisher-state/published-static-state.json --output revision-resolution.json
+      - run: python code/tools/publisher/workflow_stage_cli.py resolve-revision --published-state state/publisher-state/production-content-fingerprint.json --output revision-resolution.json
       - uses: actions/upload-artifact@v4
         with:
           name: a6-revision-${{ github.run_id }}
