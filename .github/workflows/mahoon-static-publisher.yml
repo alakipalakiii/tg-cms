@@ -14,11 +14,6 @@ on:
         required: false
         default: ""
         type: string
-      auth_only:
-        description: "Run only the CI Wrangler authentication probe"
-        required: false
-        default: false
-        type: boolean
       ready:
         description: "Explicitly authorize the controlled production promotion"
         required: false
@@ -52,17 +47,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ci-auth-probe:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'CHECK_ONLY' && inputs.auth_only == true }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
-    steps:
-      - name: CI Wrangler authentication proof
-        run: npx wrangler@4.83.0 whoami
-
   content-diagnostic:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'CONTENT_DIAGNOSTIC' }}
     runs-on: ubuntu-latest
@@ -135,7 +119,7 @@ jobs:
           echo "SCHEDULED_PUBLISH_POLICY=VARIABLE_AND_CIRCUIT_BREAKER"
   check-only:
     needs: scheduled-policy-preflight
-    if: ${{ always() && ((github.event_name == 'schedule' && (vars.PUBLISHER_MODE_SCHEDULED != 'PUBLISH' || needs.scheduled-policy-preflight.outputs.publish_allowed != 'true')) || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK' && (vars.PUBLISHER_MODE_SCHEDULED != 'PUBLISH' || needs.scheduled-policy-preflight.outputs.publish_allowed != 'true')) || (github.event_name == 'workflow_dispatch' && inputs.mode == 'CHECK_ONLY' && inputs.auth_only != true)) }}
+    if: ${{ always() && ((github.event_name == 'schedule' && (vars.PUBLISHER_MODE_SCHEDULED != 'PUBLISH' || needs.scheduled-policy-preflight.outputs.publish_allowed != 'true')) || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK' && (vars.PUBLISHER_MODE_SCHEDULED != 'PUBLISH' || needs.scheduled-policy-preflight.outputs.publish_allowed != 'true')) || (github.event_name == 'workflow_dispatch' && inputs.mode == 'CHECK_ONLY')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -152,7 +136,7 @@ jobs:
 
   build-and-zero-percent:
     needs: scheduled-policy-preflight
-    if: ${{ always() && (((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true') || (github.event_name == 'workflow_dispatch' && ((inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || inputs.mode == 'BUILD_AND_ZERO_PERCENT'))) }}
+    if: false # A6 replaces the combined mutating runner with separated stages below.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     outputs:
@@ -223,7 +207,7 @@ jobs:
 
   remote-proof:
     needs: build-and-zero-percent
-    if: ${{ always() && (((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.mode == 'PUBLISH' || inputs.mode == 'AUTO_TICK'))) && needs.build-and-zero-percent.result == 'success' && needs.build-and-zero-percent.outputs.transaction_id != '') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'REMOTE_PROOF')) }}
+    if: false # Legacy proof artifacts are no longer current authority.
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -295,7 +279,7 @@ jobs:
 
   promote-and-validate:
     needs: [scheduled-policy-preflight, build-and-zero-percent, remote-proof]
-    if: ${{ always() && (((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.build-and-zero-percent.result == 'success' && needs.remote-proof.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES' && needs.build-and-zero-percent.result == 'success' && needs.remote-proof.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES')) }}
+    if: false # Legacy combined promotion path is disabled by A6.
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -389,7 +373,7 @@ jobs:
 
   persist-state:
     needs: promote-and-validate
-    if: ${{ always() && (((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES')) && needs.promote-and-validate.result == 'success' && needs.promote-and-validate.outputs.production_pass == 'true' }}
+    if: false # Replaced by accepted final-persistence-execute boundary.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -430,7 +414,7 @@ jobs:
 
   scheduled-circuit-breaker:
     needs: [scheduled-policy-preflight, build-and-zero-percent, remote-proof, promote-and-validate, persist-state]
-    if: ${{ always() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' }}
+    if: false # Legacy job outcomes do not describe the A6 stage graph.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -471,3 +455,1301 @@ jobs:
           git add publisher-state/scheduled-publish-circuit-breaker.json
           git diff --cached --quiet || git commit -m "chore: open scheduled publisher circuit breaker"
           git push origin HEAD:main
+
+  # A6 source-pinned, artifact-carried transaction stages.
+  journal-bootstrap:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Bootstrap durable journal
+        run: python code/tools/publisher/workflow_stage_cli.py bootstrap-journal --repository state --worker mahoon-art-magazine --remote origin --branch main
+
+  revision-resolve:
+    needs: journal-bootstrap
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python code/tools/publisher/workflow_stage_cli.py resolve-revision --published-state state/publisher-state/published-static-state.json --output revision-resolution.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a6-revision-${{ github.run_id }}
+          path: revision-resolution.json
+          if-no-files-found: error
+
+  admission:
+    needs: [scheduled-policy-preflight, revision-resolve]
+    if: ${{ always() && ((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true')) }}
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    outputs:
+      decision: ${{ steps.admit.outputs.decision }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-revision-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: admit
+        run: |
+          mkdir -p runner-evidence/a6
+          python code/tools/publisher/workflow_stage_cli.py admit --revision handoff/revision-resolution.json --repository state --source '${{ github.event_name }}' --run-id '${{ github.run_id }}' --trigger-attempt '${{ github.run_attempt }}' --output runner-evidence/a6/admission.json | tee admission-status.json
+          python -c "import json,os; d=json.load(open('admission-status.json')); open(os.environ['GITHUB_OUTPUT'],'a').write('decision='+d['status']+'\n')"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a6-admission-${{ github.run_id }}
+          path: runner-evidence/a6/admission.json
+          if-no-files-found: error
+
+  build-validate:
+    needs: admission
+    if: ${{ needs.admission.outputs.decision == 'ADMITTED' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-revision-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --prefix code/website/dreary-disk
+      - name: Build and validate without Cloudflare credentials
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          PUBLISHER_MODE: BUILD_VALIDATE
+          MAHOON_REVISION_RESOLUTION_ARTIFACT: ../handoff/revision-resolution.json
+          MAHOON_ADMISSION_RECEIPT_ARTIFACT: ../handoff/admission.json
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: cd code && python tools/m9/publisher_runner.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a6-build-${{ github.run_id }}
+          path: |
+            code/runner-evidence/publisher-sealed/
+            code/runner-evidence/v1-build-bundle.json
+            code/runner-evidence/current-v2-snapshot.json
+            code/runner-evidence/prepromotion-local-gates.json
+            code/runner-build/production-media-manifest.json
+            code/runner-build/published-route-manifest.json
+          if-no-files-found: error
+
+  build-ready-write:
+    needs: build-validate
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python code/tools/publisher/workflow_stage_cli.py record-build-ready --build-bundle handoff/runner-evidence/v1-build-bundle.json --admission handoff/admission.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main
+
+  # Mutation operations and their journal writes remain distinct credential boundaries.
+  upload-intent-write:
+    needs: build-ready-write
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Seal and durably record upload intent
+        run: |
+          python code/tools/publisher/workflow_stage_cli.py create-mutation-intent --operation upload_version --build-bundle handoff/runner-evidence/v1-build-bundle.json --prerequisite handoff/admission.json --journal state/publisher-state/production-transaction-journal.json --output upload-intent.json
+          python code/tools/publisher/workflow_stage_cli.py record-intent --intent upload-intent.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main --reference handoff/runner-evidence/v1-build-bundle.json --reference handoff/admission.json
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-upload-intent-${{ github.run_id }}', path: upload-intent.json, if-no-files-found: error }
+
+  cloudflare-upload-operation:
+    needs: upload-intent-write
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Execute the exact recorded upload operation
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          MAHOON_WRANGLER: npx wrangler@4.83.0
+          CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+        run: >-
+          python code/tools/publisher/workflow_stage_cli.py execute-operation
+          --intent handoff/upload-intent.json
+          --build-bundle handoff/runner-evidence/v1-build-bundle.json
+          --prerequisite handoff/admission.json
+          --journal state/publisher-state/production-transaction-journal.json
+          --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site"
+          --config code/website/dreary-disk/wrangler.jsonc --backend wrangler --output upload-result.json
+          --reference handoff/runner-evidence/v1-build-bundle.json --reference handoff/admission.json
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-upload-result-${{ github.run_id }}', path: upload-result.json, if-no-files-found: error }
+
+  upload-result-write:
+    needs: cloudflare-upload-operation
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    outputs:
+      result_state: ${{ steps.record.outputs.result_state }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: record
+        run: |
+          python code/tools/publisher/workflow_stage_cli.py record-result --intent handoff/upload-intent.json --result handoff/upload-result.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main --reference handoff/runner-evidence/v1-build-bundle.json --reference handoff/admission.json | tee record.json
+          python -c "import json,os; open(os.environ['GITHUB_OUTPUT'],'a').write('result_state='+json.load(open('record.json'))['status']+'\n')"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-upload-direct-result-${{ github.run_id }}', path: handoff/upload-result.json, if-no-files-found: error }
+
+  upload-recovery-readback-observe:
+    needs: upload-result-write
+    if: ${{ always() && needs.upload-result-write.outputs.result_state == 'UNKNOWN' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python code/tools/publisher/workflow_stage_cli.py proof-recovery recovery-readback-observe --intent handoff/upload-intent.json --result handoff/upload-result.json --reference handoff/admission.json --output upload-readback.json
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-upload-readback-${{ github.run_id }}', path: upload-readback.json, if-no-files-found: error }
+
+  upload-recovery-decision:
+    needs: upload-recovery-readback-observe
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    outputs:
+      decision: ${{ steps.decision.outputs.decision }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-readback-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: decision
+        run: |
+          python code/tools/publisher/workflow_stage_cli.py proof-recovery recovery-decision --intent handoff/upload-intent.json --result handoff/upload-result.json --readback handoff/upload-readback.json --journal state/publisher-state/production-transaction-journal.json --reference handoff/admission.json --output upload-recovery-decision.json | tee decision-status.json
+          python -c "import json,os; open(os.environ['GITHUB_OUTPUT'],'a').write('decision='+json.load(open('decision-status.json'))['status']+'\n')"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-upload-decision-${{ github.run_id }}', path: upload-recovery-decision.json, if-no-files-found: error }
+
+  upload-reconcile-recovery-decision:
+    needs: upload-recovery-decision
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    outputs:
+      reconciliation: ${{ steps.reconcile.outputs.reconciliation }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-decision-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: reconcile
+        run: |
+          python code/tools/publisher/workflow_stage_cli.py reconcile-recovery-decision --decision handoff/upload-recovery-decision.json --repository state --branch main | tee reconcile-status.json
+          python -c "import json,os; open(os.environ['GITHUB_OUTPUT'],'a').write('reconciliation='+json.load(open('reconcile-status.json'))['status']+'\n')"
+
+  upload-create-recovered-result:
+    needs: [upload-recovery-decision, upload-reconcile-recovery-decision]
+    if: ${{ always() && needs.upload-recovery-decision.outputs.decision == 'RECONCILED_APPLIED' && needs.upload-reconcile-recovery-decision.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    outputs:
+      recovered: ${{ steps.bridge.outputs.recovered }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-readback-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-decision-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: bridge
+        run: |
+          python code/tools/publisher/workflow_stage_cli.py create-recovered-result --intent handoff/upload-intent.json --result handoff/upload-result.json --readback handoff/upload-readback.json --decision handoff/upload-recovery-decision.json --repository state --branch main --reference handoff/admission.json --output recovered-upload-result.json
+          echo "recovered=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-upload-recovered-result-${{ github.run_id }}', path: recovered-upload-result.json, if-no-files-found: error }
+
+  zero-percent-intent-write:
+    needs: [upload-result-write, upload-create-recovered-result]
+    if: ${{ always() && needs.upload-result-write.result == 'success' && (needs.upload-result-write.outputs.result_state == 'APPLIED' || needs.upload-create-recovered-result.outputs.recovered == 'true') }}
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-direct-result-${{ github.run_id }}', path: handoff }
+        if: always()
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Seal and durably record zero-percent intent
+        run: |
+          upload_result=handoff/upload-result.json
+          if [ '${{ needs.upload-create-recovered-result.outputs.recovered }}' = 'true' ]; then upload_result=handoff/recovered-upload-result.json; fi
+          python code/tools/publisher/workflow_stage_cli.py create-mutation-intent --operation deploy_zero_percent --build-bundle handoff/runner-evidence/v1-build-bundle.json --prerequisite "$upload_result" --prerequisite-intent handoff/upload-intent.json --journal state/publisher-state/production-transaction-journal.json --reference handoff/admission.json --output zero-percent-intent.json
+          python code/tools/publisher/workflow_stage_cli.py record-intent --intent zero-percent-intent.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main --reference handoff/admission.json --reference handoff/upload-intent.json --reference "$upload_result"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-zero-intent-${{ github.run_id }}', path: zero-percent-intent.json, if-no-files-found: error }
+
+  cloudflare-zero-percent-operation:
+    needs: [zero-percent-intent-write, upload-create-recovered-result]
+    if: ${{ always() && needs.zero-percent-intent-write.result == 'success' && (needs.upload-result-write.outputs.result_state == 'APPLIED' || needs.upload-create-recovered-result.outputs.recovered == 'true') }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-direct-result-${{ github.run_id }}', path: handoff }
+        if: always()
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Execute the exact recorded zero-percent operation
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          MAHOON_WRANGLER: npx wrangler@4.83.0
+          CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+        run: |
+          upload_result=handoff/upload-result.json
+          refs=(--reference handoff/upload-intent.json)
+          if [ '${{ needs.upload-create-recovered-result.outputs.recovered }}' = 'true' ]; then
+            upload_result=handoff/recovered-upload-result.json
+            refs+=(--reference handoff/upload-result.json --reference handoff/upload-readback.json --reference handoff/upload-recovery-decision.json)
+          fi
+          python code/tools/publisher/workflow_stage_cli.py execute-operation \
+            --intent handoff/zero-percent-intent.json --build-bundle handoff/runner-evidence/v1-build-bundle.json \
+            --prerequisite "$upload_result" --prerequisite-intent handoff/upload-intent.json \
+            --journal state/publisher-state/production-transaction-journal.json \
+            --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site" \
+            --config code/website/dreary-disk/wrangler.jsonc --backend wrangler --output zero-percent-result.json \
+            "${refs[@]}"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-zero-result-${{ github.run_id }}', path: zero-percent-result.json, if-no-files-found: error }
+
+  zero-percent-result-write:
+    needs: cloudflare-zero-percent-operation
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    outputs:
+      result_state: ${{ steps.record.outputs.result_state }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: record
+        run: |
+          python code/tools/publisher/workflow_stage_cli.py record-result --intent handoff/zero-percent-intent.json --result handoff/zero-percent-result.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main --reference handoff/upload-intent.json --reference handoff/upload-result.json | tee record.json
+          python -c "import json,os; open(os.environ['GITHUB_OUTPUT'],'a').write('result_state='+json.load(open('record.json'))['status']+'\n')"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-zero-direct-result-${{ github.run_id }}', path: handoff/zero-percent-result.json, if-no-files-found: error }
+
+  zero-recovery-readback-observe:
+    needs: zero-percent-result-write
+    if: ${{ always() && needs.zero-percent-result-write.outputs.result_state == 'UNKNOWN' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python code/tools/publisher/workflow_stage_cli.py proof-recovery recovery-readback-observe --intent handoff/zero-percent-intent.json --result handoff/zero-percent-result.json --reference handoff/upload-intent.json --reference handoff/upload-result.json --output zero-recovery-readback.json
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-zero-readback-${{ github.run_id }}', path: zero-recovery-readback.json, if-no-files-found: error }
+
+  zero-recovery-decision:
+    needs: zero-recovery-readback-observe
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    outputs:
+      decision: ${{ steps.decision.outputs.decision }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-readback-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: decision
+        run: |
+          python code/tools/publisher/workflow_stage_cli.py proof-recovery recovery-decision --intent handoff/zero-percent-intent.json --result handoff/zero-percent-result.json --readback handoff/zero-recovery-readback.json --journal state/publisher-state/production-transaction-journal.json --reference handoff/upload-intent.json --reference handoff/upload-result.json --output zero-recovery-decision.json | tee decision-status.json
+          python -c "import json,os; open(os.environ['GITHUB_OUTPUT'],'a').write('decision='+json.load(open('decision-status.json'))['status']+'\n')"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-zero-decision-${{ github.run_id }}', path: zero-recovery-decision.json, if-no-files-found: error }
+
+  zero-reconcile-recovery-decision:
+    needs: zero-recovery-decision
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-decision-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python code/tools/publisher/workflow_stage_cli.py reconcile-recovery-decision --decision handoff/zero-recovery-decision.json --repository state --branch main
+
+  zero-create-recovered-result:
+    needs: [zero-recovery-decision, zero-reconcile-recovery-decision]
+    if: ${{ always() && needs.zero-recovery-decision.outputs.decision == 'RECONCILED_APPLIED' && needs.zero-reconcile-recovery-decision.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    outputs:
+      recovered: ${{ steps.bridge.outputs.recovered }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-readback-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-decision-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: bridge
+        run: |
+          python code/tools/publisher/workflow_stage_cli.py create-recovered-result --intent handoff/zero-percent-intent.json --result handoff/zero-percent-result.json --readback handoff/zero-recovery-readback.json --decision handoff/zero-recovery-decision.json --repository state --branch main --reference handoff/upload-intent.json --reference handoff/upload-result.json --output recovered-zero-result.json
+          echo "recovered=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-zero-recovered-result-${{ github.run_id }}', path: recovered-zero-result.json, if-no-files-found: error }
+
+  pre-promotion-proof:
+    needs: [zero-percent-result-write, zero-create-recovered-result]
+    if: ${{ always() && (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true') }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-direct-result-${{ github.run_id }}', path: handoff }
+        if: always()
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --prefix code/website/dreary-disk
+      - name: Observe and seal combined pre-promotion proof
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          MAHOON_WRANGLER: npx wrangler@4.83.0
+          CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+        run: >-
+          python code/tools/publisher/workflow_stage_cli.py pre-promotion-proof-observe
+          --build-bundle handoff/runner-evidence/v1-build-bundle.json
+          --deploy-intent handoff/zero-percent-intent.json --deploy-result "${{ needs.zero-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-zero-result.json' || 'handoff/zero-percent-result.json' }}"
+          --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site"
+          --snapshot handoff/runner-evidence/current-v2-snapshot.json
+          --route-manifest handoff/runner-build/published-route-manifest.json
+          --media-manifest handoff/runner-build/production-media-manifest.json
+          --base-url https://mahoon.art --evidence-dir runner-evidence/pre-promotion-proof
+          --output pre-promotion-proof.json --reference handoff/zero-percent-intent.json
+          --reference handoff/zero-percent-result.json --reference handoff/zero-recovery-readback.json
+          --reference handoff/zero-recovery-decision.json
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-preproof-${{ github.run_id }}', path: pre-promotion-proof.json, if-no-files-found: error }
+
+  promote-intent-write:
+    needs: [pre-promotion-proof, zero-percent-result-write, zero-create-recovered-result]
+    if: ${{ always() && needs.pre-promotion-proof.result == 'success' && (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true') }}
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    outputs:
+      zero_recovered: ${{ steps.intent.outputs.zero_recovered }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-preproof-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-direct-result-${{ github.run_id }}', path: handoff }
+        if: always()
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+        if: always()
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Seal and durably record promote intent
+        id: intent
+        run: |
+          zero_result=handoff/zero-percent-result.json
+          refs=(--reference handoff/pre-promotion-proof.json --reference handoff/zero-percent-intent.json)
+          if [ '${{ needs.zero-create-recovered-result.outputs.recovered }}' = 'true' ]; then
+            zero_result=handoff/recovered-zero-result.json
+            refs+=(--reference handoff/zero-percent-result.json --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json)
+          fi
+          python code/tools/publisher/workflow_stage_cli.py create-mutation-intent --operation promote --build-bundle handoff/runner-evidence/v1-build-bundle.json --prerequisite handoff/pre-promotion-proof.json --prerequisite-intent handoff/zero-percent-intent.json --journal state/publisher-state/production-transaction-journal.json "${refs[@]}" --reference "$zero_result" --output promote-intent.json
+          python code/tools/publisher/workflow_stage_cli.py record-intent --intent promote-intent.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main "${refs[@]}" --reference "$zero_result"
+          echo "zero_recovered=${{ needs.zero-create-recovered-result.outputs.recovered }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-promote-intent-${{ github.run_id }}', path: promote-intent.json, if-no-files-found: error }
+
+  cloudflare-promote-operation:
+    needs: promote-intent-write
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-preproof-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-direct-result-${{ github.run_id }}', path: handoff }
+        if: always()
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Execute exact authorized promotion
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          MAHOON_WRANGLER: npx wrangler@4.83.0
+          CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+        run: |
+          refs=(--reference handoff/pre-promotion-proof.json --reference handoff/zero-percent-intent.json)
+          if [ '${{ needs.promote-intent-write.outputs.zero_recovered }}' = 'true' ]; then
+            refs+=(--reference handoff/zero-percent-result.json --reference handoff/recovered-zero-result.json --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json)
+          else
+            refs+=(--reference handoff/zero-percent-result.json)
+          fi
+          python code/tools/publisher/workflow_stage_cli.py execute-operation \
+            --intent handoff/promote-intent.json --build-bundle handoff/runner-evidence/v1-build-bundle.json \
+            --prerequisite handoff/pre-promotion-proof.json --journal state/publisher-state/production-transaction-journal.json \
+            --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site" \
+            --config code/website/dreary-disk/wrangler.jsonc --backend wrangler --output promote-result.json \
+            "${refs[@]}"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-promote-result-${{ github.run_id }}', path: promote-result.json, if-no-files-found: error }
+
+  promote-result-write:
+    needs: cloudflare-promote-operation
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    outputs:
+      result_state: ${{ steps.record.outputs.result_state }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-preproof-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: record
+        run: |
+          python code/tools/publisher/workflow_stage_cli.py record-result --intent handoff/promote-intent.json --result handoff/promote-result.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main --reference handoff/pre-promotion-proof.json | tee record.json
+          python -c "import json,os; open(os.environ['GITHUB_OUTPUT'],'a').write('result_state='+json.load(open('record.json'))['status']+'\n')"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-promote-direct-result-${{ github.run_id }}', path: handoff/promote-result.json, if-no-files-found: error }
+
+  promote-recovery-readback-observe:
+    needs: promote-result-write
+    if: ${{ always() && needs.promote-result-write.outputs.result_state == 'UNKNOWN' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-preproof-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python code/tools/publisher/workflow_stage_cli.py proof-recovery recovery-readback-observe --intent handoff/promote-intent.json --result handoff/promote-result.json --reference handoff/pre-promotion-proof.json --output promote-recovery-readback.json
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-promote-readback-${{ github.run_id }}', path: promote-recovery-readback.json, if-no-files-found: error }
+
+  promote-recovery-decision:
+    needs: promote-recovery-readback-observe
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    outputs:
+      decision: ${{ steps.decision.outputs.decision }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-readback-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-preproof-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: decision
+        run: |
+          python code/tools/publisher/workflow_stage_cli.py proof-recovery recovery-decision --intent handoff/promote-intent.json --result handoff/promote-result.json --readback handoff/promote-recovery-readback.json --journal state/publisher-state/production-transaction-journal.json --reference handoff/pre-promotion-proof.json --output promote-recovery-decision.json | tee decision-status.json
+          python -c "import json,os; open(os.environ['GITHUB_OUTPUT'],'a').write('decision='+json.load(open('decision-status.json'))['status']+'\n')"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-promote-decision-${{ github.run_id }}', path: promote-recovery-decision.json, if-no-files-found: error }
+
+  promote-reconcile-recovery-decision:
+    needs: promote-recovery-decision
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-decision-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python code/tools/publisher/workflow_stage_cli.py reconcile-recovery-decision --decision handoff/promote-recovery-decision.json --repository state --branch main
+
+  promote-create-recovered-result:
+    needs: [promote-recovery-decision, promote-reconcile-recovery-decision]
+    if: ${{ always() && needs.promote-recovery-decision.outputs.decision == 'RECONCILED_APPLIED' && needs.promote-reconcile-recovery-decision.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    outputs:
+      recovered: ${{ steps.bridge.outputs.recovered }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-readback-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-decision-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-preproof-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: bridge
+        run: |
+          python code/tools/publisher/workflow_stage_cli.py create-recovered-result --intent handoff/promote-intent.json --result handoff/promote-result.json --readback handoff/promote-recovery-readback.json --decision handoff/promote-recovery-decision.json --repository state --branch main --reference handoff/pre-promotion-proof.json --output recovered-promote-result.json
+          echo "recovered=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-promote-recovered-result-${{ github.run_id }}', path: recovered-promote-result.json, if-no-files-found: error }
+
+  production-proof:
+    needs: [upload-result-write, upload-create-recovered-result, zero-percent-result-write,
+      zero-create-recovered-result, promote-result-write, promote-create-recovered-result]
+    if: >-
+      ${{ always() &&
+          (needs.upload-result-write.outputs.result_state == 'APPLIED' || needs.upload-create-recovered-result.outputs.recovered == 'true') &&
+          (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true') &&
+          (needs.promote-result-write.outputs.result_state == 'APPLIED' || needs.promote-create-recovered-result.outputs.recovered == 'true') }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    outputs:
+      proof_state: ${{ steps.proof-state.outputs.proof_state }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-preproof-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-direct-result-${{ github.run_id }}', path: handoff }
+        if: always()
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --prefix code/website/dreary-disk
+      - name: Observe and seal combined production proof
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          MAHOON_WRANGLER: npx wrangler@4.83.0
+          CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+        run: >-
+          python code/tools/publisher/workflow_stage_cli.py production-proof-observe
+          --build-bundle handoff/runner-evidence/v1-build-bundle.json
+          --upload-intent handoff/upload-intent.json --upload-result "${{ needs.upload-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-upload-result.json' || 'handoff/upload-result.json' }}"
+          --deploy-intent handoff/zero-percent-intent.json --deploy-result "${{ needs.zero-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-zero-result.json' || 'handoff/zero-percent-result.json' }}"
+          --pre-promotion-proof handoff/pre-promotion-proof.json
+          --promote-intent handoff/promote-intent.json --promote-result "${{ needs.promote-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-promote-result.json' || 'handoff/promote-result.json' }}"
+          --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site"
+          --snapshot handoff/runner-evidence/current-v2-snapshot.json
+          --route-manifest handoff/runner-build/published-route-manifest.json
+          --media-manifest handoff/runner-build/production-media-manifest.json
+          --local-gates handoff/runner-evidence/prepromotion-local-gates.json
+          --base-url https://mahoon.art --evidence-dir runner-evidence/production-proof
+          --output production-proof.json
+          --reference handoff/upload-intent.json --reference handoff/zero-percent-intent.json --reference handoff/promote-intent.json
+          --reference handoff/upload-result.json --reference handoff/zero-percent-result.json --reference handoff/promote-result.json
+          --reference handoff/upload-readback.json --reference handoff/upload-recovery-decision.json
+          --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json
+          --reference handoff/promote-recovery-readback.json --reference handoff/promote-recovery-decision.json > proof-status.json
+      - id: proof-state
+        if: ${{ always() && hashFiles('proof-status.json') != '' }}
+        run: python -c "import json,os; d=json.load(open('proof-status.json')); open(os.environ['GITHUB_OUTPUT'],'a').write('proof_state='+d['status']+'\n')"
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && hashFiles('production-proof.json') != '' }}
+        with: { name: 'a6-production-proof-${{ github.run_id }}', path: production-proof.json, if-no-files-found: error }
+
+  final-state-materialization:
+    needs: [production-proof, upload-create-recovered-result, zero-create-recovered-result,
+      promote-create-recovered-result]
+    if: ${{ always() && needs.production-proof.result == 'success' && needs.production-proof.outputs.proof_state == 'PASS' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-direct-result-${{ github.run_id }}', path: handoff }
+        if: always()
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-direct-result-${{ github.run_id }}', path: handoff }
+        if: always()
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-direct-result-${{ github.run_id }}', path: handoff }
+        if: always()
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-production-proof-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Materialize the exact six publisher-state files after PASS proof
+        run: >-
+          python code/tools/publisher/workflow_stage_cli.py materialize-final-state
+          --proof handoff/production-proof.json --build-bundle handoff/runner-evidence/v1-build-bundle.json
+          --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site"
+          --artifact-seal "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/artifact-seal.json"
+          --snapshot handoff/runner-evidence/current-v2-snapshot.json
+          --media-manifest handoff/runner-build/production-media-manifest.json
+          --route-manifest handoff/runner-build/published-route-manifest.json
+          --upload-version-intent handoff/upload-intent.json --upload-version-result "${{ needs.upload-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-upload-result.json' || 'handoff/upload-result.json' }}"
+          --deploy-zero-percent-intent handoff/zero-percent-intent.json --deploy-zero-percent-result "${{ needs.zero-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-zero-result.json' || 'handoff/zero-percent-result.json' }}"
+          --promote-intent handoff/promote-intent.json --promote-result "${{ needs.promote-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-promote-result.json' || 'handoff/promote-result.json' }}"
+          --reference handoff/upload-intent.json --reference handoff/zero-percent-intent.json --reference handoff/promote-intent.json
+          --reference handoff/upload-result.json --reference handoff/zero-percent-result.json --reference handoff/promote-result.json
+          --reference handoff/upload-readback.json --reference handoff/upload-recovery-decision.json
+          --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json
+          --reference handoff/promote-recovery-readback.json --reference handoff/promote-recovery-decision.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a6-final-state-${{ github.run_id }}
+          path: ${{ runner.temp }}/mahoon-final-state/
+          if-no-files-found: error
+
+  final-persistence:
+    needs: [final-state-materialization, upload-create-recovered-result,
+      zero-create-recovered-result, promote-create-recovered-result]
+    if: ${{ always() && needs.final-state-materialization.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-final-state-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-upload-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-direct-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-production-proof-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Execute integrated readiness, persistence, and exact remote readback
+        run: >-
+          python code/tools/publisher/workflow_stage_cli.py final-persistence-execute
+          --proof handoff/production-proof.json --build-bundle handoff/runner-evidence/v1-build-bundle.json
+          --upload-result "${{ needs.upload-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-upload-result.json' || 'handoff/upload-result.json' }}"
+          --deploy-result "${{ needs.zero-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-zero-result.json' || 'handoff/zero-percent-result.json' }}"
+          --promote-result "${{ needs.promote-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-promote-result.json' || 'handoff/promote-result.json' }}"
+          --repository state
+          --state-dir "handoff/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["transaction"]["logical_transaction_id"])')/publisher-state"
+          --journal state/publisher-state/production-transaction-journal.json
+          --remote origin --branch main --output final-persistence-result.json
+          --reference handoff/admission.json --reference handoff/upload-intent.json
+          --reference handoff/zero-percent-intent.json --reference handoff/promote-intent.json
+          --reference handoff/upload-result.json --reference handoff/zero-percent-result.json --reference handoff/promote-result.json
+          --reference handoff/upload-readback.json --reference handoff/upload-recovery-decision.json
+          --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json
+          --reference handoff/promote-recovery-readback.json --reference handoff/promote-recovery-decision.json
+
+  rollback-intent-write:
+    needs: [production-proof, promote-result-write, promote-create-recovered-result]
+    if: ${{ always() && needs.production-proof.outputs.proof_state == 'FAIL' && (needs.promote-result-write.outputs.result_state == 'APPLIED' || needs.promote-create-recovered-result.outputs.recovered == 'true') }}
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-production-proof-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-direct-result-${{ github.run_id }}', path: handoff }
+        if: always()
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Create rollback intent, authorize separately, and durably record it
+        run: |
+          promote_result=handoff/promote-result.json
+          refs=(--reference handoff/promote-intent.json --reference handoff/production-proof.json)
+          if [ '${{ needs.promote-create-recovered-result.outputs.recovered }}' = 'true' ]; then
+            promote_result=handoff/recovered-promote-result.json
+            refs+=(--reference handoff/promote-result.json --reference handoff/promote-recovery-readback.json --reference handoff/promote-recovery-decision.json)
+          fi
+          python code/tools/publisher/workflow_stage_cli.py create-mutation-intent --operation rollback --build-bundle handoff/runner-evidence/v1-build-bundle.json --prerequisite handoff/production-proof.json --journal state/publisher-state/production-transaction-journal.json --promotion-intent handoff/promote-intent.json --promotion-result "$promote_result" "${refs[@]}" --output rollback-intent.json
+          python code/tools/publisher/workflow_stage_cli.py proof-recovery authorize-rollback --proof handoff/production-proof.json --promote-intent handoff/promote-intent.json --promote-result "$promote_result" --rollback-intent rollback-intent.json "${refs[@]}"
+          python code/tools/publisher/workflow_stage_cli.py record-intent --intent rollback-intent.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main "${refs[@]}" --reference "$promote_result"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-rollback-intent-${{ github.run_id }}', path: rollback-intent.json, if-no-files-found: error }
+
+  cloudflare-rollback-operation:
+    needs: rollback-intent-write
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-production-proof-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-direct-result-${{ github.run_id }}', path: handoff }
+        if: always()
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-promote-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-rollback-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Execute separately authorized rollback
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          MAHOON_WRANGLER: npx wrangler@4.83.0
+          CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+        run: |
+          promote_result=handoff/promote-result.json
+          refs=(--reference handoff/promote-intent.json --reference handoff/production-proof.json)
+          if [ '${{ needs.rollback-intent-write.result }}' = 'success' ] && [ -f handoff/recovered-promote-result.json ]; then
+            promote_result=handoff/recovered-promote-result.json
+            refs+=(--reference handoff/promote-result.json --reference handoff/promote-recovery-readback.json --reference handoff/promote-recovery-decision.json)
+          fi
+          python code/tools/publisher/workflow_stage_cli.py execute-operation \
+            --intent handoff/rollback-intent.json --build-bundle handoff/runner-evidence/v1-build-bundle.json \
+            --prerequisite handoff/production-proof.json --journal state/publisher-state/production-transaction-journal.json \
+            --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site" \
+            --config code/website/dreary-disk/wrangler.jsonc --backend wrangler --output rollback-result.json \
+            "${refs[@]}" --reference "$promote_result"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-rollback-result-${{ github.run_id }}', path: rollback-result.json, if-no-files-found: error }
+
+  rollback-result-write:
+    needs: cloudflare-rollback-operation
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    outputs:
+      result_state: ${{ steps.record.outputs.result_state }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-rollback-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-rollback-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-production-proof-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: record
+        run: |
+          python code/tools/publisher/workflow_stage_cli.py record-result --intent handoff/rollback-intent.json --result handoff/rollback-result.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main --reference handoff/production-proof.json | tee record.json
+          python -c "import json,os; open(os.environ['GITHUB_OUTPUT'],'a').write('result_state='+json.load(open('record.json'))['status']+'\n')"
+
+  rollback-recovery-readback-observe:
+    needs: rollback-result-write
+    if: ${{ always() && needs.rollback-result-write.outputs.result_state == 'UNKNOWN' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-rollback-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-rollback-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-production-proof-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python code/tools/publisher/workflow_stage_cli.py proof-recovery recovery-readback-observe --intent handoff/rollback-intent.json --result handoff/rollback-result.json --reference handoff/production-proof.json --output rollback-recovery-readback.json
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-rollback-readback-${{ github.run_id }}', path: rollback-recovery-readback.json, if-no-files-found: error }
+
+  rollback-recovery-decision:
+    needs: rollback-recovery-readback-observe
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    outputs:
+      decision: ${{ steps.decision.outputs.decision }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-rollback-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-rollback-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-rollback-readback-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-production-proof-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: decision
+        run: |
+          python code/tools/publisher/workflow_stage_cli.py proof-recovery recovery-decision --intent handoff/rollback-intent.json --result handoff/rollback-result.json --readback handoff/rollback-recovery-readback.json --journal state/publisher-state/production-transaction-journal.json --reference handoff/production-proof.json --output rollback-recovery-decision.json | tee decision-status.json
+          python -c "import json,os; open(os.environ['GITHUB_OUTPUT'],'a').write('decision='+json.load(open('decision-status.json'))['status']+'\n')"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-rollback-decision-${{ github.run_id }}', path: rollback-recovery-decision.json, if-no-files-found: error }
+
+  rollback-reconcile-recovery-decision:
+    needs: rollback-recovery-decision
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-rollback-decision-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python code/tools/publisher/workflow_stage_cli.py reconcile-recovery-decision --decision handoff/rollback-recovery-decision.json --repository state --branch main
+
+  rollback-create-recovered-result:
+    needs: [rollback-recovery-decision, rollback-reconcile-recovery-decision]
+    if: ${{ always() && needs.rollback-recovery-decision.outputs.decision == 'RECONCILED_APPLIED' && needs.rollback-reconcile-recovery-decision.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    outputs:
+      recovered: ${{ steps.bridge.outputs.recovered }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-rollback-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-rollback-result-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-rollback-readback-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-rollback-decision-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-production-proof-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: bridge
+        run: |
+          python code/tools/publisher/workflow_stage_cli.py create-recovered-result --intent handoff/rollback-intent.json --result handoff/rollback-result.json --readback handoff/rollback-recovery-readback.json --decision handoff/rollback-recovery-decision.json --repository state --branch main --reference handoff/production-proof.json --output recovered-rollback-result.json
+          echo "recovered=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-rollback-recovered-result-${{ github.run_id }}', path: recovered-rollback-result.json, if-no-files-found: error }

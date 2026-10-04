@@ -44,7 +44,8 @@ class WranglerAdapterTests(unittest.TestCase):
     def test_publisher_wrangler_matches_ci_auth_verified_version(self):
         workflow = Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8")
         self.assertIn("MAHOON_WRANGLER: npx wrangler@4.83.0", workflow)
-        self.assertIn("npx wrangler@4.83.0 whoami", workflow)
+        self.assertNotIn("npx wrangler@4.83.0 whoami", workflow)
+        self.assertNotIn("CLOUDFLARE_API_TOKEN", workflow.split("  check-only:", 1)[0])
 
 
 if __name__ == "__main__":

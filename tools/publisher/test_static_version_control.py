@@ -63,7 +63,7 @@ class StaticVersionControlTests(unittest.TestCase):
                     "body": b'<link rel="stylesheet" href="/style.css">',
                     "redirect_hop_count": 0, "override_preserved_on_every_hop": True}
 
-        with patch("tools.m9.publisher_runner.request_with_version_pinning", side_effect=fake_request):
+        with patch("publisher.remote_proof_harness.request_with_version_pinning", side_effect=fake_request):
             result = pre_upload_baseline_health(["/category/books", "/post/32"], "baseline-version")
         self.assertTrue(result["PASS"])
         self.assertEqual(6, len(result["pages"]))
@@ -78,7 +78,7 @@ class StaticVersionControlTests(unittest.TestCase):
                     "body": b'<link rel="stylesheet" href="/style.css">',
                     "redirect_hop_count": 0, "override_preserved_on_every_hop": True}
 
-        with patch("tools.m9.publisher_runner.request_with_version_pinning", side_effect=fake_request):
+        with patch("publisher.remote_proof_harness.request_with_version_pinning", side_effect=fake_request):
             result = pre_upload_baseline_health(["/category/books", "/post/32"], "baseline-version")
         self.assertFalse(result["PASS"])
 

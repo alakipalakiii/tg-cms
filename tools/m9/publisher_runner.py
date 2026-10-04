@@ -5,11 +5,17 @@ candidate artifact is produced by this same runner.
 """
 from __future__ import annotations
 
+import hashlib
+import base64
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
+import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import urllib.request
 from pathlib import Path
@@ -17,24 +23,292 @@ from urllib.parse import quote, urljoin, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from publisher.core import fingerprint
+from publisher import artifact_contract
 from publisher import static_build_adapter
-from publisher import cloudflare_wrangler as deployment
-from publisher.rollback import automatic_rollback
-from publisher.post_deploy_validator import capture_zero_origin, validate_public, validate_zero_origin
-from publisher.state_machine import (live_static_baseline, promotion_precondition,
-                                     verify_promotion_precondition, verify_promoted_static)
 from publisher.export_v2 import export_complete
 from publisher.media_bootstrap import bootstrap as bootstrap_media
 from publisher.candidate_route_manifest import build_candidate_route_manifest
 from publisher.promotion_gates import evaluate_local_candidate
 from publisher.content_revision import DEFAULT_ENDPOINT, fetch_public_content_revision
 from publisher.error_contract import PublisherStageError, build_error, safe_details
-from publisher.remote_proof_harness import request_with_version_pinning
+from publisher.repository_persistence import GitRepositoryReader
 from publisher.resumable_transaction import create_proof_bundle, transaction_id
+from publisher.seal_artifact import create_seal
 
 API = os.environ.get("MAHOON_PUBLIC_CONTENT_API", "https://api.mahoonartmagazine.ir/posts-full-public-v2")
 STATE = Path(os.environ.get("MAHOON_PUBLISHER_STATE", "publisher-state/production-content-fingerprint.json"))
 STATIC_STATE = Path(os.environ.get("MAHOON_PUBLISHED_STATIC_STATE", "publisher-state/published-static-state.json"))
+
+BUILD_VALIDATE_MODE = "BUILD_VALIDATE"
+BUILD_WORKER = "mahoon-art-magazine"
+_BUILD_CREDENTIAL_MARKERS = ("TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
+
+
+class BuildBoundaryError(RuntimeError):
+    """The separated build boundary is missing or has invalid authorization."""
+
+
+def _sha256_path(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _sealed_file_entries(root: Path) -> list[dict]:
+    root = root.resolve()
+    entries: list[dict] = []
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            raise BuildBoundaryError("BUILD_BUNDLE_SYMLINK_REFUSED")
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root).as_posix()
+        entries.append({
+            "path": relative,
+            "size_bytes": path.stat().st_size,
+            "sha256": _sha256_path(path),
+        })
+    if not entries:
+        raise BuildBoundaryError("BUILD_BUNDLE_EMPTY")
+    return entries
+
+
+def _read_contract_artifact(path: Path, expected_type: str) -> dict:
+    if not path.is_file():
+        raise BuildBoundaryError(f"{expected_type.upper()}_ARTIFACT_MISSING")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise BuildBoundaryError(f"{expected_type.upper()}_ARTIFACT_INVALID") from exc
+    value = artifact_contract.validate_artifact(payload)
+    if value["artifact_type"] != expected_type:
+        raise BuildBoundaryError(f"{expected_type.upper()}_ARTIFACT_TYPE_MISMATCH")
+    return value
+
+
+def _build_authorization() -> tuple[dict, dict, str]:
+    revision_path = Path(os.environ.get("MAHOON_REVISION_RESOLUTION_ARTIFACT", ""))
+    admission_path = Path(os.environ.get("MAHOON_ADMISSION_RECEIPT_ARTIFACT", ""))
+    if not str(revision_path) or str(revision_path) == ".":
+        raise BuildBoundaryError("REVISION_RESOLUTION_ARTIFACT_REQUIRED")
+    if not str(admission_path) or str(admission_path) == ".":
+        raise BuildBoundaryError("ADMISSION_RECEIPT_ARTIFACT_REQUIRED")
+
+    source_sha, _schedule_sha = execution_source_identity()
+    revision = _read_contract_artifact(revision_path, "revision_resolution")
+    revision = artifact_contract.validate_artifact(revision, expected_source_sha=source_sha)
+    admission = _read_contract_artifact(admission_path, "admission_receipt")
+    admission = artifact_contract.validate_artifact(
+        admission,
+        expected_transaction=revision["transaction"],
+        expected_source_sha=source_sha,
+        expected_parents={"revision_resolution_sha256": revision["artifact_sha256"]},
+    )
+    if revision["payload"]["decision"] != "CHANGED":
+        raise BuildBoundaryError("BUILD_REQUIRES_CHANGED_REVISION")
+    if admission["payload"]["decision"] != "ADMITTED":
+        raise BuildBoundaryError("BUILD_REQUIRES_ADMITTED_RECEIPT")
+    if revision["transaction"]["worker"] != BUILD_WORKER:
+        raise BuildBoundaryError("BUILD_WORKER_MISMATCH")
+    return revision, admission, source_sha
+
+
+@contextmanager
+def _scrubbed_build_environment():
+    """Prevent repository/Cloudflare credentials from reaching build subprocesses."""
+    removed: dict[str, str] = {}
+    for key in list(os.environ):
+        upper = key.upper()
+        if upper.startswith("CLOUDFLARE_") or upper in {"GITHUB_TOKEN", "GH_TOKEN"} or any(
+            marker in upper for marker in _BUILD_CREDENTIAL_MARKERS
+        ):
+            removed[key] = os.environ.pop(key)
+    try:
+        yield
+    finally:
+        os.environ.update(removed)
+
+
+def _producer(source_sha: str) -> dict:
+    run_id = str(os.environ.get("GITHUB_RUN_ID") or "local-build-validate").strip()
+    job = str(os.environ.get("GITHUB_JOB") or "build-validate").strip()
+    attempt_text = str(os.environ.get("GITHUB_RUN_ATTEMPT") or "1").strip()
+    try:
+        attempt = int(attempt_text)
+    except ValueError as exc:
+        raise BuildBoundaryError("BUILD_RUN_ATTEMPT_INVALID") from exc
+    if not run_id or not job or attempt < 1:
+        raise BuildBoundaryError("BUILD_PRODUCER_IDENTITY_INVALID")
+    return {
+        "workflow_run_id": run_id,
+        "run_attempt": attempt,
+        "job": job,
+        "source_sha": source_sha,
+    }
+
+
+def _create_build_bundle_artifact(
+    *,
+    transaction: dict,
+    source_sha: str,
+    admission_digest: str,
+    sealed_root: Path,
+    content_fingerprint: str,
+    snapshot_path: Path,
+    route_manifest: Path,
+    media_manifest: Path,
+    local_gate_evidence: Path,
+    prior_index_binding: dict,
+) -> dict:
+    artifact = {
+        "artifact_type": "build_bundle",
+        "schema_version": artifact_contract.SCHEMA_VERSION,
+        "artifact_id": str(uuid.uuid4()),
+        "created_at": now(),
+        "producer": _producer(source_sha),
+        "transaction": dict(transaction),
+        "payload": {
+            "admission_receipt_sha256": admission_digest,
+            "files": _sealed_file_entries(sealed_root),
+            "content_fingerprint": content_fingerprint,
+            "snapshot_sha256": _sha256_path(snapshot_path),
+            "route_manifest_sha256": _sha256_path(route_manifest),
+            "media_manifest_sha256": _sha256_path(media_manifest),
+            "local_gate_evidence_sha256": _sha256_path(local_gate_evidence),
+            "prior_immutable_media_index": prior_index_binding,
+        },
+    }
+    artifact = artifact_contract.seal_artifact(artifact)
+    return artifact_contract.validate_artifact(
+        artifact,
+        expected_transaction=transaction,
+        expected_source_sha=source_sha,
+        expected_parents={"admission_receipt_sha256": admission_digest},
+    )
+
+
+def run_build_validate() -> int:
+    """Build and seal a candidate without importing or invoking Cloudflare mutation code."""
+    try:
+        revision_artifact, admission_artifact, source_sha = _build_authorization()
+        current_revision = revision_artifact["payload"]["revision"]
+
+        snapshot_path = Path(os.environ.get(
+            "MAHOON_PUBLISHED_CONTENT_SNAPSHOT",
+            "runner-evidence/current-v2-snapshot.json",
+        ))
+        out = Path(os.environ.get("MAHOON_BUILD_OUTPUT", "runner-build/static"))
+        route_source = Path(os.environ.get(
+            "MAHOON_ROUTE_MANIFEST",
+            "publisher-state/current-accepted-route-manifest.json",
+        ))
+        route_manifest = Path("runner-build/published-route-manifest.json")
+
+        repository_identity = os.environ.get("GITHUB_REPOSITORY", "")
+        if not repository_identity:
+            raise BuildBoundaryError("PUBLISHER_STATE_REPOSITORY_ID_UNAVAILABLE")
+        prior_index_snapshot = GitRepositoryReader(
+            Path.cwd(), repository_identity=repository_identity,
+        ).read_immutable_media_index()
+        prior_index_binding = {
+            key: value for key, value in prior_index_snapshot.items() if key != "content_bytes"
+        }
+        prior_index_binding["transport_base64"] = base64.b64encode(
+            prior_index_snapshot["content_bytes"]
+        ).decode("ascii")
+
+        with _scrubbed_build_environment():
+            exported, digest = export_content(snapshot_path)
+            os.environ["MAHOON_PUBLISHED_CONTENT_SNAPSHOT"] = str(snapshot_path)
+            os.environ["MAHOON_SNAPSHOT_REVISION"] = str(current_revision)
+
+            with tempfile.TemporaryDirectory(prefix="mahoon-prior-media-index-") as prior_dir:
+                prior_index_path = Path(prior_dir) / "immutable-media-index.json"
+                if prior_index_snapshot["exists"]:
+                    prior_index_path.write_bytes(prior_index_snapshot["content_bytes"])
+                media_bootstrap = bootstrap_media(
+                    exported["posts"], index_path=prior_index_path,
+                    store=Path("runner-build/immutable-media-store"),
+                )
+            os.environ["MAHOON_CURRENT_MEDIA_MANIFEST"] = str(media_bootstrap["manifest"])
+            os.environ["MAHOON_IMMUTABLE_MEDIA_INDEX"] = str(media_bootstrap["index"])
+            os.environ["MAHOON_IMMUTABLE_MEDIA_STORE"] = str(media_bootstrap["store"])
+
+            build_candidate_route_manifest(exported["posts"], route_source, route_manifest)
+            os.environ["MAHOON_ROUTE_MANIFEST"] = str(route_manifest)
+
+            static_build_adapter.build(out, snapshot_path)
+            media_manifest = Path("runner-build/production-media-manifest.json")
+            if not media_manifest.is_file():
+                raise BuildBoundaryError("PUBLISHER_MEDIA_MANIFEST_MISSING")
+
+            os.environ["MAHOON_MEDIA_MANIFEST"] = str(media_manifest)
+            os.environ["MAHOON_CANDIDATE_GATE_OUTPUT"] = "runner-evidence/local-candidate-gate.json"
+            gate = static_build_adapter.validate(out)
+            if gate.get("PASS") is not True:
+                raise BuildBoundaryError("PUBLISHER_LOCAL_GATE_FAILED")
+
+            measured_gates = evaluate_local_candidate(
+                snapshot_path, out, route_manifest, Path(media_bootstrap["manifest"])
+            )
+            local_gate_evidence = Path("runner-evidence/prepromotion-local-gates.json")
+            local_gate_evidence.parent.mkdir(parents=True, exist_ok=True)
+            local_gate_evidence.write_text(
+                json.dumps(measured_gates, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            if measured_gates.get("measured") is not True or measured_gates.get("PASS") is not True:
+                raise BuildBoundaryError("PUBLISHER_PREPROMOTION_LOCAL_GATES_FAILED")
+
+            route_data = json.loads(route_manifest.read_text(encoding="utf-8"))
+            sealed_root = Path("runner-evidence/publisher-sealed") / digest / "site"
+            sealed_root.parent.mkdir(parents=True, exist_ok=True)
+            if sealed_root.exists():
+                shutil.rmtree(sealed_root)
+            shutil.copytree(out, sealed_root)
+            seal_payload = create_seal(
+                sealed_root,
+                content_fingerprint=digest,
+                route_hash=fingerprint(route_data),
+            )
+            (sealed_root.parent / "artifact-seal.json").write_text(
+                json.dumps(seal_payload, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+        build_bundle = _create_build_bundle_artifact(
+            transaction=admission_artifact["transaction"],
+            source_sha=source_sha,
+            admission_digest=admission_artifact["artifact_sha256"],
+            sealed_root=sealed_root,
+            content_fingerprint=digest,
+            snapshot_path=snapshot_path,
+            route_manifest=route_manifest,
+            media_manifest=media_manifest,
+            local_gate_evidence=local_gate_evidence,
+            prior_index_binding=prior_index_binding,
+        )
+        output_path = Path(os.environ.get(
+            "MAHOON_BUILD_BUNDLE_OUTPUT",
+            "runner-evidence/v1-build-bundle.json",
+        ))
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps(build_bundle, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(json.dumps({
+            "stage": BUILD_VALIDATE_MODE,
+            "content_revision": current_revision,
+            "build_bundle": str(output_path),
+            "build_bundle_sha256": build_bundle["artifact_sha256"],
+            "content_fingerprint": digest,
+            "cloudflare_mutation": False,
+            "journal_write": False,
+        }, ensure_ascii=False))
+        return 0
+    except (BuildBoundaryError, artifact_contract.ArtifactContractError, OSError, ValueError) as exc:
+        print("PUBLISHER_BUILD_VALIDATE_FAILED: " + sanitize(str(exc)), file=sys.stderr)
+        return 18
+
 
 
 def now() -> str:
@@ -108,6 +382,8 @@ def sealed_static_worker_config(target_worker: str, sealed_root: Path) -> dict:
 
 
 def pre_upload_baseline_health(routes: list[str], baseline_version: str) -> dict:
+    from publisher.remote_proof_harness import request_with_version_pinning
+
     base = os.environ.get("MAHOON_PRODUCTION_ORIGIN", "https://mahoonartmagazine.ir").rstrip("/")
     route_set = set(routes)
     category = next((route for route in routes if route.startswith("/category/")), None)
@@ -186,9 +462,22 @@ def export_content(snapshot_path: Path | None = None) -> tuple[dict, str]:
 
 def main() -> int:
     mode = os.environ.get("PUBLISHER_MODE", "CHECK_ONLY").upper()
-    if mode not in {"CHECK_ONLY", "PROOF_ZERO_PERCENT", "PUBLISH", "BUILD_AND_ZERO_PERCENT", "FAILURE_INJECTION"}:
+    if mode not in {"CHECK_ONLY", "PROOF_ZERO_PERCENT", "PUBLISH", "BUILD_AND_ZERO_PERCENT", "FAILURE_INJECTION", BUILD_VALIDATE_MODE}:
         print("PUBLISHER_MODE_INVALID", file=sys.stderr)
         return 2
+    if mode == BUILD_VALIDATE_MODE:
+        return run_build_validate()
+
+    # Legacy mutation modes keep their current behavior, but their Cloudflare
+    # dependencies are loaded only after the separated build boundary has exited.
+    from publisher import cloudflare_wrangler as deployment
+    from publisher.rollback import automatic_rollback
+    from publisher.post_deploy_validator import capture_zero_origin, validate_public, validate_zero_origin
+    from publisher.state_machine import (
+        live_static_baseline, promotion_precondition,
+        verify_promotion_precondition, verify_promoted_static,
+    )
+
     if not STATE.exists():
         print("PUBLISHED_REVISION_STATE_MISSING", file=sys.stderr)
         return 4

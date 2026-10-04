@@ -69,15 +69,24 @@ def _read_json(path: Path, fallback: object) -> object:
 
 
 def load_index(path: Path) -> dict[str, dict]:
-    payload = _read_json(path, {"entries": []})
+    return load_index_bytes(path.read_bytes() if path.is_file() else None)
+
+
+def load_index_bytes(raw: bytes | None) -> dict[str, dict]:
+    """Apply the historical index reader semantics to accepted snapshot bytes."""
+    payload = {"entries": []} if raw is None else json.loads(raw.decode("utf-8"))
     entries = payload.get("entries", []) if isinstance(payload, dict) else []
     return {str(item["source_identifier"]): dict(item) for item in entries if isinstance(item, dict) and item.get("source_identifier")}
 
 
-def write_index(path: Path, records: dict[str, dict]) -> None:
+def serialize_index(records: dict[str, dict]) -> bytes:
     entries = [records[key] for key in sorted(records)]
+    return (json.dumps({"contract": "IMMUTABLE_MEDIA_INDEX_V1", "entries": entries}, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def write_index(path: Path, records: dict[str, dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"contract": "IMMUTABLE_MEDIA_INDEX_V1", "entries": entries}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path.write_bytes(serialize_index(records))
 
 
 def _fetch(url: str) -> tuple[bytes, str]:
