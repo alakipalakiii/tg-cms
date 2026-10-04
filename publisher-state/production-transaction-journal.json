@@ -1,0 +1,9 @@
+{
+  "active": null,
+  "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
+  "generation": 0,
+  "history": [],
+  "pending": null,
+  "schema_version": 2,
+  "worker": "mahoon-art-magazine"
+}
