@@ -55,17 +55,28 @@ jobs:
               return payload.get("result")
 
           scripts = get("workers-scripts", f"/accounts/{account}/workers/scripts")
+          print("READ_TOKEN_AUTH: PASS")
           if not isinstance(scripts, list) or not any(
               isinstance(item, dict) and item.get("id") == worker for item in scripts
           ):
               raise SystemExit("expected Worker script was not found")
+          print("READ_WORKER: PASS")
 
           versions = get(
               "worker-versions",
               f"/accounts/{account}/workers/scripts/{worker}/versions?per_page=1",
           )
-          if not isinstance(versions, dict) or not isinstance(versions.get("result"), list) or not versions["result"]:
+          if not isinstance(versions, dict):
               raise SystemExit("Worker versions were not returned")
+          version_items = versions.get("items")
+          if not isinstance(version_items, list) or not version_items:
+              raise SystemExit("Worker versions were not returned")
+          latest_version = version_items[0]
+          version_id = latest_version.get("id") if isinstance(latest_version, dict) else None
+          if not isinstance(version_id, str) or not version_id:
+              raise SystemExit("latest Worker version has no ID")
+          print("READ_VERSIONS: PASS")
+          print(f"PRE_CUTOVER_VERSION_ID={version_id}")
 
           deployments = get(
               "worker-deployments",
@@ -73,6 +84,12 @@ jobs:
           )
           if not isinstance(deployments, dict) or not isinstance(deployments.get("deployments"), list) or not deployments["deployments"]:
               raise SystemExit("Worker deployments were not returned")
+          latest_deployment = deployments["deployments"][0]
+          deployment_id = latest_deployment.get("id") if isinstance(latest_deployment, dict) else None
+          if not isinstance(deployment_id, str) or not deployment_id:
+              raise SystemExit("latest Worker deployment has no ID")
+          print("READ_DEPLOYMENTS: PASS")
+          print(f"PRE_CUTOVER_DEPLOYMENT_ID={deployment_id}")
 
           query = urlencode({"hostname": hostname, "environment": "production"})
           domains = get("production-worker-domain", f"/accounts/{account}/workers/domains?{query}")
@@ -84,6 +101,7 @@ jobs:
               for item in domains
           ):
               raise SystemExit("expected production Worker domain mapping was not found")
+          print("READ_DOMAIN: PASS")
           PY
 
   mutation-token-safe-auth:
@@ -103,27 +121,68 @@ jobs:
           from urllib.error import HTTPError, URLError
           from urllib.request import Request, urlopen
 
+          api = "https://api.cloudflare.com/client/v4"
+          account = "773d2dc31655b158d088296a14af5834"
+          worker = "mahoon-art-magazine"
+          hostname = "mahoonartmagazine.ir"
           token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
           if not token:
               raise SystemExit("mutation-token credential is missing")
-          request = Request(
-              "https://api.cloudflare.com/client/v4/user/tokens/verify",
-              headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
-              method="GET",
-          )
-          try:
-              with urlopen(request, timeout=30) as response:
-                  payload = json.load(response)
-          except HTTPError as error:
-              raise SystemExit(f"mutation-token verification GET failed with HTTP {error.code}") from None
-          except (URLError, TimeoutError, OSError):
-              raise SystemExit("mutation-token verification GET request failed") from None
-          if (
-              not isinstance(payload, dict)
-              or payload.get("success") is not True
-              or not isinstance(payload.get("result"), dict)
-              or payload["result"].get("status") != "active"
-          ):
+
+          def get(label, path):
+              request = Request(
+                  api + path,
+                  headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
+                  method="GET",
+              )
+              try:
+                  with urlopen(request, timeout=30) as response:
+                      payload = json.load(response)
+              except HTTPError as error:
+                  raise SystemExit(f"{label}: GET failed with HTTP {error.code}") from None
+              except (URLError, TimeoutError, OSError):
+                  raise SystemExit(f"{label}: GET request failed") from None
+              if not isinstance(payload, dict) or payload.get("success") is not True:
+                  raise SystemExit(f"{label}: Cloudflare did not report success")
+              return payload.get("result")
+
+          verify = get("mutation-token-auth", "/user/tokens/verify")
+          if not isinstance(verify, dict) or verify.get("status") != "active":
               raise SystemExit("mutation token did not verify as active")
-          print("mutation-token-safe-auth: GET PASS")
+          print("MUTATION_TOKEN_AUTH: PASS")
+
+          scripts = get("mutation-worker", f"/accounts/{account}/workers/scripts")
+          if not isinstance(scripts, list) or not any(
+              isinstance(item, dict) and item.get("id") == worker for item in scripts
+          ):
+              raise SystemExit("expected Worker script was not found for mutation token")
+          print("MUTATION_WORKER_READ: PASS")
+
+          versions = get(
+              "mutation-versions",
+              f"/accounts/{account}/workers/scripts/{worker}/versions?per_page=1",
+          )
+          if not isinstance(versions, dict) or not isinstance(versions.get("items"), list) or not versions["items"]:
+              raise SystemExit("Worker versions were not returned for mutation token")
+          print("MUTATION_VERSIONS_READ: PASS")
+
+          deployments = get(
+              "mutation-deployments",
+              f"/accounts/{account}/workers/scripts/{worker}/deployments?per_page=1",
+          )
+          if not isinstance(deployments, dict) or not isinstance(deployments.get("deployments"), list) or not deployments["deployments"]:
+              raise SystemExit("Worker deployments were not returned for mutation token")
+          print("MUTATION_DEPLOYMENTS_READ: PASS")
+
+          query = urlencode({"hostname": hostname, "environment": "production"})
+          domains = get("mutation-domain", f"/accounts/{account}/workers/domains?{query}")
+          if not isinstance(domains, list) or not any(
+              isinstance(item, dict)
+              and item.get("hostname") == hostname
+              and item.get("service") == worker
+              and item.get("environment") == "production"
+              for item in domains
+          ):
+              raise SystemExit("expected production Worker domain mapping was not found for mutation token")
+          print("MUTATION_DOMAIN_READ: PASS")
           PY
