@@ -1,11 +1,59 @@
 """Static contract checks for the separated A6 publisher workflow."""
+import copy
+import hashlib
+import json
+import os
 from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
 import unittest
 
 import yaml
 
 
 WORKFLOW = Path(__file__).resolve().parents[2] / ".github/workflows/mahoon-static-publisher.yml"
+ROOT = WORKFLOW.parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+from publisher import artifact_contract, artifact_transport
+
+TX_ID = "704bdb7d7161c7c5c89ef4865788e71a67df26fd2fe4cfb695d297c3900d18d2"
+SOURCE_SHA = "f8d30ea474129c3630e309febe381b76b249de23"
+REVISION_RAW_SHA = "3213bd781b7ac9cfa97e2957b3ee90e94e69f03258538d6cb39f2d2ad1fbd408"
+ADMISSION_RAW_SHA = "2ade3405f29e62b58b974aace02b2f722a4e6a6ce2646840350e5a33eb2e1639"
+
+
+def _run_workflow_script(script, cwd, env, offline_revision=None):
+    launcher = """
+import os, sys, types
+source = sys.stdin.read()
+if os.environ.get('TEST_OFFLINE_REVISION'):
+    import publisher
+    module = types.ModuleType('publisher.content_revision')
+    module.fetch_public_content_revision = lambda: (int(os.environ['TEST_OFFLINE_REVISION']), '2026-10-05T21:33:21+00:00', {'offline': True})
+    sys.modules['publisher.content_revision'] = module
+exec(compile(source, '<workflow-run-block>', 'exec'), {'__name__': '__main__'})
+"""
+    child_env = os.environ.copy()
+    child_env.update(env)
+    child_env["PYTHONPATH"] = os.pathsep.join((str(ROOT / "tools/publisher"), str(ROOT / "tools"), str(ROOT)))
+    if offline_revision is not None:
+        child_env["TEST_OFFLINE_REVISION"] = str(offline_revision)
+    else:
+        child_env.pop("TEST_OFFLINE_REVISION", None)
+    return subprocess.run(
+        [sys.executable, "-c", launcher], input=script, text=True, cwd=cwd,
+        env=child_env, capture_output=True, check=False,
+    )
+
+
+def _python_heredoc(run_block):
+    lines = run_block.splitlines()
+    start = next(i for i, line in enumerate(lines)
+                 if re.fullmatch(r"(?:[A-Z_]+=[^ ]+ )?python - <<'PY'", line))
+    end = next(i for i in range(start + 1, len(lines)) if lines[i] == "PY")
+    return "\n".join(lines[start + 1:end]) + "\n"
 
 
 class A6WorkflowContractTests(unittest.TestCase):
@@ -84,8 +132,12 @@ class A6WorkflowContractTests(unittest.TestCase):
         self.assertIn("artifact_transport.references(revision)", self.job("resume-admission"))
         self.assertIn("shutil.copyfile(original, \"revision-resolution.json\")", self.job("revision-resolve"))
         self.assertIn("shutil.copyfile(original, \"runner-evidence/a6/admission.json\")", self.job("resume-admission"))
-        self.assertIn("aece5876b4f9d71bc07f69fa2cad9f5a873ddf6e5e924adf58009a712d537dd3", self.job("revision-resolve"))
-        self.assertIn("12539a6d6369397664f4859a605d5332a97b328ec47fb9414445d5be203a7626", self.job("resume-admission"))
+        self.assertIn(REVISION_RAW_SHA, self.job("revision-resolve"))
+        self.assertIn(ADMISSION_RAW_SHA, self.job("resume-admission"))
+        self.assertIn("artifact_contract.validate_artifact", self.job("revision-resolve"))
+        self.assertIn("artifact_contract.validate_artifact", self.job("resume-admission"))
+        self.assertIn('operation["intent_state"]', self.job("journal-resume-verify"))
+        self.assertIn('operation["result_state"]', self.job("journal-resume-verify"))
 
     def test_credential_classes_are_separated_by_job_permissions(self):
         for job_name, job in self.jobs.items():
@@ -188,6 +240,152 @@ class A6WorkflowContractTests(unittest.TestCase):
 
     def test_no_implementation_echoes_remain(self):
         self.assertNotRegex(self.source, r'(?im)^\s*-?\s*run:\s*echo\s+["\']A6\b')
+
+    def test_resume_journal_guard_executes_against_journal_v2_and_fails_closed(self):
+        job = self.jobs["journal-resume-verify"]
+        script = _python_heredoc(next(step["run"] for step in job["steps"] if step.get("name") == "Verify the exact pristine admitted transaction without writing state"))
+        journal_path = ROOT / "publisher-state/production-transaction-journal.json"
+        baseline = json.loads(journal_path.read_text(encoding="utf-8"))
+        self.assertEqual("admitted", baseline["active"]["state"])
+        self.assertEqual(TX_ID, baseline["active"]["logical_transaction_id"])
+        with tempfile.TemporaryDirectory(prefix="mahoon-h2-journal-") as directory:
+            cwd = Path(directory)
+            state = cwd / "state/publisher-state/production-transaction-journal.json"
+            state.parent.mkdir(parents=True)
+            env = {"REQUESTED_TRANSACTION_ID": TX_ID, "REQUESTED_READY": "YES"}
+
+            def run(candidate, requested_tx=TX_ID):
+                state.write_text(json.dumps(candidate), encoding="utf-8")
+                run_env = dict(env, REQUESTED_TRANSACTION_ID=requested_tx)
+                return _run_workflow_script(script, cwd, run_env)
+
+            result = run(copy.deepcopy(baseline))
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("RESUME_JOURNAL=PRISTINE_ADMITTED_TRANSACTION_109", result.stdout)
+            cases = []
+            cases.append(("wrong transaction", copy.deepcopy(baseline), "0" * 64))
+            changed = copy.deepcopy(baseline); changed["active"]["content_revision"] = 110; cases.append(("wrong revision", changed, TX_ID))
+            changed = copy.deepcopy(baseline); changed["active"]["state"] = "build_ready"; cases.append(("wrong state", changed, TX_ID))
+            changed = copy.deepcopy(baseline); changed["active"]["build_bundle_sha256"] = "a" * 64; cases.append(("build bundle", changed, TX_ID))
+            changed = copy.deepcopy(baseline); changed["pending"] = {"content_revision": 110}; cases.append(("pending", changed, TX_ID))
+            for operation_name in baseline["active"]["operations"]:
+                changed = copy.deepcopy(baseline); changed["active"]["operations"][operation_name]["attempts"].append({}); cases.append((f"{operation_name} attempt", changed, TX_ID))
+                changed = copy.deepcopy(baseline); changed["active"]["operations"][operation_name]["intent_state"] = "INTENT_RECORDED"; cases.append((f"{operation_name} intent state", changed, TX_ID))
+                changed = copy.deepcopy(baseline); changed["active"]["operations"][operation_name]["result_state"] = "APPLIED"; cases.append((f"{operation_name} result state", changed, TX_ID))
+            for label, candidate, requested_tx in cases:
+                with self.subTest(label=label):
+                    rejected = run(candidate, requested_tx)
+                    self.assertNotEqual(0, rejected.returncode, label)
+
+    def test_resume_artifact_scripts_validate_original_github_artifacts_offline(self):
+        revision_path = os.environ.get("MAHOON_H2_REVISION_ARTIFACT")
+        admission_path = os.environ.get("MAHOON_H2_ADMISSION_ARTIFACT")
+        if not revision_path or not admission_path:
+            self.skipTest("Download the immutable source-run artifacts and set MAHOON_H2_REVISION_ARTIFACT / MAHOON_H2_ADMISSION_ARTIFACT")
+        revision_raw = Path(revision_path).read_bytes()
+        admission_raw = Path(admission_path).read_bytes()
+        self.assertEqual(REVISION_RAW_SHA, hashlib.sha256(revision_raw).hexdigest())
+        self.assertEqual(ADMISSION_RAW_SHA, hashlib.sha256(admission_raw).hexdigest())
+        revision_value = json.loads(revision_raw)
+        admission_value = json.loads(admission_raw)
+        revision = artifact_contract.validate_artifact(
+            revision_value, expected_source_sha=SOURCE_SHA,
+            trusted_producer={"workflow_run_id": "37379469235", "source_sha": SOURCE_SHA, "job": "revision-resolve"},
+        )
+        admission = artifact_contract.validate_artifact(
+            admission_value, expected_transaction=revision["transaction"], expected_source_sha=SOURCE_SHA,
+            expected_parents={"revision_resolution_sha256": revision["artifact_sha256"]},
+            trusted_producer={"workflow_run_id": "37379469235", "source_sha": SOURCE_SHA, "job": "admission"},
+            referenced_artifacts=artifact_transport.references(revision),
+        )
+        self.assertEqual("revision_resolution", revision["artifact_type"])
+        self.assertEqual("admission_receipt", admission["artifact_type"])
+        self.assertEqual("aece5876b4f9d71bc07f69fa2cad9f5a873ddf6e5e924adf58009a712d537dd3", revision["artifact_sha256"])
+        self.assertEqual("12539a6d6369397664f4859a605d5332a97b328ec47fb9414445d5be203a7626", admission["artifact_sha256"])
+        self.assertEqual(TX_ID, revision["transaction"]["logical_transaction_id"])
+        self.assertEqual(revision["transaction"], admission["transaction"])
+        self.assertEqual(109, revision["payload"]["revision"])
+        self.assertEqual(81, revision["payload"]["published_revision"])
+        self.assertEqual("CHANGED", revision["payload"]["decision"])
+        self.assertEqual(1, revision["payload"]["request_count"])
+        self.assertEqual("ADMITTED", admission["payload"]["decision"])
+        self.assertEqual(revision["artifact_sha256"], admission["payload"]["revision_resolution_sha256"])
+        self.assertEqual(SOURCE_SHA, revision["producer"]["source_sha"])
+        self.assertEqual(SOURCE_SHA, admission["producer"]["source_sha"])
+        self.assertEqual("37379469235", revision["producer"]["workflow_run_id"])
+        self.assertEqual("37379469235", admission["producer"]["workflow_run_id"])
+
+        revision_script = _python_heredoc(next(step["run"] for step in self.jobs["revision-resolve"]["steps"] if step.get("name") == "Revalidate and carry forward the original revision artifact unchanged"))
+        admission_script = _python_heredoc(next(step["run"] for step in self.jobs["resume-admission"]["steps"] if step.get("id") == "admit"))
+
+        def execute_revision(raw=revision_raw, requested_source=SOURCE_SHA, requested_tx=TX_ID, public_revision=109):
+            with tempfile.TemporaryDirectory(prefix="mahoon-h2-revision-") as directory:
+                cwd = Path(directory)
+                artifact = cwd / "runner-temp/resume-revision/revision-resolution.json"
+                artifact.parent.mkdir(parents=True)
+                artifact.write_bytes(raw)
+                result = _run_workflow_script(revision_script, cwd, {
+                    "RUNNER_TEMP": str(cwd / "runner-temp"), "REQUESTED_SOURCE_RUN_ID": "37379469235",
+                    "REQUESTED_SOURCE_SHA": requested_source, "REQUESTED_TRANSACTION_ID": requested_tx,
+                }, offline_revision=public_revision)
+                return result
+
+        positive = execute_revision()
+        self.assertEqual(0, positive.returncode, positive.stderr)
+        self.assertIn("RESUME_REVISION_ARTIFACT=UNCHANGED; PUBLIC_REVISION=109", positive.stdout)
+        modified_revision_payload = copy.deepcopy(revision_value)
+        modified_revision_payload["payload"]["revision"] = 110
+        modified_revision_raw = json.dumps(modified_revision_payload, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
+        for label, raw, source, tx, public_revision in (
+            ("modified raw bytes", revision_raw + b" ", SOURCE_SHA, TX_ID, 109),
+            ("modified payload", modified_revision_raw, SOURCE_SHA, TX_ID, 109),
+            ("incorrect source SHA", revision_raw, "0" * 40, TX_ID, 109),
+            ("incorrect transaction", revision_raw, SOURCE_SHA, "0" * 64, 109),
+            ("public revision 110", revision_raw, SOURCE_SHA, TX_ID, 110),
+            ("public revision 108", revision_raw, SOURCE_SHA, TX_ID, 108),
+        ):
+            with self.subTest(label=label):
+                self.assertNotEqual(0, execute_revision(raw, source, tx, public_revision).returncode)
+
+        def execute_admission(raw=admission_raw, source=SOURCE_SHA, tx=TX_ID):
+            with tempfile.TemporaryDirectory(prefix="mahoon-h2-admission-") as directory:
+                cwd = Path(directory)
+                (cwd / "handoff").mkdir()
+                (cwd / "handoff/revision-resolution.json").write_bytes(revision_raw)
+                original = cwd / "runner-temp/resume-admission/admission.json"
+                original.parent.mkdir(parents=True)
+                original.write_bytes(raw)
+                output = cwd / "github-output.txt"
+                output.write_text("", encoding="utf-8")
+                result = _run_workflow_script(admission_script, cwd, {
+                    "RUNNER_TEMP": str(cwd / "runner-temp"), "GITHUB_OUTPUT": str(output),
+                    "REQUESTED_SOURCE_SHA": source, "REQUESTED_TRANSACTION_ID": tx,
+                })
+                copied = (cwd / "runner-evidence/a6/admission.json").read_bytes() if (cwd / "runner-evidence/a6/admission.json").exists() else None
+                return result, output.read_text(encoding="utf-8"), copied
+
+        admitted, output, copied = execute_admission()
+        self.assertEqual(0, admitted.returncode, admitted.stderr)
+        self.assertEqual("decision=ADMITTED\n", output)
+        self.assertEqual(admission_raw, copied)
+        changed = copy.deepcopy(admission_value)
+        changed["payload"]["revision_resolution_sha256"] = "0" * 64
+        bad_lineage = artifact_contract.seal_artifact(changed)
+        bad_lineage_raw = json.dumps(bad_lineage, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8") + b"\n"
+        changed = copy.deepcopy(admission_value)
+        changed["payload"]["decision"] = "DEFERRED"
+        modified_admission_payload = json.dumps(changed, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
+        negatives = (
+            ("modified raw artifact", admission_raw + b" ", SOURCE_SHA, TX_ID),
+            ("modified admission payload", modified_admission_payload, SOURCE_SHA, TX_ID),
+            ("incorrect source SHA", admission_raw, "0" * 40, TX_ID),
+            ("incorrect transaction", admission_raw, SOURCE_SHA, "0" * 64),
+            ("incorrect artifact lineage", bad_lineage_raw, SOURCE_SHA, TX_ID),
+        )
+        for label, raw, source, tx in negatives:
+            with self.subTest(label=label):
+                result, _output, _copied = execute_admission(raw, source, tx)
+                self.assertNotEqual(0, result.returncode, label)
 
 
 if __name__ == "__main__":

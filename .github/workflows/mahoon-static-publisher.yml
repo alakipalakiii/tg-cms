@@ -505,8 +505,8 @@ jobs:
           for name in ("upload_version", "deploy_zero_percent", "promote", "rollback"):
               operation = active["operations"][name]
               assert operation["attempts"] == []
-              assert operation["intent_status"] == "NOT_STARTED"
-              assert operation["result_status"] == "NOT_REPORTED"
+              assert operation["intent_state"] == "NOT_STARTED"
+              assert operation["result_state"] == "NOT_REPORTED"
           print("RESUME_JOURNAL=PRISTINE_ADMITTED_TRANSACTION_109")
           PY
 
@@ -550,7 +550,7 @@ jobs:
           assert tx_id == "704bdb7d7161c7c5c89ef4865788e71a67df26fd2fe4cfb695d297c3900d18d2"
           original = Path(os.environ["RUNNER_TEMP"]) / "resume-revision" / "revision-resolution.json"
           raw = original.read_bytes()
-          assert hashlib.sha256(raw).hexdigest() == "aece5876b4f9d71bc07f69fa2cad9f5a873ddf6e5e924adf58009a712d537dd3"
+          assert hashlib.sha256(raw).hexdigest() == "3213bd781b7ac9cfa97e2957b3ee90e94e69f03258538d6cb39f2d2ad1fbd408"
           artifact = artifact_contract.validate_artifact(json.loads(raw), expected_source_sha=source_sha)
           assert artifact["artifact_type"] == "revision_resolution"
           assert artifact["transaction"]["logical_transaction_id"] == tx_id
@@ -631,7 +631,7 @@ jobs:
           revision_path = Path("handoff/revision-resolution.json")
           original = Path(os.environ["RUNNER_TEMP"]) / "resume-admission" / "admission.json"
           raw = original.read_bytes()
-          assert hashlib.sha256(raw).hexdigest() == "12539a6d6369397664f4859a605d5332a97b328ec47fb9414445d5be203a7626"
+          assert hashlib.sha256(raw).hexdigest() == "2ade3405f29e62b58b974aace02b2f722a4e6a6ce2646840350e5a33eb2e1639"
           revision = artifact_transport.read_artifact(revision_path, expected_type="revision_resolution", expected_source_sha=source_sha)
           admission = artifact_contract.validate_artifact(
               json.loads(raw), expected_transaction=revision["transaction"], expected_source_sha=source_sha,
