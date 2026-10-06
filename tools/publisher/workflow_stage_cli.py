@@ -840,6 +840,14 @@ def _parser() -> argparse.ArgumentParser:
     bootstrap.add_argument("--remote", default="origin")
     bootstrap.add_argument("--branch", default="main")
 
+    retire = commands.add_parser("retire-stale-admitted")
+    retire.add_argument("--repository", required=True)
+    retire.add_argument("--journal", required=True)
+    retire.add_argument("--transaction-id", required=True)
+    retire.add_argument("--expected-revision", required=True, type=int)
+    retire.add_argument("--remote", required=True)
+    retire.add_argument("--branch", required=True)
+
     admit = commands.add_parser("admit")
     admit.add_argument("--revision", required=True)
     admit.add_argument("--repository", required=True)
@@ -993,6 +1001,19 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "bootstrap-journal":
             output = _writer(args.repository, args.worker, args.remote, args.branch).bootstrap()
+        elif args.command == "retire-stale-admitted":
+            if (args.transaction_id != "704bdb7d7161c7c5c89ef4865788e71a67df26fd2fe4cfb695d297c3900d18d2"
+                    or args.expected_revision != 109
+                    or Path(args.journal).resolve() != (Path(args.repository).resolve() / "publisher-state/production-transaction-journal.json")):
+                raise ValueError("retirement request is outside the single approved transaction")
+            public_revision, changed_at, _metadata = fetch_public_content_revision()
+            if public_revision <= 109:
+                raise ValueError("PUBLIC_REVISION_NOT_NEWER_THAN_STALE_ADMISSION")
+            output = _writer(args.repository, DEFAULT_WORKER, args.remote, args.branch).retire_stale_admitted(
+                args.transaction_id, args.expected_revision,
+            )
+            output["observed_public_revision"] = public_revision
+            output["observed_changed_at"] = changed_at
         elif args.command == "validate-artifact":
             value = validate_artifact_file(args.input, args.type, args.reference)
             output = {"status": "VALID", "artifact_type": value["artifact_type"],

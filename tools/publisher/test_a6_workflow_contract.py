@@ -17,6 +17,8 @@ WORKFLOW = Path(__file__).resolve().parents[2] / ".github/workflows/mahoon-stati
 ROOT = WORKFLOW.parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 from publisher import artifact_contract, artifact_transport
+from publisher import workflow_stage_cli
+from publisher.transaction_journal import empty_journal, serialize_journal
 
 TX_ID = "704bdb7d7161c7c5c89ef4865788e71a67df26fd2fe4cfb695d297c3900d18d2"
 SOURCE_SHA = "f8d30ea474129c3630e309febe381b76b249de23"
@@ -31,7 +33,7 @@ source = sys.stdin.read()
 if os.environ.get('TEST_OFFLINE_REVISION'):
     import publisher
     module = types.ModuleType('publisher.content_revision')
-    module.fetch_public_content_revision = lambda: (int(os.environ['TEST_OFFLINE_REVISION']), '2026-10-05T21:33:21+00:00', {'offline': True})
+    module.fetch_public_content_revision = lambda: (('111' if os.environ['TEST_OFFLINE_REVISION'] == 'malformed' else int(os.environ['TEST_OFFLINE_REVISION'])), '2026-10-05T21:33:21+00:00', {'offline': True})
     sys.modules['publisher.content_revision'] = module
 exec(compile(source, '<workflow-run-block>', 'exec'), {'__name__': '__main__'})
 """
@@ -71,9 +73,62 @@ class A6WorkflowContractTests(unittest.TestCase):
         inputs = self.workflow["on"]["workflow_dispatch"]["inputs"]
         self.assertIn("RESUME_ADMITTED", inputs["mode"]["options"])
         self.assertIn("resume_source_sha", inputs)
+        self.assertIn("RETIRE_STALE_ADMITTED", inputs["mode"]["options"])
         self.assertEqual([{"cron": "17,47 * * * *"}], self.workflow["on"]["schedule"])
         self.assertEqual("mahoon-production-publisher", self.workflow["concurrency"]["group"])
         self.assertEqual("false", self.workflow["concurrency"]["cancel-in-progress"])
+
+    def test_retirement_path_is_isolated_and_revision_gates_are_mandatory(self):
+        retire = self.jobs["retire-stale-admitted"]
+        self.assertEqual({"contents": "write"}, retire["permissions"])
+        self.assertNotIn("CLOUDFLARE", str(retire))
+        self.assertIn("RETIRE_STALE_ADMITTED", self.job("journal-bootstrap"))
+        self.assertIn("STALE_ADMITTED", self.job("retire-stale-admitted"))
+        self.assertIn("production-baseline-reconciliation", self.jobs)
+        self.assertIn("secrets.CLOUDFLARE_READ_API_TOKEN", self.job("production-baseline-reconciliation"))
+        self.assertNotIn("CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}", self.job("production-baseline-reconciliation"))
+        self.assertIn("PUBLIC_REVISION_CHANGED_BEFORE_BUILD", self.job("build-validate"))
+        self.assertIn("PUBLIC_REVISION_CHANGED_DURING_BUILD", self.job("build-validate"))
+        self.assertLess(self.job("build-validate").index("PRE_BUILD_REVISION_STABLE"), self.job("build-validate").index("npm ci"))
+        self.assertLess(self.job("build-validate").index("POST_BUILD_REVISION_STABLE"), self.job("build-validate").index("a6-build-${{ github.run_id }}"))
+        self.assertIn("needs.production-baseline-reconciliation.result == 'success'", self.job("upload-intent-write"))
+
+    def test_pre_and_post_build_gates_execute_with_dynamic_revisions_offline(self):
+        pre = _python_heredoc(next(step["run"] for step in self.jobs["build-validate"]["steps"] if step.get("name") == "Validate current admission and public revision before build"))
+        post = _python_heredoc(next(step["run"] for step in self.jobs["build-validate"]["steps"] if step.get("name") == "Recheck public content revision before build artifact handoff"))
+        source = "a" * 40
+        with tempfile.TemporaryDirectory(prefix="mahoon-a6-revision-gates-") as directory:
+            cwd = Path(directory)
+            state_dir = cwd / "state/publisher-state"
+            state_dir.mkdir(parents=True)
+            (state_dir / "production-transaction-journal.json").write_bytes(serialize_journal(empty_journal("mahoon-art-magazine")))
+            (state_dir / "published-static-state.json").write_text(json.dumps({"published_content_revision": 80}), encoding="utf-8")
+            revision = workflow_stage_cli.create_revision_resolution(
+                state_dir / "published-static-state.json", source_sha=source,
+                fetcher=lambda _endpoint: ({"revision": 111, "changed_at": "2026-10-06T00:00:00Z"}, {"offline": True}),
+            )
+            revision_path = cwd / "handoff/revision-resolution.json"
+            admission_path = cwd / "handoff/admission.json"
+            revision_path.parent.mkdir(parents=True)
+            artifact_transport.write_artifact(revision_path, revision, expected_type="revision_resolution")
+            admission = workflow_stage_cli.create_admission_receipt(
+                revision_path, state_dir / "production-transaction-journal.json", "workflow_dispatch", "run-a6", "1",
+            )
+            artifact_transport.write_artifact(admission_path, admission, expected_type="admission_receipt",
+                                              referenced_artifacts=artifact_transport.references(revision))
+            env = {"EXECUTION_SHA": source, "RESUME_MODE": "false"}
+
+            def run(script, public_revision):
+                return _run_workflow_script(script, cwd, env, offline_revision=public_revision)
+
+            for script in (pre, post):
+                stable = run(script, 111)
+                self.assertEqual(0, stable.returncode, stable.stderr)
+            self.assertNotEqual(0, run(pre, 112).returncode)
+            self.assertNotEqual(0, run(post, 112).returncode)
+            for older in (109, 108, "malformed"):
+                with self.subTest(public_revision=older):
+                    self.assertNotEqual(0, run(pre, older).returncode)
 
     def test_source_is_pinned_and_state_branch_is_separate(self):
         self.assertIn("github.sha", self.source)
@@ -101,7 +156,7 @@ class A6WorkflowContractTests(unittest.TestCase):
         self.assertIn("a6-revision-${{ inputs.source_run_id }}", self.job("revision-resolve"))
         self.assertIn("a6-admission-${{ inputs.source_run_id }}", self.job("resume-admission"))
         self.assertIn("public_revision == 109", self.job("revision-resolve"))
-        self.assertIn("RESUME_POST_BUILD_PUBLIC_REVISION=109", self.job("build-validate"))
+        self.assertIn("RESUME_PUBLIC_REVISION_MISMATCH", self.job("build-validate"))
 
     def test_no_legacy_combined_mutating_authority(self):
         for name in ("build-and-zero-percent", "remote-proof", "promote-and-validate",

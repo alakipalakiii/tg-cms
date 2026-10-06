@@ -19,6 +19,8 @@ from publisher.transaction_journal import (
 
 
 JOURNAL_PATH = "publisher-state/production-transaction-journal.json"
+STALE_ADMITTED_TX = "704bdb7d7161c7c5c89ef4865788e71a67df26fd2fe4cfb695d297c3900d18d2"
+STALE_ADMITTED_JOURNAL_SHA256 = "b9d56d850e4cfb9c08dd00ced87a0a8ca3e77874a78bf64953579fc9c2a19859"
 _SHA40 = frozenset("0123456789abcdef")
 
 
@@ -432,6 +434,53 @@ class GitJournalWriter:
         )
         next_generation, next_digest, _commit = self._commit_and_verify()
         return decision, transaction_id, next_generation, next_digest
+
+    def retire_stale_admitted(self, transaction_id: str, revision: int) -> dict:
+        """Retire only the reviewed pristine revision-109 admission, once."""
+        state, generation, digest = self._confirm_current()
+        approved_head = _branch_head(self.root, self.branch)
+        active = state["active"]
+        if (transaction_id != STALE_ADMITTED_TX or revision != 109
+                or self.worker != "mahoon-art-magazine"
+                or generation != 1 or digest != STALE_ADMITTED_JOURNAL_SHA256
+                or state["pending"] is not None or active is None
+                or active["logical_transaction_id"] != STALE_ADMITTED_TX
+                or active["worker"] != "mahoon-art-magazine"
+                or active["content_revision"] != 109 or active["state"] != "admitted"
+                or active["build_bundle_sha256"] is not None
+                or active["proof_evidence_sha256"] is not None
+                or active["state_commit_sha"] is not None
+                or active["recovery_status"] != "NONE"):
+            raise RepositoryPersistenceError("journal differs from the approved pristine retirement snapshot")
+        if set(active["operations"]) != set(OPERATIONS):
+            raise RepositoryPersistenceError("retirement operation identities are incomplete")
+        for operation in active["operations"].values():
+            if (operation["attempts"] != [] or operation["intent_state"] != "NOT_STARTED"
+                    or operation["result_state"] != "NOT_REPORTED"):
+                raise RepositoryPersistenceError("retirement is blocked after any mutation evidence")
+
+        journal = self._journal()
+        journal.mark_terminal(STALE_ADMITTED_TX, "blocked")
+        expected, next_generation, next_digest = journal.snapshot()
+        try:
+            commit = self._commit_journal()
+        except RepositoryPersistenceError:
+            # A lost push response may be reconciled only by exact remote state and one-file commit readback.
+            remote, remote_generation, remote_digest, remote_head, remote_raw = self._remote_journal_snapshot()
+            parent = _git(self.root, "rev-list", "--parents", "-n", "1", remote_head).stdout.split()
+            if (remote != expected or remote_generation != next_generation == 2
+                    or remote_digest != next_digest or remote_raw != (self.root / JOURNAL_PATH).read_bytes()
+                    or len(parent) != 2 or parent[1] != approved_head
+                    or _commit_paths(self.root, remote_head) != {JOURNAL_PATH}):
+                raise RepositoryPersistenceError("retirement push was not confirmed by exact remote readback")
+            commit = remote_head
+        installed, installed_generation, installed_digest, installed_head, raw = self._remote_journal_snapshot()
+        if (installed != expected or installed_generation != 2 or installed_digest != next_digest
+                or installed_head != commit or raw != (self.root / JOURNAL_PATH).read_bytes()
+                or _commit_paths(self.root, commit) != {JOURNAL_PATH}):
+            raise RepositoryPersistenceError("retirement remote readback is not exact")
+        return {"status": "RETIRED_BLOCKED", "generation": installed_generation,
+                "journal_sha256": installed_digest, "remote_head": installed_head}
 
     def record_build_ready(self, transaction_id: str, build_bundle_sha256: str) -> tuple[int, str]:
         state, generation, digest = self._confirm_current()

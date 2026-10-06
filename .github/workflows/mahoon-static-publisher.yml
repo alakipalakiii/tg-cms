@@ -8,7 +8,7 @@ on:
         required: true
         default: CHECK_ONLY
         type: choice
-        options: [CHECK_ONLY, AUTO_TICK, PUBLISH, BUILD_AND_ZERO_PERCENT, REMOTE_PROOF, PROMOTE_AND_VALIDATE, CONTENT_DIAGNOSTIC, SAFETY_TESTS_ONLY, RESUME_ADMITTED]
+        options: [CHECK_ONLY, AUTO_TICK, PUBLISH, BUILD_AND_ZERO_PERCENT, REMOTE_PROOF, PROMOTE_AND_VALIDATE, CONTENT_DIAGNOSTIC, SAFETY_TESTS_ONLY, RESUME_ADMITTED, RETIRE_STALE_ADMITTED]
       expected_fingerprint:
         description: "Optional reviewed pending-candidate fingerprint for a no-change proof"
         required: false
@@ -52,6 +52,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  retire-stale-admitted:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'RETIRE_STALE_ADMITTED' && inputs.ready == 'YES' && inputs.transaction_id == '704bdb7d7161c7c5c89ef4865788e71a67df26fd2fe4cfb695d297c3900d18d2' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Read live revision and retire only the exact pristine admitted transaction
+        run: |
+          python code/tools/publisher/workflow_stage_cli.py retire-stale-admitted \
+            --repository state \
+            --journal state/publisher-state/production-transaction-journal.json \
+            --transaction-id '${{ inputs.transaction_id }}' \
+            --expected-revision 109 --remote origin --branch main | tee retirement-evidence.json
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-retirement-${{ github.run_id }}', path: retirement-evidence.json, if-no-files-found: error }
+
   content-diagnostic:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'CONTENT_DIAGNOSTIC' }}
     runs-on: ubuntu-latest
@@ -463,7 +484,7 @@ jobs:
 
   # A6 source-pinned, artifact-carried transaction stages.
   journal-bootstrap:
-    if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && !(github.event_name == 'workflow_dispatch' && inputs.mode == 'RESUME_ADMITTED') }}
+    if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && !(github.event_name == 'workflow_dispatch' && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'RETIRE_STALE_ADMITTED')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
@@ -667,6 +688,34 @@ jobs:
         with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
+      - name: Validate current admission and public revision before build
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          EXECUTION_SHA: ${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}
+          RESUME_MODE: ${{ inputs.mode == 'RESUME_ADMITTED' }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from publisher import artifact_transport
+          from publisher.content_revision import fetch_public_content_revision
+          source = os.environ['EXECUTION_SHA']
+          revision = artifact_transport.read_artifact('handoff/revision-resolution.json', expected_type='revision_resolution', expected_source_sha=source)
+          admission = artifact_transport.read_artifact('handoff/admission.json', expected_type='admission_receipt', expected_transaction=revision['transaction'], expected_source_sha=source, referenced_artifacts=artifact_transport.references(revision))
+          assert revision['payload']['decision'] == 'CHANGED'
+          assert admission['payload']['decision'] == 'ADMITTED'
+          assert admission['transaction']['logical_transaction_id'] == revision['transaction']['logical_transaction_id']
+          assert admission['payload']['active_transaction_id'] == revision['transaction']['logical_transaction_id']
+          assert admission['payload']['revision_resolution_sha256'] == revision['artifact_sha256']
+          journal = json.loads(Path('state/publisher-state/production-transaction-journal.json').read_text(encoding='utf-8'))
+          active = journal['active']
+          assert active and active['logical_transaction_id'] == revision['transaction']['logical_transaction_id'] and active['state'] == 'admitted'
+          current, _changed_at, _meta = fetch_public_content_revision()
+          if os.environ['RESUME_MODE'].lower() == 'true':
+              assert revision['payload']['revision'] == 109 and current == 109, f'RESUME_PUBLIC_REVISION_MISMATCH:{current}'
+          assert current == revision['payload']['revision'], f'PUBLIC_REVISION_CHANGED_BEFORE_BUILD:{current}'
+          print(f"PRE_BUILD_REVISION_STABLE={current}")
+          PY
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci --prefix code/website/dreary-disk
@@ -681,16 +730,23 @@ jobs:
         run: cd code && python tools/m9/publisher_runner.py
       - name: Recheck public content revision before build artifact handoff
         env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          EXECUTION_SHA: ${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}
+          RESUME_MODE: ${{ inputs.mode == 'RESUME_ADMITTED' }}
           MAHOON_PUBLIC_CONTENT_REVISION_API: https://mahoon-content-revision.morentoofficial.workers.dev/public/content-revision-v1
         run: |
-          if [ '${{ inputs.mode }}' = 'RESUME_ADMITTED' ]; then
-            PYTHONPATH=code/tools/publisher:code/tools:code python - <<'PY'
+          python - <<'PY'
+          import os
+          from publisher import artifact_transport
           from publisher.content_revision import fetch_public_content_revision
-          revision, _changed_at, _meta = fetch_public_content_revision()
-          assert revision == 109, f"RESUME_PUBLIC_REVISION_CHANGED_DURING_BUILD:{revision}"
-          print("RESUME_POST_BUILD_PUBLIC_REVISION=109")
+          source = os.environ['EXECUTION_SHA']
+          revision = artifact_transport.read_artifact('handoff/revision-resolution.json', expected_type='revision_resolution', expected_source_sha=source)
+          current, _changed_at, _meta = fetch_public_content_revision()
+          if os.environ['RESUME_MODE'].lower() == 'true':
+              assert revision['payload']['revision'] == 109 and current == 109, f'RESUME_PUBLIC_REVISION_MISMATCH:{current}'
+          assert current == revision['payload']['revision'], f'PUBLIC_REVISION_CHANGED_DURING_BUILD:{current}'
+          print(f"POST_BUILD_REVISION_STABLE={current}")
           PY
-          fi
       - uses: actions/upload-artifact@v4
         with:
           name: a6-build-${{ github.run_id }}
@@ -719,10 +775,77 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: python code/tools/publisher/workflow_stage_cli.py record-build-ready --build-bundle handoff/runner-evidence/v1-build-bundle.json --admission handoff/admission.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-production-baseline-${{ github.run_id }}', path: state/publisher-state/published-static-state.json, if-no-files-found: error }
+
+  production-baseline-reconciliation:
+    needs: build-ready-write
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES' }}
+    runs-on: ubuntu-latest
+    permissions: { actions: read }
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-production-baseline-${{ github.run_id }}', path: baseline }
+      - name: Reconcile active production worker, route, deployment, and persisted static baseline read-only
+        env:
+          CF_ACCOUNT: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CF_WORKER: mahoon-art-magazine
+          CF_HOSTNAME: ${{ vars.CLOUDFLARE_EXPECTED_HOSTNAME }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import urlencode
+          from urllib.request import Request, urlopen
+          with open('baseline/published-static-state.json', encoding='utf-8') as stream:
+              state = json.load(stream)
+          if state.get('current_version_type') != 'STATIC' or not state.get('current_version') or not state.get('deployment_id'):
+              raise SystemExit('persisted Static production baseline is incomplete')
+          account, worker, hostname = (os.environ.get(name, '') for name in ('CF_ACCOUNT', 'CF_WORKER', 'CF_HOSTNAME'))
+          if not account or not hostname or not worker:
+              raise SystemExit('production baseline configuration variables are missing')
+          def get(path):
+              request = Request('https://api.cloudflare.com/client/v4' + path,
+                                headers={'Authorization': 'Bearer ' + os.environ['CLOUDFLARE_API_TOKEN']})
+              try:
+                  with urlopen(request, timeout=30) as response:
+                      value = json.load(response)
+              except (HTTPError, URLError, TimeoutError, OSError):
+                  raise SystemExit('Cloudflare read-only baseline GET failed') from None
+              if not isinstance(value, dict) or value.get('success') is not True:
+                  raise SystemExit('Cloudflare read-only baseline response was invalid')
+              return value.get('result')
+          scripts = get(f'/accounts/{account}/workers/scripts')
+          if not isinstance(scripts, list) or not any(isinstance(row, dict) and row.get('id') == worker for row in scripts):
+              raise SystemExit('active production Worker is not present')
+          domains = get(f'/accounts/{account}/workers/domains?{urlencode({"hostname": hostname, "environment": "production"})}')
+          if not isinstance(domains, list) or not any(isinstance(row, dict) and row.get('hostname') == hostname and row.get('service') == worker and row.get('environment') == 'production' for row in domains):
+              raise SystemExit('production Worker route/domain does not match the accepted Worker')
+          deployments = get(f'/accounts/{account}/workers/scripts/{worker}/deployments?per_page=1')
+          rows = deployments.get('deployments') if isinstance(deployments, dict) else None
+          if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
+              raise SystemExit('active production deployment is unavailable')
+          live = rows[0]
+          if live.get('id') != state['deployment_id']:
+              raise SystemExit('PRODUCTION_BASELINE_DRIFT: deployment identity differs')
+          versions = live.get('versions')
+          if not isinstance(versions, list):
+              raise SystemExit('active deployment version allocation is unavailable')
+          allocation = {item.get('version_id'): item.get('percentage') for item in versions if isinstance(item, dict)}
+          if any(not isinstance(k, str) or not isinstance(v, int) or isinstance(v, bool) or not 0 <= v <= 100 for k, v in allocation.items()):
+              raise SystemExit('active deployment version allocation is malformed')
+          if allocation.get(state['current_version']) != 100 or sum(allocation.values()) != 100:
+              raise SystemExit('PRODUCTION_BASELINE_DRIFT: active Static version allocation differs')
+          print('PRODUCTION_BASELINE_RECONCILIATION=PASS')
+          print('IDENTITY_SEMANTICS=deployment_id is compared to deployment id; current_version is compared to the 100-percent deployed version id')
+          PY
 
   # Mutation operations and their journal writes remain distinct credential boundaries.
   upload-intent-write:
-    needs: build-ready-write
+    needs: [build-ready-write, production-baseline-reconciliation]
+    if: ${{ always() && needs.build-ready-write.result == 'success' && (inputs.mode != 'PUBLISH' || needs.production-baseline-reconciliation.result == 'success') }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
