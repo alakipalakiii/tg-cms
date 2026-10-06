@@ -20,6 +20,9 @@ class A6WorkflowContractTests(unittest.TestCase):
 
     def test_workflow_parses_and_preserves_dispatch_schedule_concurrency(self):
         self.assertIn("workflow_dispatch", self.workflow["on"])
+        inputs = self.workflow["on"]["workflow_dispatch"]["inputs"]
+        self.assertIn("RESUME_ADMITTED", inputs["mode"]["options"])
+        self.assertIn("resume_source_sha", inputs)
         self.assertEqual([{"cron": "17,47 * * * *"}], self.workflow["on"]["schedule"])
         self.assertEqual("mahoon-production-publisher", self.workflow["concurrency"]["group"])
         self.assertEqual("false", self.workflow["concurrency"]["cancel-in-progress"])
@@ -30,6 +33,8 @@ class A6WorkflowContractTests(unittest.TestCase):
         self.assertIn("path: state", self.source)
         self.assertIn("--published-state state/publisher-state/production-content-fingerprint.json", self.source)
         self.assertNotIn("--published-state state/publisher-state/published-static-state.json", self.source)
+        self.assertIn("MAHOON_EXECUTION_SHA: ${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", self.source)
+        self.assertIn("persist-credentials", self.job("journal-resume-verify"))
 
     def test_authoritative_cli_boundaries_are_present_in_order(self):
         for name in ("journal-bootstrap", "revision-resolve", "admission", "build-validate",
@@ -40,6 +45,15 @@ class A6WorkflowContractTests(unittest.TestCase):
                      "promote-result-write", "production-proof", "final-state-materialization",
                      "final-persistence"):
             self.assertIn(name, self.jobs)
+        self.assertIn("journal-resume-verify", self.jobs["revision-resolve"]["needs"])
+        self.assertIn("needs.journal-resume-verify.result == 'success'", self.job("revision-resolve"))
+        self.assertIn("needs.revision-resolve.result == 'success'", self.job("resume-admission"))
+        self.assertIn("needs.resume-admission.result == 'success'", self.job("build-validate"))
+        self.assertIn("inputs.ready", self.job("journal-resume-verify"))
+        self.assertIn("a6-revision-${{ inputs.source_run_id }}", self.job("revision-resolve"))
+        self.assertIn("a6-admission-${{ inputs.source_run_id }}", self.job("resume-admission"))
+        self.assertIn("public_revision == 109", self.job("revision-resolve"))
+        self.assertIn("RESUME_POST_BUILD_PUBLIC_REVISION=109", self.job("build-validate"))
 
     def test_no_legacy_combined_mutating_authority(self):
         for name in ("build-and-zero-percent", "remote-proof", "promote-and-validate",
@@ -67,6 +81,11 @@ class A6WorkflowContractTests(unittest.TestCase):
         self.assertIn("actions/upload-artifact@v4", self.source)
         self.assertIn("actions/download-artifact@v4", self.source)
         self.assertIn("create-recovered-result", self.source)
+        self.assertIn("artifact_transport.references(revision)", self.job("resume-admission"))
+        self.assertIn("shutil.copyfile(original, \"revision-resolution.json\")", self.job("revision-resolve"))
+        self.assertIn("shutil.copyfile(original, \"runner-evidence/a6/admission.json\")", self.job("resume-admission"))
+        self.assertIn("aece5876b4f9d71bc07f69fa2cad9f5a873ddf6e5e924adf58009a712d537dd3", self.job("revision-resolve"))
+        self.assertIn("12539a6d6369397664f4859a605d5332a97b328ec47fb9414445d5be203a7626", self.job("resume-admission"))
 
     def test_credential_classes_are_separated_by_job_permissions(self):
         for job_name, job in self.jobs.items():

@@ -8,7 +8,7 @@ on:
         required: true
         default: CHECK_ONLY
         type: choice
-        options: [CHECK_ONLY, AUTO_TICK, PUBLISH, BUILD_AND_ZERO_PERCENT, REMOTE_PROOF, PROMOTE_AND_VALIDATE, CONTENT_DIAGNOSTIC, SAFETY_TESTS_ONLY]
+        options: [CHECK_ONLY, AUTO_TICK, PUBLISH, BUILD_AND_ZERO_PERCENT, REMOTE_PROOF, PROMOTE_AND_VALIDATE, CONTENT_DIAGNOSTIC, SAFETY_TESTS_ONLY, RESUME_ADMITTED]
       expected_fingerprint:
         description: "Optional reviewed pending-candidate fingerprint for a no-change proof"
         required: false
@@ -32,6 +32,11 @@ on:
         type: string
       source_proof_run_id:
         description: "Remote-proof workflow run ID containing a passing proof result"
+        required: false
+        default: ""
+        type: string
+      resume_source_sha:
+        description: "Exact executable source SHA bound to an existing admitted transaction"
         required: false
         default: ""
         type: string
@@ -458,7 +463,7 @@ jobs:
 
   # A6 source-pinned, artifact-carried transaction stages.
   journal-bootstrap:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && !(github.event_name == 'workflow_dispatch' && inputs.mode == 'RESUME_ADMITTED') }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
@@ -471,18 +476,93 @@ jobs:
       - name: Bootstrap durable journal
         run: python code/tools/publisher/workflow_stage_cli.py bootstrap-journal --repository state --worker mahoon-art-magazine --remote origin --branch main
 
-  revision-resolve:
-    needs: journal-bootstrap
+  journal-resume-verify:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'RESUME_ADMITTED' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@v4
         with: { ref: '${{ github.sha }}', path: code }
       - uses: actions/checkout@v4
-        with: { ref: main, path: state }
+        with: { ref: main, path: state, persist-credentials: false }
+      - name: Verify the exact pristine admitted transaction without writing state
+        env:
+          REQUESTED_TRANSACTION_ID: ${{ inputs.transaction_id }}
+          REQUESTED_READY: ${{ inputs.ready }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          expected = "704bdb7d7161c7c5c89ef4865788e71a67df26fd2fe4cfb695d297c3900d18d2"
+          assert os.environ["REQUESTED_TRANSACTION_ID"] == expected and os.environ["REQUESTED_READY"] == "YES"
+          journal = json.loads(Path("state/publisher-state/production-transaction-journal.json").read_text(encoding="utf-8"))
+          active = journal["active"]
+          assert journal["generation"] == 1 and journal["pending"] is None
+          assert active["logical_transaction_id"] == expected
+          assert active["worker"] == "mahoon-art-magazine" and active["content_revision"] == 109
+          assert active["state"] == "admitted" and active["build_bundle_sha256"] is None
+          assert active["recovery_status"] == "NONE"
+          for name in ("upload_version", "deploy_zero_percent", "promote", "rollback"):
+              operation = active["operations"][name]
+              assert operation["attempts"] == []
+              assert operation["intent_status"] == "NOT_STARTED"
+              assert operation["result_status"] == "NOT_REPORTED"
+          print("RESUME_JOURNAL=PRISTINE_ADMITTED_TRANSACTION_109")
+          PY
+
+  revision-resolve:
+    needs: [journal-bootstrap, journal-resume-verify]
+    if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.mode == 'RESUME_ADMITTED' && needs.journal-resume-verify.result == 'success') || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && !(github.event_name == 'workflow_dispatch' && inputs.mode == 'RESUME_ADMITTED') && needs.journal-bootstrap.result == 'success')) }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read, actions: read }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state, persist-credentials: false }
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
-      - run: python code/tools/publisher/workflow_stage_cli.py resolve-revision --published-state state/publisher-state/production-content-fingerprint.json --output revision-resolution.json
+      - name: Download the immutable revision artifact from the admitted run
+        if: ${{ inputs.mode == 'RESUME_ADMITTED' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-revision-${{ inputs.source_run_id }}
+          path: ${{ runner.temp }}/resume-revision
+          run-id: ${{ inputs.source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Revalidate and carry forward the original revision artifact unchanged
+        if: ${{ inputs.mode == 'RESUME_ADMITTED' }}
+        env:
+          REQUESTED_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          REQUESTED_SOURCE_SHA: ${{ inputs.resume_source_sha }}
+          REQUESTED_TRANSACTION_ID: ${{ inputs.transaction_id }}
+        run: |
+          PYTHONPATH=code/tools/publisher:code/tools:code python - <<'PY'
+          import hashlib, json, os, shutil
+          from pathlib import Path
+          from publisher import artifact_contract
+          from publisher.content_revision import fetch_public_content_revision
+          run_id = os.environ["REQUESTED_SOURCE_RUN_ID"]
+          source_sha = os.environ["REQUESTED_SOURCE_SHA"]
+          tx_id = os.environ["REQUESTED_TRANSACTION_ID"]
+          assert run_id == "37379469235" and source_sha == "f8d30ea474129c3630e309febe381b76b249de23"
+          assert tx_id == "704bdb7d7161c7c5c89ef4865788e71a67df26fd2fe4cfb695d297c3900d18d2"
+          original = Path(os.environ["RUNNER_TEMP"]) / "resume-revision" / "revision-resolution.json"
+          raw = original.read_bytes()
+          assert hashlib.sha256(raw).hexdigest() == "aece5876b4f9d71bc07f69fa2cad9f5a873ddf6e5e924adf58009a712d537dd3"
+          artifact = artifact_contract.validate_artifact(json.loads(raw), expected_source_sha=source_sha)
+          assert artifact["artifact_type"] == "revision_resolution"
+          assert artifact["transaction"]["logical_transaction_id"] == tx_id
+          assert artifact["payload"]["revision"] == 109 and artifact["payload"]["decision"] == "CHANGED"
+          public_revision, _changed_at, _meta = fetch_public_content_revision()
+          assert public_revision == 109, f"RESUME_PUBLIC_REVISION_MISMATCH:{public_revision}"
+          shutil.copyfile(original, "revision-resolution.json")
+          print("RESUME_REVISION_ARTIFACT=UNCHANGED; PUBLIC_REVISION=109")
+          PY
+      - name: Resolve revision for a new transaction
+        if: ${{ inputs.mode != 'RESUME_ADMITTED' }}
+        run: python code/tools/publisher/workflow_stage_cli.py resolve-revision --published-state state/publisher-state/production-content-fingerprint.json --output revision-resolution.json
       - uses: actions/upload-artifact@v4
         with:
           name: a6-revision-${{ github.run_id }}
@@ -491,7 +571,7 @@ jobs:
 
   admission:
     needs: [scheduled-policy-preflight, revision-resolve]
-    if: ${{ always() && ((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true')) }}
+    if: ${{ always() && needs.revision-resolve.result == 'success' && ((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     outputs:
@@ -516,9 +596,64 @@ jobs:
           path: runner-evidence/a6/admission.json
           if-no-files-found: error
 
+  resume-admission:
+    needs: [journal-resume-verify, revision-resolve]
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.mode == 'RESUME_ADMITTED' && needs.journal-resume-verify.result == 'success' && needs.revision-resolve.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read, actions: read }
+    outputs:
+      decision: ${{ steps.admit.outputs.decision }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-revision-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with:
+          name: a6-admission-${{ inputs.source_run_id }}
+          path: ${{ runner.temp }}/resume-admission
+          run-id: ${{ inputs.source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: admit
+        env:
+          REQUESTED_SOURCE_SHA: ${{ inputs.resume_source_sha }}
+          REQUESTED_TRANSACTION_ID: ${{ inputs.transaction_id }}
+        run: |
+          PYTHONPATH=code/tools/publisher:code/tools:code python - <<'PY'
+          import hashlib, json, os, shutil
+          from pathlib import Path
+          from publisher import artifact_contract, artifact_transport
+          source_sha = os.environ["REQUESTED_SOURCE_SHA"]
+          tx_id = os.environ["REQUESTED_TRANSACTION_ID"]
+          revision_path = Path("handoff/revision-resolution.json")
+          original = Path(os.environ["RUNNER_TEMP"]) / "resume-admission" / "admission.json"
+          raw = original.read_bytes()
+          assert hashlib.sha256(raw).hexdigest() == "12539a6d6369397664f4859a605d5332a97b328ec47fb9414445d5be203a7626"
+          revision = artifact_transport.read_artifact(revision_path, expected_type="revision_resolution", expected_source_sha=source_sha)
+          admission = artifact_contract.validate_artifact(
+              json.loads(raw), expected_transaction=revision["transaction"], expected_source_sha=source_sha,
+              referenced_artifacts=artifact_transport.references(revision),
+          )
+          assert admission["artifact_type"] == "admission_receipt"
+          assert admission["payload"]["decision"] == "ADMITTED"
+          assert admission["payload"]["journal_generation"] == 1
+          assert admission["payload"]["revision_resolution_sha256"] == revision["artifact_sha256"]
+          assert admission["payload"]["active_transaction_id"] == tx_id
+          assert admission["transaction"]["logical_transaction_id"] == tx_id
+          Path("runner-evidence/a6").mkdir(parents=True, exist_ok=True)
+          shutil.copyfile(original, "runner-evidence/a6/admission.json")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("decision=ADMITTED\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-admission-${{ github.run_id }}', path: runner-evidence/a6/admission.json, if-no-files-found: error }
+
   build-validate:
-    needs: admission
-    if: ${{ needs.admission.outputs.decision == 'ADMITTED' }}
+    needs: [admission, resume-admission]
+    if: ${{ always() && ((inputs.mode == 'RESUME_ADMITTED' && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'ADMITTED')) }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     steps:
@@ -539,10 +674,23 @@ jobs:
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
           PUBLISHER_MODE: BUILD_VALIDATE
+          MAHOON_EXECUTION_SHA: ${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}
           MAHOON_REVISION_RESOLUTION_ARTIFACT: ../handoff/revision-resolution.json
           MAHOON_ADMISSION_RECEIPT_ARTIFACT: ../handoff/admission.json
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: cd code && python tools/m9/publisher_runner.py
+      - name: Recheck public content revision before build artifact handoff
+        env:
+          MAHOON_PUBLIC_CONTENT_REVISION_API: https://mahoon-content-revision.morentoofficial.workers.dev/public/content-revision-v1
+        run: |
+          if [ '${{ inputs.mode }}' = 'RESUME_ADMITTED' ]; then
+            PYTHONPATH=code/tools/publisher:code/tools:code python - <<'PY'
+          from publisher.content_revision import fetch_public_content_revision
+          revision, _changed_at, _meta = fetch_public_content_revision()
+          assert revision == 109, f"RESUME_PUBLIC_REVISION_CHANGED_DURING_BUILD:{revision}"
+          print("RESUME_POST_BUILD_PUBLIC_REVISION=109")
+          PY
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: a6-build-${{ github.run_id }}
