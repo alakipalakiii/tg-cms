@@ -1,0 +1,39 @@
+name: MAHOON baseline forensics (read-only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: mahoon-production-publisher
+  cancel-in-progress: false
+
+jobs:
+  forensics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Collect GET-only production and history evidence
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
+          CF_ACCOUNT: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CF_HOSTNAME: ${{ vars.CLOUDFLARE_EXPECTED_HOSTNAME }}
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/publisher/baseline_forensics.py --output-dir runner-evidence/baseline-forensics
+      - name: Upload forensic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahoon-baseline-forensics-${{ github.run_id }}
+          path: runner-evidence/baseline-forensics/
+          if-no-files-found: error
