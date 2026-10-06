@@ -55,7 +55,7 @@ def _sha256_path(path: Path) -> str:
 def _sealed_file_entries(root: Path) -> list[dict]:
     root = root.resolve()
     entries: list[dict] = []
-    for path in sorted(root.rglob("*")):
+    for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
         if path.is_symlink():
             raise BuildBoundaryError("BUILD_BUNDLE_SYMLINK_REFUSED")
         if not path.is_file():

@@ -202,6 +202,37 @@ class BuildRunnerBoundaryTests(unittest.TestCase):
             self.assertEqual([entry["path"] for entry in artifact["payload"]["files"]],
                              ["_astro/app.js", "index.html"])
 
+    def test_sealed_file_entries_sort_by_normalized_posix_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "a").mkdir()
+            contents = {"a.txt": b"flat", "a/index.html": b"nested"}
+            for name, content in contents.items():
+                path = root.joinpath(*name.split("/"))
+                path.write_bytes(content)
+
+            paths = [root.joinpath(*name.split("/")) for name in contents]
+            self.assertEqual(
+                ["a/index.html", "a.txt"],
+                [path.relative_to(root).as_posix() for path in sorted(paths)],
+            )
+            expected_paths = sorted(path.relative_to(root).as_posix() for path in paths)
+            self.assertEqual(["a.txt", "a/index.html"], expected_paths)
+
+            entries = self.runner._sealed_file_entries(root)
+            self.assertEqual(expected_paths, [entry["path"] for entry in entries])
+            self.assertEqual(entries, artifact_contract._validate_file_entries(entries, "payload.files"))
+            self.assertEqual(
+                {
+                    name: (len(content), hashlib.sha256(content).hexdigest())
+                    for name, content in contents.items()
+                },
+                {
+                    entry["path"]: (entry["size_bytes"], entry["sha256"])
+                    for entry in entries
+                },
+            )
+
     def test_scrubbed_environment_removes_credentials_only_during_build(self):
         env = {
             "CLOUDFLARE_API_TOKEN": "cf-secret",
