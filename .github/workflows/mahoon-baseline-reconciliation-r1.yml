@@ -1,0 +1,49 @@
+name: MAHOON controlled baseline reconciliation R1
+
+on:
+  workflow_dispatch:
+    inputs:
+      ready:
+        description: Type YES to authorize this single controlled reconciliation run
+        required: true
+        type: choice
+        options:
+          - YES
+          - NO
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: mahoon-production-publisher
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify and persist the owner-accepted deployment baseline
+        env:
+          INPUT_READY: ${{ inputs.ready }}
+          CLOUDFLARE_READ_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
+          CF_ACCOUNT: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CF_HOSTNAME: ${{ vars.CLOUDFLARE_EXPECTED_HOSTNAME }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_API_URL: ${{ github.api_url }}
+        run: python tools/publisher/baseline_reconciliation_r1.py --output-dir runner-evidence/baseline-reconciliation-r1
+      - name: Preserve reconciliation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahoon-baseline-reconciliation-r1-${{ github.run_id }}
+          path: runner-evidence/baseline-reconciliation-r1/
+          if-no-files-found: error
