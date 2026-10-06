@@ -243,6 +243,64 @@ class R1SafetyTests(unittest.TestCase):
         self.assertNotIn("mahoon-static-publisher", text)
         self.assertNotIn("--force", text)
 
+    def test_h1_dispatch_yes_no_are_yaml_strings_not_booleans(self):
+        workflow = Path(__file__).resolve().parents[2] / ".github/workflows/mahoon-baseline-reconciliation-r1.yml"
+        raw = workflow.read_text(encoding="utf-8")
+        payload = yaml.safe_load(raw)
+        # PyYAML YAML 1.1 may interpret the GitHub `on` key as True.
+        event_map = payload.get("on", payload.get(True))
+        choices = event_map["workflow_dispatch"]["inputs"]["ready"]["options"]
+        self.assertEqual(["YES", "NO"], choices)
+        self.assertTrue(all(type(value) is str for value in choices))
+        self.assertIn('          - "YES"\n          - "NO"\n', raw)
+        for bad in ('          - YES\n          - NO\n', '          - true\n          - false\n'):
+            wrong = yaml.safe_load(raw.replace('          - "YES"\n          - "NO"\n', bad))
+            bad_choices = wrong.get("on", wrong.get(True))["workflow_dispatch"]["inputs"]["ready"]["options"]
+            self.assertNotEqual(["YES", "NO"], bad_choices)
+
+    def test_h1_actual_source_guard_exact_parent_grandparent_and_scopes(self):
+        expected = "a" * 40
+        approved_paths = set(r1.R1_SOURCE_FILES)
+
+        def exercise(*, head=expected, remote=expected, parent=None, grandparent=None,
+                     h1_files=None, r1_files=None, api_head=expected):
+            parent = r1.R1_IMPLEMENTATION_SHA if parent is None else parent
+            grandparent = r1.INITIAL_MAIN_SHA if grandparent is None else grandparent
+            h1_files = approved_paths if h1_files is None else h1_files
+            r1_files = approved_paths if r1_files is None else r1_files
+            values = {
+                ("rev-parse", "HEAD"): head,
+                ("rev-parse", "refs/remotes/origin/main"): remote,
+                ("rev-parse", "HEAD^"): parent,
+                ("rev-parse", "HEAD^^"): grandparent,
+                ("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"): "\n".join(sorted(h1_files)),
+                ("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD^"): "\n".join(sorted(r1_files)),
+                ("fetch", "origin", "main"): "",
+            }
+            def fake_git(_root, *args, **kwargs):
+                key = tuple(args)
+                if key not in values:
+                    raise AssertionError(f"unexpected git command: {key}")
+                return subprocess.CompletedProcess(args, 0, stdout=values[key].encode())
+            with patch.object(r1, "_git", side_effect=fake_git), patch.object(r1, "_github_get", return_value={"sha": api_head}):
+                return r1.check_source_and_remote(Path("."), expected, object(), "https://api.github.invalid", "alakipalakiii/tg-cms")
+
+        self.assertEqual(expected, exercise()["source_commit"])
+        cases = (
+            {"head": "b" * 40},
+            {"remote": "b" * 40},
+            {"parent": "b" * 40},
+            {"grandparent": "b" * 40},
+            {"h1_files": approved_paths | {"unauthorized.txt"}},
+            {"r1_files": approved_paths | {"unauthorized.txt"}},
+            {"h1_files": approved_paths - {"tools/publisher/test_baseline_reconciliation_r1.py"}},
+            {"r1_files": approved_paths - {"tools/publisher/test_baseline_reconciliation_r1.py"}},
+            {"api_head": "b" * 40},
+        )
+        for case in cases:
+            with self.subTest(case=case), self.assertRaises(r1.R1Blocked):
+                exercise(**case)
+
     def test_cloudflare_client_is_get_only_and_no_journal_write_path_exists(self):
         source = Path(r1.__file__).read_text(encoding="utf-8")
         self.assertIn('method="GET"', source)

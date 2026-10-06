@@ -21,6 +21,7 @@ from production_baseline_readonly import reconcile as strict_baseline_reconcile
 API_ROOT = "https://api.cloudflare.com/client/v4"
 GITHUB_API = "https://api.github.com"
 INITIAL_MAIN_SHA = "07e7e1899155a861ff32b45ed8cbfab0e45748e5"
+R1_IMPLEMENTATION_SHA = "2997228958f45e113239aad47108403a98297d85"
 F1_RUN_ID = "37460626693"
 F1_SOURCE_SHA = INITIAL_MAIN_SHA
 F1_ARTIFACT_NAME = "mahoon-baseline-forensics-37460626693"
@@ -365,10 +366,13 @@ def check_source_and_remote(root, expected_head, git_get, api_url, repo):
     local_head = _git(root, "rev-parse", "HEAD").stdout.decode().strip()
     remote_head = _git(root, "rev-parse", "refs/remotes/origin/main").stdout.decode().strip()
     parent = _git(root, "rev-parse", "HEAD^").stdout.decode().strip()
+    grandparent = _git(root, "rev-parse", "HEAD^^").stdout.decode().strip()
     source_files = set(_git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").stdout.decode().splitlines())
-    if local_head != expected_head or remote_head != expected_head or parent != INITIAL_MAIN_SHA:
+    implementation_files = set(_git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD^").stdout.decode().splitlines())
+    if (local_head != expected_head or remote_head != expected_head
+            or parent != R1_IMPLEMENTATION_SHA or grandparent != INITIAL_MAIN_SHA):
         raise R1Blocked("SOURCE_HEAD", "REMOTE_MAIN_MOVED_OR_SOURCE_MISMATCH")
-    if source_files != R1_SOURCE_FILES:
+    if source_files != R1_SOURCE_FILES or implementation_files != R1_SOURCE_FILES:
         raise R1Blocked("SOURCE_SCOPE", "SOURCE_COMMIT_SCOPE_MISMATCH")
     remote_commit = _github_get(git_get, api_url, f"/repos/{repo}/commits/main")
     if remote_commit.get("sha") != expected_head:
