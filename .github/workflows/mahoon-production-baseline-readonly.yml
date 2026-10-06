@@ -1,0 +1,42 @@
+name: MAHOON production baseline read-only
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mahoon-production-publisher
+  cancel-in-progress: false
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: code
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: state
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Reconcile production baseline using GET only
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
+          CF_ACCOUNT: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CF_WORKER: mahoon-art-magazine
+          CF_HOSTNAME: ${{ vars.CLOUDFLARE_EXPECTED_HOSTNAME }}
+        run: python code/tools/publisher/production_baseline_readonly.py --state state/publisher-state/published-static-state.json --output production-baseline-readonly-evidence.json
+      - name: Upload baseline evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-baseline-readonly-${{ github.run_id }}
+          path: production-baseline-readonly-evidence.json
+          if-no-files-found: error

@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TX = "704bdb7d7161c7c5c89ef4865788e71a67df26fd2fe4cfb695d297c3900d18d2"
 WORKER = "mahoon-art-magazine"
 JOURNAL = "publisher-state/production-transaction-journal.json"
+JOURNAL_FIXTURE = Path(__file__).resolve().parent / "fixtures/pre-retirement-journal-v2.json"
 
 
 def git(root, *args, check=True):
@@ -38,7 +39,7 @@ class RetirementRepository:
         git(self.root, "config", "user.name", "Retirement test")
         git(self.root, "config", "user.email", "retirement@example.invalid")
         (self.root / JOURNAL).parent.mkdir(parents=True)
-        (self.root / JOURNAL).write_bytes((ROOT / JOURNAL).read_bytes())
+        (self.root / JOURNAL).write_bytes(JOURNAL_FIXTURE.read_bytes())
         git(self.root, "add", JOURNAL)
         git(self.root, "commit", "-m", "accepted journal fixture")
         git(self.root, "remote", "add", "origin", str(self.remote))
@@ -144,7 +145,7 @@ class StaleRetirementTests(unittest.TestCase):
                     with self.assertRaises((persistence.RepositoryPersistenceError, JournalInvalid)):
                         self.repo.writer().retire_stale_admitted(TX, 109)
                 # Restore the accepted bytes for the next independent unsafe variant.
-                path.write_bytes((ROOT / JOURNAL).read_bytes())
+                path.write_bytes(JOURNAL_FIXTURE.read_bytes())
         self.assertEqual(1, self.repo.journal()["generation"])
 
     def test_cli_reads_live_revision_before_retirement_and_refuses_old_values(self):

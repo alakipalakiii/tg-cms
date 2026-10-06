@@ -299,7 +299,7 @@ class A6WorkflowContractTests(unittest.TestCase):
     def test_resume_journal_guard_executes_against_journal_v2_and_fails_closed(self):
         job = self.jobs["journal-resume-verify"]
         script = _python_heredoc(next(step["run"] for step in job["steps"] if step.get("name") == "Verify the exact pristine admitted transaction without writing state"))
-        journal_path = ROOT / "publisher-state/production-transaction-journal.json"
+        journal_path = Path(__file__).resolve().parent / "fixtures/pre-retirement-journal-v2.json"
         baseline = json.loads(journal_path.read_text(encoding="utf-8"))
         self.assertEqual("admitted", baseline["active"]["state"])
         self.assertEqual(TX_ID, baseline["active"]["logical_transaction_id"])
