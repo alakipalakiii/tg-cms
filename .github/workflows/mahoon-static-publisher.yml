@@ -761,6 +761,7 @@ jobs:
 
   build-ready-write:
     needs: build-validate
+    if: ${{ !cancelled() && ((inputs.mode == 'PUBLISH' || inputs.mode == 'PROMOTE_AND_VALIDATE') && needs.build-validate.result == 'success' && needs.admission.result == 'success') || (inputs.mode == 'RESUME_ADMITTED' && needs.build-validate.result == 'success' && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED') }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
@@ -780,7 +781,7 @@ jobs:
 
   production-baseline-reconciliation:
     needs: build-ready-write
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES' }}
+    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES' && needs.build-ready-write.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { actions: read }
     env:
