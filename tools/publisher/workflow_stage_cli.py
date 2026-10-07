@@ -847,6 +847,10 @@ def _parser() -> argparse.ArgumentParser:
     retire.add_argument("--expected-revision", required=True, type=int)
     retire.add_argument("--remote", required=True)
     retire.add_argument("--branch", required=True)
+    retire.add_argument("--expected-generation", type=int, default=None,
+                         help="Caller-supplied journal generation; enables the v2 generic retirement path")
+    retire.add_argument("--journal-sha256", default=None,
+                         help="Caller-supplied expected journal digest; required with --expected-generation")
 
     admit = commands.add_parser("admit")
     admit.add_argument("--revision", required=True)
@@ -1002,16 +1006,24 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "bootstrap-journal":
             output = _writer(args.repository, args.worker, args.remote, args.branch).bootstrap()
         elif args.command == "retire-stale-admitted":
-            if (args.transaction_id != "704bdb7d7161c7c5c89ef4865788e71a67df26fd2fe4cfb695d297c3900d18d2"
-                    or args.expected_revision != 109
-                    or Path(args.journal).resolve() != (Path(args.repository).resolve() / "publisher-state/production-transaction-journal.json")):
-                raise ValueError("retirement request is outside the single approved transaction")
+            writer = _writer(args.repository, DEFAULT_WORKER, args.remote, args.branch)
             public_revision, changed_at, _metadata = fetch_public_content_revision()
-            if public_revision <= 109:
-                raise ValueError("PUBLIC_REVISION_NOT_NEWER_THAN_STALE_ADMISSION")
-            output = _writer(args.repository, DEFAULT_WORKER, args.remote, args.branch).retire_stale_admitted(
-                args.transaction_id, args.expected_revision,
-            )
+            if args.expected_generation is not None or args.journal_sha256 is not None:
+                if args.expected_generation is None or args.journal_sha256 is None:
+                    raise ValueError("--expected-generation and --journal-sha256 must be supplied together")
+                output = writer.retire_stale_admitted_v2(
+                    args.transaction_id, args.expected_revision,
+                    expected_generation=args.expected_generation,
+                    expected_digest=args.journal_sha256,
+                )
+            else:
+                if (args.transaction_id != "704bdb7d7161c7c5c89ef4865788e71a67df26fd2fe4cfb695d297c3900d18d2"
+                        or args.expected_revision != 109
+                        or Path(args.journal).resolve() != (Path(args.repository).resolve() / "publisher-state/production-transaction-journal.json")):
+                    raise ValueError("retirement request is outside the single approved transaction")
+                if public_revision <= 109:
+                    raise ValueError("PUBLIC_REVISION_NOT_NEWER_THAN_STALE_ADMISSION")
+                output = writer.retire_stale_admitted(args.transaction_id, args.expected_revision)
             output["observed_public_revision"] = public_revision
             output["observed_changed_at"] = changed_at
         elif args.command == "validate-artifact":

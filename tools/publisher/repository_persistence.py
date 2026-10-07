@@ -482,6 +482,64 @@ class GitJournalWriter:
         return {"status": "RETIRED_BLOCKED", "generation": installed_generation,
                 "journal_sha256": installed_digest, "remote_head": installed_head}
 
+    def retire_stale_admitted_v2(self, transaction_id: str, revision: int, *,
+                                 expected_generation: int, expected_digest: str) -> dict:
+        """Retire a caller-authorized pristine admission by exact caller-supplied identity.
+
+        Unlike retire_stale_admitted (locked to the reviewed revision-109 snapshot), this path
+        accepts the expected transaction id, revision, generation and journal digest from the
+        caller and verifies the same pristine guarantees before a single journal-only commit.
+        """
+        state, generation, digest = self._confirm_current()
+        if not isinstance(expected_generation, int) or isinstance(expected_generation, bool) \
+                or expected_generation != generation:
+            raise RepositoryPersistenceError("expected journal generation does not match the remote journal")
+        if digest != expected_digest:
+            raise RepositoryPersistenceError("expected journal digest does not match the remote journal")
+        approved_head = _branch_head(self.root, self.branch)
+        active = state["active"]
+        if active is None:
+            raise RepositoryPersistenceError("journal has no active transaction to retire")
+        if (transaction_id != active["logical_transaction_id"] or revision != active["content_revision"]
+                or active["state"] != "admitted"
+                or state["pending"] is not None
+                or active["build_bundle_sha256"] is not None
+                or active["proof_evidence_sha256"] is not None
+                or active["state_commit_sha"] is not None
+                or active["recovery_status"] != "NONE"):
+            raise RepositoryPersistenceError("active journal slot is not the pristine admitted transaction to be retired")
+        if set(active["operations"]) != set(OPERATIONS):
+            raise RepositoryPersistenceError("retirement operation identities are incomplete")
+        for operation in active["operations"].values():
+            if (operation["attempts"] != [] or operation["intent_state"] != "NOT_STARTED"
+                    or operation["result_state"] != "NOT_REPORTED"):
+                raise RepositoryPersistenceError("retirement is blocked after any mutation evidence")
+
+        journal = self._journal()
+        journal.mark_terminal(transaction_id, "blocked")
+        expected, next_generation, next_digest = journal.snapshot()
+        try:
+            commit = self._commit_journal()
+        except RepositoryPersistenceError:
+            # A lost push response may be reconciled only by exact remote state and one-file commit readback.
+            remote, remote_generation, remote_digest, remote_head, remote_raw = self._remote_journal_snapshot()
+            parent = _git(self.root, "rev-list", "--parents", "-n", "1", remote_head).stdout.split()
+            if (remote != expected or remote_generation != next_generation == generation + 1
+                    or remote_digest != next_digest or remote_raw != (self.root / JOURNAL_PATH).read_bytes()
+                    or len(parent) != 2 or parent[1] != approved_head
+                    or _commit_paths(self.root, remote_head) != {JOURNAL_PATH}):
+                raise RepositoryPersistenceError("retirement push was not confirmed by exact remote readback")
+            commit = remote_head
+        installed, installed_generation, installed_digest, installed_head, raw = self._remote_journal_snapshot()
+        if (installed != expected or installed_generation != next_generation
+                or installed_digest != next_digest
+                or installed_head != commit or raw != (self.root / JOURNAL_PATH).read_bytes()
+                or _commit_paths(self.root, commit) != {JOURNAL_PATH}):
+            raise RepositoryPersistenceError("retirement remote readback is not exact")
+        return {"status": "RETIRED_BLOCKED", "generation": installed_generation,
+                "journal_sha256": installed_digest, "remote_head": installed_head,
+                "retired_transaction_id": transaction_id, "retired_revision": revision}
+
     def record_build_ready(self, transaction_id: str, build_bundle_sha256: str) -> tuple[int, str]:
         state, generation, digest = self._confirm_current()
         active = state["active"]
