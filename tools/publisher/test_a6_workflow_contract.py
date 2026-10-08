@@ -147,7 +147,9 @@ class A6WorkflowContractTests(unittest.TestCase):
         The ref expression is double-quoted in the raw YAML so the flow
         mapping remains parseable (a single-quoted ${{ }} scalar containing
         an inner single-quoted string is not valid flow-mapping YAML)."""
-        ref_expr = "${{ inputs.mode == RESUME_ADMITTED && inputs.resume_source_sha || github.sha }}"
+        # The YAML scalar is double-quoted so the flow mapping stays parseable;
+        # inside the GitHub Actions expression the mode literal MUST be single-quoted.
+        ref_expr = "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}"
         resume_chain = [
             "journal-resume-verify", "revision-resolve", "admission", "resume-admission",
             "build-validate", "build-ready-write",
@@ -174,6 +176,13 @@ class A6WorkflowContractTests(unittest.TestCase):
                 if w.get("path") == "code":
                     return w.get("ref")
             return None
+
+        # Regression guard: a bare (unquoted) RESUME_ADMITTED literal is YAML-valid
+        # but invalid GitHub Actions expression syntax (string literals need quotes).
+        self.assertNotIn("inputs.mode == RESUME_ADMITTED", self.source,
+                         "bare RESUME_ADMITTED literal is not valid GH Actions expression syntax")
+        self.assertIn("inputs.mode == 'RESUME_ADMITTED'", self.source,
+                      "RESUME code checkouts must use the single-quoted mode literal")
 
         for name in resume_chain:
             r = code_ref(name)
