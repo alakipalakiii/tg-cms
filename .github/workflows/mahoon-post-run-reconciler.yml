@@ -180,6 +180,7 @@ jobs:
           # Read the original run id from the same EVENT_PAYLOAD used by classify.
           event = json.loads(os.environ["EVENT_PAYLOAD"])
           original_run_id = str(event["workflow_run"]["id"])
+          baseline = None
           candidate = Path("handoff") / f"a6-production-baseline-{original_run_id}"
           if candidate.is_dir():
               for p in sorted(candidate.iterdir()):
