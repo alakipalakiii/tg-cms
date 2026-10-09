@@ -88,6 +88,7 @@ jobs:
           PYTHONPATH: code/tools/publisher:code/tools:code
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT_PAYLOAD: ${{ toJson(github.event) }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python - <<'PY'
           import json
@@ -110,15 +111,19 @@ jobs:
           # journal still open) can still be reconciled without touching the
           # conclusion gate.
           event = json.loads(os.environ["EVENT_PAYLOAD"])
+          event_name = os.environ.get("GITHUB_EVENT_NAME", "")
           source_repo = event.get("repository", {}).get("full_name") or github_repo()
-          if event.get("name") == "workflow_dispatch":
+          if event_name == "workflow_dispatch":
               run_id = str(event.get("inputs", {}).get("run_id", "")).strip()
               if not run_id.isdigit():
                   print("RECONCILE=blocked; workflow_dispatch requires a numeric inputs.run_id")
                   sys.exit(1)
-          else:
+          elif event_name == "workflow_run":
               run = event["workflow_run"]
               run_id = str(run["id"])
+          else:
+              print(f"RECONCILE=blocked; unsupported trigger event {event_name!r}")
+              sys.exit(1)
           run_data = gh(source_repo, f"actions/runs/{run_id}")
           source_sha = run_data["head_sha"]
           source_attempt = int(run_data["run_attempt"])
@@ -216,6 +221,7 @@ jobs:
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
           EVENT_PAYLOAD: ${{ toJson(github.event) }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python - <<'PY'
           import json
@@ -247,7 +253,16 @@ jobs:
           # Production baseline for abandonment evidence (Class A only).
           # The original publisher run uploads it as a6-production-baseline-<run_id>.
           event = json.loads(os.environ["EVENT_PAYLOAD"])
-          original_run_id = str(event.get("inputs", {}).get("run_id")) if event.get("name") == "workflow_dispatch" else str(event["workflow_run"]["id"])
+          event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+          if event_name == "workflow_dispatch":
+              original_run_id = str(event.get("inputs", {}).get("run_id", ""))
+          elif event_name == "workflow_run":
+              original_run_id = str(event["workflow_run"]["id"])
+          else:
+              original_run_id = ""
+          if not original_run_id:
+              print("RECONCILE=blocked; original run id cannot be determined from the trigger event")
+              sys.exit(1)
           baseline = None
           candidate = Path("handoff") / f"a6-production-baseline-{original_run_id}"
           if candidate.is_dir():
