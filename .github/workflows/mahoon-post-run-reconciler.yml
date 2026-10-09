@@ -62,6 +62,7 @@ jobs:
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_PAYLOAD: ${{ toJson(github.event) }}
         run: |
           python - <<'PY'
           import json
@@ -75,7 +76,11 @@ jobs:
                                       capture_output=True, text=True, check=True)
               return json.loads(result.stdout)
 
-          run = json.loads(os.environ["GITHUB_EVENT_PAYLOAD"])["workflow_run"]
+          # The workflow_run trigger payload is available as a workflow expression,
+          # not as an env var in this job context; pass it through the job output.
+          run = json.loads(os.environ["EVENT_PAYLOAD"])["workflow_run"]
+          # The workflow_run trigger payload is available as a workflow expression,
+          # not as an env var in this job context; pass it through the job output.
           run_id = str(run["id"])
           source_sha = run["head_sha"]
           source_attempt = int(run["run_attempt"])
@@ -141,6 +146,7 @@ jobs:
         if: ${{ steps.classify.outputs.reconcile == 'needed' }}
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
+          EVENT_PAYLOAD: ${{ toJson(github.event) }}
         run: |
           python - <<'PY'
           import json
@@ -171,11 +177,8 @@ jobs:
 
           # Production baseline for abandonment evidence (Class A only).
           # The original publisher run uploads it as a6-production-baseline-<run_id>.
-          run_id = str(journal.get("active", {}).get("logical_transaction_id", ""))
-          baseline = None
-          # The reconciler's own run id differs from the original publisher run id;
-          # read the original run id from the GITHUB_EVENT_PAYLOAD.
-          event = json.loads(os.environ["GITHUB_EVENT_PAYLOAD"])
+          # Read the original run id from the same EVENT_PAYLOAD used by classify.
+          event = json.loads(os.environ["EVENT_PAYLOAD"])
           original_run_id = str(event["workflow_run"]["id"])
           candidate = Path("handoff") / f"a6-production-baseline-{original_run_id}"
           if candidate.is_dir():
