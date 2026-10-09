@@ -37,26 +37,26 @@
             "attempt_id": "b3c6322c-73eb-439a-b2f4-f9cd55cbea42",
             "attempt_number": 1,
             "evidence": {
-              "reference": "25ef380474f9fe8d63816680ce9e3171db0bc1cd87391d7870217cf7b40d0509",
-              "sha256": "226dfdd502fcf681997990bd58bb9c3091b669df4735b92e259ac5104ee6c097",
-              "type": "mutation_result_artifact"
+              "reference": "496fe3eb44af28229f44728309202a5dd7cb7015e4e7a21fa59bfecfba64f62b",
+              "sha256": "5e59a54fe99826975fb2bcad8aa5a7ba0afb0e8f1fe52edfabd1c70a9317244b",
+              "type": "recovery_decision"
             },
             "intent_artifact_sha256": "7bdcef39167ba8c69b3afc9a81cb487c084eafa0d3acbc38a7c01429839e650a",
             "intent_at": "2026-10-09T19:46:20.895171+00:00",
             "intent_state": "RECORDED",
-            "result_at": "2026-10-09T21:18:31.842415+00:00",
-            "result_digest": "f51c89febf0e1df051e05ab8c2c7e7cbe809b1cf03907f18713b8b9f317fa7f7",
-            "result_state": "UNKNOWN"
+            "result_at": "2026-10-09T21:36:17.846472+00:00",
+            "result_digest": "4416458d11fda03bee3da6c0f61963a019b7f1ec56ffe287c20c0dbcdf3bbb04",
+            "result_state": "APPLIED"
           }
         ],
         "intent_state": "RECORDED",
         "operation_id": "3746ce8fdcd83fe796f3c6a5be61e93d155295951fd60d9c952f074b29626aa0",
-        "result_state": "UNKNOWN"
+        "result_state": "APPLIED"
       }
     },
     "proof_evidence_sha256": null,
-    "recovery_status": "REQUIRED",
-    "state": "recovery_required",
+    "recovery_status": "RECONCILED_APPLIED",
+    "state": "operation_reported",
     "state_commit_sha": null,
     "transitions": [
       {
@@ -78,16 +78,21 @@
         "from": "intent_recorded",
         "timestamp": "2026-10-09T21:18:31.842436+00:00",
         "to": "recovery_required"
+      },
+      {
+        "from": "recovery_required",
+        "timestamp": "2026-10-09T21:36:17.846538+00:00",
+        "to": "operation_reported"
       }
     ],
     "trigger_sources": [
       "workflow_dispatch"
     ],
-    "updated_at": "2026-10-09T21:18:31.842440+00:00",
+    "updated_at": "2026-10-09T21:36:17.846549+00:00",
     "worker": "mahoon-art-magazine"
   },
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 14,
+  "generation": 15,
   "history": [
     {
       "build_bundle_sha256": null,
