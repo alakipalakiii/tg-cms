@@ -540,6 +540,87 @@ class GitJournalWriter:
                 "journal_sha256": installed_digest, "remote_head": installed_head,
                 "retired_transaction_id": transaction_id, "retired_revision": revision}
 
+    def abandon_unexecuted_intent_v2(self, transaction_id: str, revision: int, *,
+                                     expected_generation: int, expected_digest: str,
+                                     expected_build_bundle_sha256: str,
+                                     expected_upload_attempt_id: str,
+                                     expected_upload_operation_id: str,
+                                     expected_upload_intent_sha256: str,
+                                     expected_source_sha: str,
+                                     expected_source_run_id: str,
+                                     expected_source_run_attempt: int,
+                                     expected_production_version_id: str,
+                                     expected_production_deployment_id: str) -> dict:
+        """Abandon a provably unexecuted upload intent by exact caller-supplied identity.
+
+        Unlike retire_stale_admitted_v2 (pristine admitted-only), this path
+        authorizes a transaction in the exact intent_recorded state with
+        exactly one recorded upload_version attempt and no mutation evidence,
+        then transitions it to blocked with a single journal-only commit.
+        """
+        state, generation, digest = self._confirm_current()
+        if not isinstance(expected_generation, int) or isinstance(expected_generation, bool) \
+                or expected_generation != generation:
+            raise RepositoryPersistenceError("expected journal generation does not match the remote journal")
+        if digest != expected_digest:
+            raise RepositoryPersistenceError("expected journal digest does not match the remote journal")
+        approved_head = _branch_head(self.root, self.branch)
+        active = state["active"]
+        if active is None:
+            raise RepositoryPersistenceError("journal has no active transaction to abandon")
+        if (transaction_id != active["logical_transaction_id"] or revision != active["content_revision"]
+                or active["state"] != "intent_recorded"
+                or state["pending"] is not None
+                or active["build_bundle_sha256"] != expected_build_bundle_sha256
+                or active["proof_evidence_sha256"] is not None
+                or active["state_commit_sha"] is not None
+                or active["recovery_status"] != "NONE"):
+            raise RepositoryPersistenceError("active journal slot is not the intent_recorded transaction to be abandoned")
+        if set(active["operations"]) != set(OPERATIONS):
+            raise RepositoryPersistenceError("abandonment operation identities are incomplete")
+        for name, operation in active["operations"].items():
+            if name == "upload_version":
+                attempts = operation["attempts"]
+                if (len(attempts) != 1
+                        or attempts[0]["attempt_id"] != expected_upload_attempt_id
+                        or attempts[0].get("intent_artifact_sha256") != expected_upload_intent_sha256
+                        or operation["intent_state"] != "RECORDED"
+                        or operation["result_state"] != "NOT_REPORTED"):
+                    raise RepositoryPersistenceError("recorded upload attempt does not match the exact unexecuted identity")
+            elif operation["attempts"] != []:
+                raise RepositoryPersistenceError("another operation recorded an attempt; abandonment is not provable")
+        journal = self._journal()
+        journal.mark_terminal(transaction_id, "blocked")
+        expected, next_generation, next_digest = journal.snapshot()
+        try:
+            commit = self._commit_journal()
+        except RepositoryPersistenceError:
+            remote, remote_generation, remote_digest, remote_head, remote_raw = self._remote_journal_snapshot()
+            parent = _git(self.root, "rev-list", "--parents", "-n", "1", remote_head).stdout.split()
+            if (remote != expected or remote_generation != next_generation == generation + 1
+                    or remote_digest != next_digest or remote_raw != (self.root / JOURNAL_PATH).read_bytes()
+                    or len(parent) != 2 or parent[1] != approved_head
+                    or _commit_paths(self.root, remote_head) != {JOURNAL_PATH}):
+                raise RepositoryPersistenceError("abandonment push was not confirmed by exact remote readback")
+            commit = remote_head
+        installed, installed_generation, installed_digest, installed_head, raw = self._remote_journal_snapshot()
+        if (installed != expected or installed_generation != next_generation
+                or installed_digest != next_digest
+                or installed_head != commit or raw != (self.root / JOURNAL_PATH).read_bytes()
+                or _commit_paths(self.root, commit) != {JOURNAL_PATH}):
+            raise RepositoryPersistenceError("abandonment remote readback is not exact")
+        return {"status": "UNEXECUTED_INTENT_ABANDONED", "generation": installed_generation,
+                "journal_sha256": installed_digest, "remote_head": installed_head,
+                "abandoned_transaction_id": transaction_id, "abandoned_revision": revision,
+                "abandoned_attempt_id": expected_upload_attempt_id,
+                "abandoned_operation_id": expected_upload_operation_id,
+                "abandoned_intent_sha256": expected_upload_intent_sha256,
+                "abandoned_source_sha": expected_source_sha,
+                "abandoned_source_run_id": expected_source_run_id,
+                "abandoned_source_run_attempt": expected_source_run_attempt,
+                "abandoned_production_version_id": expected_production_version_id,
+                "abandoned_production_deployment_id": expected_production_deployment_id}
+
     def record_build_ready(self, transaction_id: str, build_bundle_sha256: str) -> tuple[int, str]:
         state, generation, digest = self._confirm_current()
         active = state["active"]

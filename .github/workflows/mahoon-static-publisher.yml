@@ -905,6 +905,7 @@ jobs:
 
   cloudflare-upload-operation:
     needs: upload-intent-write
+    if: ${{ !cancelled() && needs.upload-intent-write.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     env:
@@ -943,6 +944,7 @@ jobs:
 
   upload-result-write:
     needs: cloudflare-upload-operation
+    if: ${{ !cancelled() && needs.cloudflare-upload-operation.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     outputs:
@@ -1112,7 +1114,7 @@ jobs:
 
   cloudflare-zero-percent-operation:
     needs: [zero-percent-intent-write, upload-create-recovered-result]
-    if: ${{ always() && needs.zero-percent-intent-write.result == 'success' && (needs.upload-result-write.outputs.result_state == 'APPLIED' || needs.upload-create-recovered-result.outputs.recovered == 'true') }}
+    if: ${{ !cancelled() && needs.zero-percent-intent-write.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     env:
@@ -1168,6 +1170,7 @@ jobs:
 
   zero-percent-result-write:
     needs: cloudflare-zero-percent-operation
+    if: ${{ !cancelled() && needs.cloudflare-zero-percent-operation.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     outputs:
@@ -1406,6 +1409,7 @@ jobs:
 
   cloudflare-promote-operation:
     needs: promote-intent-write
+    if: ${{ !cancelled() && needs.promote-intent-write.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     env:
@@ -1462,6 +1466,7 @@ jobs:
 
   promote-result-write:
     needs: cloudflare-promote-operation
+    if: ${{ !cancelled() && needs.cloudflare-promote-operation.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     outputs:
@@ -1888,6 +1893,7 @@ jobs:
 
   cloudflare-rollback-operation:
     needs: rollback-intent-write
+    if: ${{ !cancelled() && needs.rollback-intent-write.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     env:
@@ -1944,6 +1950,7 @@ jobs:
 
   rollback-result-write:
     needs: cloudflare-rollback-operation
+    if: ${{ !cancelled() && needs.cloudflare-rollback-operation.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     outputs:

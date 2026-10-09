@@ -1,0 +1,256 @@
+# MAHOON post-run reconciler: closes orphan durable mutation intents.
+#
+# Triggered after every completed publisher run via workflow_run. It processes
+# only the "MAHOON static publisher" workflow, never itself, so it cannot
+# recurse.
+#
+#   Class A (mutation job SKIPPED): the approved unexecuted-intent abandonment path.
+#   Class B (mutation job FAILED):  the existing recovery/readback mechanism.
+#
+# The journal on main is the single source of truth for which operation is
+# orphaned. The reconciler fails closed if the journal cannot be classified.
+
+name: MAHOON post-run reconciler
+
+on:
+  workflow_run:
+    workflows: ["MAHOON static publisher"]
+    types: [completed]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: mahoon-post-run-reconciler
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    # A success run is already closed by the in-run flow. Only failed/cancelled
+    # completed publisher runs can leave a durable mutation intent unresolved.
+    if: ${{ github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out publisher workflow code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          path: code
+
+      - name: Check out production journal
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: state
+
+      - name: Download required artifacts from original run
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: handoff
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Identify and classify orphaned intent
+        id: classify
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          def gh(repo, path):
+              result = subprocess.run(["gh", "api", f"repos/{repo}/{path}"],
+                                      capture_output=True, text=True, check=True)
+              return json.loads(result.stdout)
+
+          run = json.loads(os.environ["GITHUB_EVENT_PAYLOAD"])["workflow_run"]
+          run_id = str(run["id"])
+          source_sha = run["head_sha"]
+          source_attempt = int(run["run_attempt"])
+          source_repo = run["head_repository"]["full_name"]
+
+          run_data = gh(source_repo, f"actions/runs/{run_id}")
+          jobs = gh(source_repo, f"actions/runs/{run_id}/jobs").get("jobs", [])
+          job_by_name = {j.get("name"): j for j in jobs}
+
+          journal = json.loads(
+              Path("state/publisher-state/production-transaction-journal.json").read_text(encoding="utf-8"))
+          active = journal.get("active")
+          if not active:
+              print("RECONCILE=none; journal has no active transaction")
+              sys.exit(0)
+
+          if active.get("state") != "intent_recorded":
+              print(f"RECONCILE=none; journal active state is {active.get('state')!r}")
+              sys.exit(0)
+
+          target = None
+          for name, op in active.get("operations", {}).items():
+              if (op.get("attempts") and op.get("result_state") == "NOT_REPORTED"):
+                  target = name
+                  break
+          if target is None:
+              print("RECONCILE=none; no operation has a recorded unreported attempt")
+              sys.exit(0)
+
+          job_map = {
+              "upload_version": "cloudflare-upload-operation",
+              "deploy_zero_percent": "cloudflare-zero-percent-operation",
+              "promote": "cloudflare-promote-operation",
+              "rollback": "cloudflare-rollback-operation",
+          }
+          cf_job_name = job_map.get(target, f"cloudflare-{target}-operation")
+          cf_job = job_by_name.get(cf_job_name)
+          if cf_job is None:
+              print(f"RECONCILE=blocked; CF job {cf_job_name!r} is missing from the source run")
+              sys.exit(1)
+          conclusion = cf_job.get("conclusion")
+          if conclusion == "skipped":
+              cls = "skipped"
+          elif conclusion in ("failure", "cancelled"):
+              cls = "failed"
+          else:
+              print(f"RECONCILE=none; CF job {cf_job_name!r} conclusion is {conclusion!r}; no orphan intent pending")
+              sys.exit(0)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"operation={target}\n")
+              f.write(f"cls={cls}\n")
+              f.write(f"run_id={run_id}\n")
+              f.write(f"source_sha={source_sha}\n")
+              f.write(f"source_attempt={source_attempt}\n")
+              f.write(f"reconcile=needed\n")
+              f.write(f"source_repo={source_repo}\n")
+          print(f"RECONCILE=needed CLASS={cls} OP={target} JOB={cf_job_name} CONCL={conclusion}")
+          PY
+
+      - name: Load production baseline and journal CAS guard
+        id: baseline
+        if: ${{ steps.classify.outputs.reconcile == 'needed' }}
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          out = Path(os.environ["GITHUB_OUTPUT"])
+
+          # Journal CAS guard: the state checkout is on main; compute the exact
+          # digest and generation the writer will check against.
+          journal_path = Path("state/publisher-state/production-transaction-journal.json")
+          journal = json.loads(journal_path.read_text(encoding="utf-8"))
+          try:
+              from publisher.transaction_journal import journal_digest
+              digest = journal_digest(journal)
+          except ImportError:
+              import hashlib
+              digest = hashlib.sha256(
+                  json.dumps(journal, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+              ).hexdigest()
+          expected_generation = journal.get("generation", 0)
+          expected_revision = journal.get("active", {}).get("content_revision", 0)
+          with open(out, "a") as f:
+              f.write(f"expected_generation={expected_generation}\n")
+              f.write(f"journal_sha256={digest}\n")
+              f.write(f"expected_revision={expected_revision}\n")
+
+          # Production baseline for abandonment evidence (Class A only).
+          # The original publisher run uploads it as a6-production-baseline-<run_id>.
+          run_id = str(journal.get("active", {}).get("logical_transaction_id", ""))
+          baseline = None
+          # The reconciler's own run id differs from the original publisher run id;
+          # read the original run id from the GITHUB_EVENT_PAYLOAD.
+          event = json.loads(os.environ["GITHUB_EVENT_PAYLOAD"])
+          original_run_id = str(event["workflow_run"]["id"])
+          candidate = Path("handoff") / f"a6-production-baseline-{original_run_id}"
+          if candidate.is_dir():
+              for p in sorted(candidate.iterdir()):
+                  if p.is_file() and p.name.endswith(".json"):
+                      baseline = json.loads(p.read_text(encoding="utf-8"))
+                      break
+          if baseline is not None:
+              normalized = {
+                  "current_version": baseline.get("current_version"),
+                  "deployment_id": baseline.get("deployment_id"),
+                  "current_version_type": baseline.get("current_version_type"),
+              }
+              baseline_path = Path("production-baseline.json")
+              baseline_path.write_text(json.dumps(normalized), encoding="utf-8")
+              with open(out, "a") as f:
+                  f.write("production_baseline=production-baseline.json\n")
+          else:
+              with open(out, "a") as f:
+                  f.write("production_baseline=\n")
+          PY
+
+      - name: Reconcile orphaned Class A intent (skipped mutation)
+        if: ${{ steps.classify.outputs.reconcile == 'needed' && steps.classify.outputs.cls == 'skipped' }}
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BASE_NAME=$(echo "${{ steps.classify.outputs.source_repo }}" | awk -F/ '{print $NF}')
+          OWNER_NAME=$(echo "${{ steps.classify.outputs.source_repo }}" | awk -F/ '{print $1}')
+          python code/tools/publisher/workflow_stage_cli.py reconciliation-decision \
+            --operation "${{ steps.classify.outputs.operation }}" \
+            --intent "handoff/${{ steps.classify.outputs.run_id }}/a6-${{ steps.classify.outputs.operation }}-intent.json" \
+            --journal state/publisher-state/production-transaction-journal.json \
+            --repository state \
+            --remote origin \
+            --branch main \
+            --source-run-id "${{ steps.classify.outputs.run_id }}" \
+            --source-run-attempt "${{ steps.classify.outputs.source_attempt }}" \
+            --source-sha "${{ steps.classify.outputs.source_sha }}" \
+            --github-owner "${OWNER_NAME}" \
+            --github-repo "${BASE_NAME}" \
+            --build-bundle "handoff/${{ steps.classify.outputs.run_id }}/a6-build.json" \
+            --admission "handoff/${{ steps.classify.outputs.run_id }}/a6-admission.json" \
+            --production-baseline "${{ steps.baseline.outputs.production_baseline }}" \
+            --expected-generation "${{ steps.baseline.outputs.expected_generation }}" \
+            --journal-sha256 "${{ steps.baseline.outputs.journal_sha256 }}" \
+            --expected-revision "${{ steps.baseline.outputs.expected_revision }}"
+
+      - name: Reconcile orphaned Class B intent (failed mutation)
+        if: ${{ steps.classify.outputs.reconcile == 'needed' && steps.classify.outputs.cls == 'failed' }}
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CF_ACCOUNT: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CF_WORKER: mahoon-art-magazine
+          CF_HOSTNAME: ${{ vars.CLOUDFLARE_EXPECTED_HOSTNAME }}
+        run: |
+          BASE_NAME=$(echo "${{ steps.classify.outputs.source_repo }}" | awk -F/ '{print $NF}')
+          OWNER_NAME=$(echo "${{ steps.classify.outputs.source_repo }}" | awk -F/ '{print $1}')
+          python code/tools/publisher/workflow_stage_cli.py reconciliation-decision \
+            --operation "${{ steps.classify.outputs.operation }}" \
+            --intent "handoff/${{ steps.classify.outputs.run_id }}/a6-${{ steps.classify.outputs.operation }}-intent.json" \
+            --journal state/publisher-state/production-transaction-journal.json \
+            --repository state \
+            --remote origin \
+            --branch main \
+            --source-run-id "${{ steps.classify.outputs.run_id }}" \
+            --source-run-attempt "${{ steps.classify.outputs.source_attempt }}" \
+            --source-sha "${{ steps.classify.outputs.source_sha }}" \
+            --github-owner "${OWNER_NAME}" \
+            --github-repo "${BASE_NAME}" \
+            --build-bundle "handoff/${{ steps.classify.outputs.run_id }}/a6-build.json" \
+            --admission "handoff/${{ steps.classify.outputs.run_id }}/a6-admission.json" \
+            --production-baseline "${{ steps.baseline.outputs.production_baseline }}" \
+            --expected-generation "${{ steps.baseline.outputs.expected_generation }}" \
+            --journal-sha256 "${{ steps.baseline.outputs.journal_sha256 }}" \
+            --expected-revision "${{ steps.baseline.outputs.expected_revision }}"

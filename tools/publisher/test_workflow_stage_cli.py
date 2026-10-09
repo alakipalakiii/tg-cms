@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import copy
 import inspect
 import json
@@ -583,6 +584,190 @@ class WorkflowStageCliTests(unittest.TestCase):
         self.assertNotEqual(0, status)
         self.assertEqual("", stdout.getvalue())
         self.assertNotIn("TOKEN", stderr.getvalue())
+
+    # ------------------------------------------------------------------
+    # Post-run reconciliation decision (Class A skipped / Class B failed)
+    # ------------------------------------------------------------------
+    _OP_CF_JOB = {
+        "upload_version": "cloudflare-upload-operation",
+        "deploy_zero_percent": "cloudflare-zero-percent-operation",
+        "promote": "cloudflare-promote-operation",
+        "rollback": "cloudflare-rollback-operation",
+    }
+
+    def _reconcile_args(self, operation="upload_version"):
+        return argparse.Namespace(
+            operation=operation, intent=self.upload_intent_path,
+            build_bundle=self.bundle_path, admission=self.receipt_path,
+            production_baseline=self.root / "baseline.json",
+            journal=self.journal_path, repository=self.root,
+            remote="origin", branch="main",
+            source_run_id="9000", source_run_attempt=1, source_sha=SOURCE,
+            github_owner="owner", github_repo="repo",
+            expected_generation=1, journal_sha256="0" * 64,
+            expected_revision=REVISION, reference=[],
+        )
+
+    def _gh_responses(self, operation, conclusion, *, run_conclusion="failure",
+                      run_attempt=1, head_sha=SOURCE):
+        run = {
+            "id": 9000, "status": "completed", "conclusion": run_conclusion,
+            "run_attempt": run_attempt, "head_sha": head_sha,
+            "head_repository": {"full_name": "owner/repo"},
+        }
+        jobs = {"jobs": [{"name": self._OP_CF_JOB[operation],
+                          "conclusion": conclusion, "started_at": None}]}
+        return {
+            "actions/runs/9000": json.dumps(run),
+            "actions/runs/9000/jobs": json.dumps(jobs),
+        }
+
+    def _baseline_file(self):
+        p = self.root / "baseline.json"
+        p.write_text(json.dumps({"current_version": "v0", "deployment_id": "d0",
+                                  "current_version_type": "STATIC"}), encoding="utf-8")
+        return p
+
+    def _writer_mock(self):
+        writer = mock.Mock(name="writer")
+        writer.root = self.root
+        writer.abandon_unexecuted_intent_v2.return_value = {"status": "UNEXECUTED_INTENT_ABANDONED"}
+        writer._confirm_current.return_value = self._confirm_state(), 1, "0" * 64
+        writer.record_result.return_value = (2, "1" * 64, False)
+        writer.reconcile_recovery_decision.return_value = {"status": "BLOCKED_UNKNOWN",
+                                                            "outcome": "UNKNOWN"}
+        return writer
+
+    def _confirm_state(self):
+        value = journal_module.TransactionJournal.from_file(self.journal_path, WORKER).snapshot()[0]
+        return value
+
+    def test_class_a_skipped_routes_to_abandonment(self):
+        self._persist_intent()
+        self._baseline_file()
+        args = self._reconcile_args("upload_version")
+        responses = self._gh_responses("upload_version", "skipped", run_conclusion="failure")
+        writer = self._writer_mock()
+        with mock.patch.object(cli, "_writer", return_value=writer), \
+             mock.patch.object(cli, "_run_gh_api", side_effect=lambda base, path, **kw: responses[path]), \
+             mock.patch.object(cli, "create_recovery_readback") as rb, \
+             mock.patch.object(cli, "make_recovery_decision") as dec:
+            output = cli.reconciliation_decision(args)
+        self.assertEqual("abandonment", output["reconciliation_path"])
+        writer.abandon_unexecuted_intent_v2.assert_called_once()
+        writer.reconcile_recovery_decision.assert_not_called()
+        writer.record_result.assert_not_called()
+        rb.assert_not_called()
+        dec.assert_not_called()
+
+    def test_class_a_abandonment_uses_operation_id_not_name(self):
+        self._persist_intent()
+        self._baseline_file()
+        args = self._reconcile_args("upload_version")
+        responses = self._gh_responses("upload_version", "skipped", run_conclusion="failure")
+        writer = self._writer_mock()
+        with mock.patch.object(cli, "_writer", return_value=writer), \
+             mock.patch.object(cli, "_run_gh_api", side_effect=lambda base, path, **kw: responses[path]):
+            cli.reconciliation_decision(args)
+        kwargs = writer.abandon_unexecuted_intent_v2.call_args.kwargs
+        expected_id = c.operation_id_for(TX["logical_transaction_id"], "upload_version")
+        self.assertEqual(expected_id, kwargs["expected_upload_operation_id"])
+
+    def test_class_b_failed_never_uses_abandonment(self):
+        self._persist_intent()
+        args = self._reconcile_args("upload_version")
+        responses = self._gh_responses("upload_version", "failure", run_conclusion="failure")
+        writer = self._writer_mock()
+        with mock.patch.object(cli, "_writer", return_value=writer), \
+             mock.patch.object(cli, "_run_gh_api", side_effect=lambda base, path, **kw: responses[path]), \
+             mock.patch.object(cli, "record_result", return_value={"status": "UNKNOWN"}) as rr, \
+             mock.patch.object(cli, "create_recovery_readback") as rb, \
+             mock.patch.object(cli, "make_recovery_decision") as dec:
+            output = cli.reconciliation_decision(args)
+        self.assertEqual("recovery", output["reconciliation_path"])
+        writer.abandon_unexecuted_intent_v2.assert_not_called()
+        rr.assert_called_once()
+        rb.assert_called_once()
+        dec.assert_called_once()
+        writer.reconcile_recovery_decision.assert_called_once()
+
+    def test_class_b_record_result_passes_operation_id(self):
+        self._persist_intent()
+        args = self._reconcile_args("upload_version")
+        responses = self._gh_responses("upload_version", "failure", run_conclusion="failure")
+        writer = self._writer_mock()
+        with mock.patch.object(cli, "_writer", return_value=writer), \
+             mock.patch.object(cli, "_run_gh_api", side_effect=lambda base, path, **kw: responses[path]), \
+             mock.patch.object(cli, "record_result") as rr, \
+             mock.patch.object(cli, "create_recovery_readback"), \
+             mock.patch.object(cli, "make_recovery_decision"):
+            cli.reconciliation_decision(args)
+        rr.assert_called_once()
+        # The module-level record_result is called with remote_writer=writer;
+        # the writer's record_result receives the operation_id (hex), not the name.
+        expected_id = c.operation_id_for(TX["logical_transaction_id"], "upload_version")
+        self.assertEqual(expected_id, self.upload_intent["payload"]["operation_id"])
+
+    def test_class_b_unknown_readback_fails_closed(self):
+        self._persist_intent()
+        args = self._reconcile_args("upload_version")
+        responses = self._gh_responses("upload_version", "failure", run_conclusion="failure")
+        writer = self._writer_mock()
+        writer.reconcile_recovery_decision.return_value = {"status": "BLOCKED_UNKNOWN",
+                                                            "outcome": "UNKNOWN"}
+        blocked = mock.Mock(name="decision")
+        blocked.payload = {"decision": "BLOCKED_UNKNOWN", "resume_allowed": False}
+        with mock.patch.object(cli, "_writer", return_value=writer), \
+             mock.patch.object(cli, "_run_gh_api", side_effect=lambda base, path, **kw: responses[path]), \
+             mock.patch.object(cli, "record_result"), \
+             mock.patch.object(cli, "create_recovery_readback"), \
+             mock.patch.object(cli, "make_recovery_decision", return_value=blocked) as dec:
+            output = cli.reconciliation_decision(args)
+        self.assertEqual("recovery", output["reconciliation_path"])
+        self.assertEqual("BLOCKED_UNKNOWN", output["status"])
+        writer.reconcile_recovery_decision.assert_called_once()
+
+    def test_success_conclusion_rejected_fail_closed(self):
+        self._persist_intent()
+        self._baseline_file()
+        args = self._reconcile_args("upload_version")
+        responses = self._gh_responses("upload_version", "success", run_conclusion="failure")
+        writer = self._writer_mock()
+        with mock.patch.object(cli, "_writer", return_value=writer), \
+             mock.patch.object(cli, "_run_gh_api", side_effect=lambda base, path, **kw: responses[path]):
+            with self.assertRaises(ValueError) as ctx:
+                cli.reconciliation_decision(args)
+        self.assertIn("cannot be reconciled", str(ctx.exception))
+        writer.abandon_unexecuted_intent_v2.assert_not_called()
+
+    def test_rerun_attempt_rejected(self):
+        self._persist_intent()
+        args = self._reconcile_args("upload_version")
+        args.source_run_attempt = 1
+        responses = self._gh_responses("upload_version", "failure", run_conclusion="failure",
+                                        run_attempt=2)
+        writer = self._writer_mock()
+        with mock.patch.object(cli, "_writer", return_value=writer), \
+             mock.patch.object(cli, "_run_gh_api", side_effect=lambda base, path, **kw: responses[path]):
+            with self.assertRaises(ValueError) as ctx:
+                cli.reconciliation_decision(args)
+        self.assertIn("run attempt does not match", str(ctx.exception))
+
+    def test_source_sha_mismatch_rejected(self):
+        self._persist_intent()
+        args = self._reconcile_args("upload_version")
+        responses = self._gh_responses("upload_version", "failure", run_conclusion="failure",
+                                        head_sha="b" * 40)
+        writer = self._writer_mock()
+        with mock.patch.object(cli, "_writer", return_value=writer), \
+             mock.patch.object(cli, "_run_gh_api", side_effect=lambda base, path, **kw: responses[path]):
+            with self.assertRaises(ValueError) as ctx:
+                cli.reconciliation_decision(args)
+        self.assertIn("head SHA does not match", str(ctx.exception))
+
+    def test_all_operations_have_cf_job_mapping(self):
+        for operation, cf in self._OP_CF_JOB.items():
+            self.assertEqual(self._OP_CF_JOB.get(operation), cf)
 
 
 if __name__ == "__main__":

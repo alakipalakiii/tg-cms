@@ -38,6 +38,10 @@ d1-backup-*.sql
 backups/
 **/backups/
 
+# Python caches
+__pycache__/
+*.pyc
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

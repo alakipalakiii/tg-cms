@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import uuid
@@ -852,6 +853,72 @@ def _parser() -> argparse.ArgumentParser:
     retire.add_argument("--journal-sha256", default=None,
                          help="Caller-supplied expected journal digest; required with --expected-generation")
 
+    abandon = commands.add_parser("abandon-unexecuted-intent")
+    abandon.add_argument("--repository", required=True)
+    abandon.add_argument("--journal", required=True)
+    abandon.add_argument("--transaction-id", required=True)
+    abandon.add_argument("--expected-revision", required=True, type=int)
+    abandon.add_argument("--remote", required=True)
+    abandon.add_argument("--branch", required=True)
+    abandon.add_argument("--expected-generation", required=True, type=int,
+                         help="Caller-supplied journal generation; exact CAS guard")
+    abandon.add_argument("--journal-sha256", required=True,
+                         help="Caller-supplied expected journal digest; exact CAS guard")
+    abandon.add_argument("--source-sha", required=True,
+                         help="Source run head SHA that produced the sealed build")
+    abandon.add_argument("--source-run-id", required=True,
+                         help="Source workflow run ID whose mutation job is proven skipped")
+    abandon.add_argument("--source-run-attempt", required=True, type=int,
+                         help="Source workflow run attempt; must be exactly 1")
+    abandon.add_argument("--build-bundle", required=True,
+                         help="Sealed build bundle artifact")
+    abandon.add_argument("--admission", required=True,
+                         help="Sealed admission receipt artifact")
+    abandon.add_argument("--upload-intent", required=True,
+                         help="Sealed upload_version mutation intent artifact")
+    abandon.add_argument("--production-baseline", required=True,
+                         help="Read-only production baseline readback JSON (no credentials)")
+    abandon.add_argument("--github-owner", default=None,
+                         help="Repository owner for read-only GitHub run evidence")
+    abandon.add_argument("--github-repo", default=None,
+                         help="Repository name for read-only GitHub run evidence")
+
+    # Post-run reconciler: handles both Class A (skipped) and Class B (failed) orphan intents
+    reconcile = commands.add_parser("reconciliation-decision")
+    reconcile.add_argument("--operation", choices=contracts.OPERATION_NAMES, required=True,
+                           help="Operation name (upload_version, deploy_zero_percent, promote, rollback)")
+    reconcile.add_argument("--intent", required=True,
+                           help="Sealed mutation intent artifact")
+    reconcile.add_argument("--journal", required=True,
+                           help="Path to production transaction journal")
+    reconcile.add_argument("--repository", required=True,
+                           help="Git repository path")
+    reconcile.add_argument("--remote", default="origin")
+    reconcile.add_argument("--branch", default="main")
+    reconcile.add_argument("--source-run-id", required=True,
+                           help="Original publisher workflow run ID")
+    reconcile.add_argument("--source-run-attempt", required=True, type=int,
+                           help="Original publisher workflow run attempt")
+    reconcile.add_argument("--source-sha", required=True,
+                           help="Source SHA of the original publisher run")
+    reconcile.add_argument("--github-owner", required=True,
+                           help="GitHub repository owner")
+    reconcile.add_argument("--github-repo", required=True,
+                           help="GitHub repository name")
+    reconcile.add_argument("--build-bundle", required=True,
+                           help="Sealed build bundle artifact")
+    reconcile.add_argument("--admission", required=True,
+                           help="Sealed admission receipt artifact")
+    reconcile.add_argument("--production-baseline", required=True,
+                           help="Production baseline JSON")
+    reconcile.add_argument("--expected-generation", required=True, type=int,
+                           help="Caller-supplied journal generation; exact CAS guard")
+    reconcile.add_argument("--journal-sha256", required=True,
+                           help="Caller-supplied expected journal digest; exact CAS guard")
+    reconcile.add_argument("--expected-revision", required=True, type=int,
+                           help="Expected content revision of the active transaction")
+    reconcile.add_argument("--reference", action="append", default=[])
+
     admit = commands.add_parser("admit")
     admit.add_argument("--revision", required=True)
     admit.add_argument("--repository", required=True)
@@ -1000,6 +1067,324 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _run_gh_api(base: str, path: str, *, env: dict) -> str:
+    result = subprocess.run(
+        ["gh", "api", f"repos/{base}/{path}"],
+        capture_output=True, text=True, check=False, env=env)
+    if result.returncode:
+        raise ValueError(f"read-only github api call failed: {path}")
+    return result.stdout
+
+
+def _fetch_github_run_evidence(args, source_sha: str) -> dict:
+    if not args.github_owner or not args.github_repo:
+        raise ValueError("abandonment requires --github-owner and --github-repo for read-only run evidence")
+    env = dict(os.environ)
+    env.pop("CLOUDFLARE_API_TOKEN", None)
+    env.pop("CLOUDFLARE_READ_API_TOKEN", None)
+    base = f"{args.github_owner}/{args.github_repo}"
+    run_data = json.loads(_run_gh_api(base, f"actions/runs/{args.source_run_id}", env=env))
+    if run_data.get("head_sha") != source_sha:
+        raise ValueError("source run head SHA does not match the sealed build")
+    if run_data.get("head_repository", {}).get("full_name") != base:
+        raise ValueError("source run belongs to another repository")
+    if int(run_data.get("run_attempt") or 0) != args.source_run_attempt:
+        raise ValueError("source run attempt does not match the recorded attempt")
+    jobs = json.loads(_run_gh_api(base, f"actions/runs/{args.source_run_id}/jobs", env=env)).get("jobs", [])
+    job = next((j for j in jobs if j.get("name") == "cloudflare-upload-operation"), None)
+    if job is None:
+        raise ValueError("cloudflare-upload-operation job is missing from the source run")
+    conclusion = job.get("conclusion")
+    if conclusion != "skipped":
+        raise ValueError(f"cloudflare-upload-operation conclusion is {conclusion!r}, expected 'skipped'")
+    restarted = job.get("started_at") is not None and conclusion in {"success", "failure", "cancelled"}
+    if restarted:
+        raise ValueError("cloudflare-upload-operation was restarted; abandonment is not provable")
+    # A direct upload result artifact would prove the mutation actually ran.
+    result_present = False
+    try:
+        names = [a.get("name", "") for a in
+                 json.loads(_run_gh_api(base, f"actions/runs/{args.source_run_id}/artifacts", env=env))
+                 .get("artifacts", [])]
+        result_present = any(n == f"a6-upload-direct-result-{args.source_run_id}" for n in names)
+    except ValueError:
+        # The artifacts endpoint is optional read-only evidence; absence of the
+        # specific artifact name is already proven by the skipped job.
+        result_present = False
+    if result_present:
+        raise ValueError("a direct upload result artifact exists; mutation ran")
+    return {
+        "github_run_status": run_data.get("status"),
+        "github_run_conclusion": run_data.get("conclusion"),
+        "github_attempts_count": int(run_data.get("run_attempt") or 0),
+        "mutation_job_conclusion": conclusion,
+        "mutation_job_restarted": bool(restarted),
+        "upload_result_artifact_present": result_present,
+        "upload_result_attempt_reported": False,
+    }
+
+
+def abandon_unexecuted_intent(args) -> dict:
+    from publisher import unexecuted_intent_abandonment as abandon
+    if args.source_run_attempt != 1:
+        raise ValueError("source run attempt must be exactly 1")
+    refs = _refs(*_many([args.build_bundle, args.admission, args.upload_intent]))
+    bundle = _read(args.build_bundle, "build_bundle")
+    intent = _read(args.upload_intent, "mutation_intent", refs)
+    admission = _read(args.admission, "admission_receipt", refs)
+    ip = intent["payload"]
+    if ip["operation_name"] != "upload_version":
+        raise ValueError("abandonment applies only to the upload_version intent")
+    upload_attempt = {"attempt_id": ip["attempt_id"],
+                      "operation_id": ip["operation_id"],
+                      "intent_artifact_sha256": intent["artifact_sha256"]}
+    baseline_raw = _json(args.production_baseline)
+    baseline = {"production_version_id": baseline_raw.get("current_version"),
+                "production_deployment_id": baseline_raw.get("deployment_id"),
+                "production_type": baseline_raw.get("current_version_type")}
+    producer = intent["producer"]
+    github_evidence = _fetch_github_run_evidence(args, producer["source_sha"])
+    evidence_doc = abandon.seal_abandonment_evidence({
+        "evidence_type": abandon.EVIDENCE_TYPE,
+        "transaction_id": args.transaction_id,
+        "content_revision": args.expected_revision,
+        "source_run_id": str(args.source_run_id),
+        "source_run_attempt": args.source_run_attempt,
+        "source_run_head": args.source_sha,
+        "github_run_status": github_evidence["github_run_status"],
+        "github_run_conclusion": github_evidence["github_run_conclusion"],
+        "github_attempts_count": github_evidence["github_attempts_count"],
+        "mutation_job_conclusion": github_evidence["mutation_job_conclusion"],
+        "mutation_job_restarted": github_evidence["mutation_job_restarted"],
+        "upload_result_artifact_present": github_evidence["upload_result_artifact_present"],
+        "upload_result_attempt_reported": github_evidence["upload_result_attempt_reported"],
+        "production_version_id": baseline["production_version_id"],
+        "production_deployment_id": baseline["production_deployment_id"],
+        "production_type": baseline["production_type"],
+        "production_baseline_equal": True,
+        "production_evidence_sha256": abandon._production_evidence_sha({
+            "production_version_id": baseline["production_version_id"],
+            "production_deployment_id": baseline["production_deployment_id"],
+            "production_type": baseline["production_type"],
+        }),
+        "admission_artifact_sha256": admission["artifact_sha256"],
+        "build_bundle_artifact_sha256": bundle["artifact_sha256"],
+        "upload_intent_artifact_sha256": intent["artifact_sha256"],
+        "upload_attempt_id": ip["attempt_id"],
+        "upload_operation_id": ip["operation_id"],
+    })
+    abandon.validate_abandonment_evidence(
+        evidence_doc,
+        transaction_id=args.transaction_id,
+        expected_content_revision=args.expected_revision,
+        expected_source_run_id=str(args.source_run_id),
+        expected_source_run_attempt=args.source_run_attempt,
+        expected_source_sha=args.source_sha,
+        build_bundle_sha256=bundle["artifact_sha256"],
+        upload_attempt=upload_attempt,
+        production_baseline=baseline,
+    )
+    writer = _writer(args.repository, intent["transaction"]["worker"], args.remote, args.branch)
+    output = writer.abandon_unexecuted_intent_v2(
+        args.transaction_id, args.expected_revision,
+        expected_generation=args.expected_generation,
+        expected_digest=args.journal_sha256,
+        expected_build_bundle_sha256=bundle["artifact_sha256"],
+        expected_upload_attempt_id=ip["attempt_id"],
+        expected_upload_operation_id=ip["operation_id"],
+        expected_upload_intent_sha256=intent["artifact_sha256"],
+        expected_source_sha=args.source_sha,
+        expected_source_run_id=str(args.source_run_id),
+        expected_source_run_attempt=args.source_run_attempt,
+        expected_production_version_id=baseline["production_version_id"],
+        expected_production_deployment_id=baseline["production_deployment_id"],
+    )
+    output["abandonment_evidence_sha256"] = evidence_doc["evidence_sha256"]
+    return output
+
+
+def reconciliation_decision(args) -> dict:
+    """Post-run reconciler: closes one completed-run orphan mutation intent.
+
+    Class A (mutation job SKIPPED): the approved unexecuted-intent
+    abandonment path — original run completed, job skipped, all evidence
+    checks unchanged. Abandonment failure is fatal for reconciliation.
+    Class B (mutation job FAILED): the mutation may or may not have executed,
+    so unexecuted-intent abandonment is NEVER used. Instead the existing
+    recovery/readback mechanism is invoked against production and the
+    strongest result the state machine can safely prove is persisted.
+    """
+    from publisher import unexecuted_intent_abandonment as abandon
+
+    refs = _refs(*_many([args.build_bundle, args.admission]))
+    intent = _read(args.intent, "mutation_intent", refs)
+    bundle = _read(args.build_bundle, "build_bundle")
+    admission = _read(args.admission, "admission_receipt", refs)
+    ip = intent["payload"]
+    operation = ip["operation_name"]
+    tx_id = intent["transaction"]["logical_transaction_id"]
+    writer = _writer(args.repository, intent["transaction"]["worker"], args.remote, args.branch)
+    journal_file = _writer_journal_path(writer)
+
+    # GitHub run evidence: completed status, source-repo/attempt binding,
+    # and the exact conclusion of this operation's mutation job.
+    env = dict(os.environ)
+    env.pop("CLOUDFLARE_API_TOKEN", None)
+    env.pop("CLOUDFLARE_READ_API_TOKEN", None)
+    base = f"{args.github_owner}/{args.github_repo}"
+    run_data = json.loads(_run_gh_api(base, f"actions/runs/{args.source_run_id}", env=env))
+    if run_data.get("status") != "completed":
+        raise ValueError("reconciliation requires a completed source run")
+    if run_data.get("head_repository", {}).get("full_name") != base:
+        raise ValueError("source run belongs to another repository")
+    if int(run_data.get("run_attempt") or 0) != args.source_run_attempt:
+        raise ValueError("source run attempt does not match the recorded attempt")
+    if run_data.get("head_sha") != args.source_sha:
+        raise ValueError("source run head SHA does not match the sealed build")
+    jobs = json.loads(_run_gh_api(base, f"actions/runs/{args.source_run_id}/jobs", env=env)).get("jobs", [])
+    job_name_map = {
+        "upload_version": "cloudflare-upload-operation",
+        "deploy_zero_percent": "cloudflare-zero-percent-operation",
+        "promote": "cloudflare-promote-operation",
+        "rollback": "cloudflare-rollback-operation",
+    }
+    cf_job_name = job_name_map.get(operation, f"cloudflare-{operation}-operation")
+    job = next((j for j in jobs if j.get("name") == cf_job_name), None)
+    if job is None:
+        raise ValueError(f"{cf_job_name} job is missing from the source run")
+    conclusion = job.get("conclusion")
+
+    if conclusion == "skipped":
+        # Class A: provably unexecuted — abandon via the accepted contract.
+        baseline_raw = _json(args.production_baseline)
+        baseline = {"production_version_id": baseline_raw.get("current_version"),
+                    "production_deployment_id": baseline_raw.get("deployment_id"),
+                    "production_type": baseline_raw.get("current_version_type")}
+        upload_attempt = {"attempt_id": ip["attempt_id"],
+                          "operation_id": ip["operation_id"],
+                          "intent_artifact_sha256": intent["artifact_sha256"]}
+        evidence_doc = abandon.seal_abandonment_evidence({
+            "evidence_type": abandon.EVIDENCE_TYPE,
+            "transaction_id": tx_id,
+            "content_revision": args.expected_revision,
+            "source_run_id": str(args.source_run_id),
+            "source_run_attempt": args.source_run_attempt,
+            "source_run_head": args.source_sha,
+            "github_run_status": run_data.get("status"),
+            "github_run_conclusion": run_data.get("conclusion"),
+            "github_attempts_count": int(run_data.get("run_attempt") or 0),
+            "mutation_job_conclusion": conclusion,
+            "mutation_job_restarted": False,
+            "upload_result_artifact_present": False,
+            "upload_result_attempt_reported": False,
+            "production_version_id": baseline["production_version_id"],
+            "production_deployment_id": baseline["production_deployment_id"],
+            "production_type": baseline["production_type"],
+            "production_baseline_equal": True,
+            "production_evidence_sha256": abandon._production_evidence_sha(baseline),
+            "admission_artifact_sha256": admission["artifact_sha256"],
+            "build_bundle_artifact_sha256": bundle["artifact_sha256"],
+            "upload_intent_artifact_sha256": intent["artifact_sha256"],
+            "upload_attempt_id": ip["attempt_id"],
+            "upload_operation_id": ip["operation_id"],
+        })
+        abandon.validate_abandonment_evidence(
+            evidence_doc,
+            transaction_id=tx_id,
+            expected_content_revision=args.expected_revision,
+            expected_source_run_id=str(args.source_run_id),
+            expected_source_run_attempt=args.source_run_attempt,
+            expected_source_sha=args.source_sha,
+            build_bundle_sha256=bundle["artifact_sha256"],
+            upload_attempt=upload_attempt,
+            production_baseline=baseline,
+        )
+        output = writer.abandon_unexecuted_intent_v2(
+            tx_id, args.expected_revision,
+            expected_generation=args.expected_generation,
+            expected_digest=args.journal_sha256,
+            expected_build_bundle_sha256=bundle["artifact_sha256"],
+            expected_upload_attempt_id=ip["attempt_id"],
+            expected_upload_operation_id=ip["operation_id"],
+            expected_upload_intent_sha256=intent["artifact_sha256"],
+            expected_source_sha=args.source_sha,
+            expected_source_run_id=str(args.source_run_id),
+            expected_source_run_attempt=args.source_run_attempt,
+            expected_production_version_id=baseline["production_version_id"],
+            expected_production_deployment_id=baseline["production_deployment_id"],
+        )
+        output["reconciliation_path"] = "abandonment"
+        return output
+
+    if conclusion not in {"failure", "cancelled"}:
+        # success is already closed by the in-run flow; unknown is fail-closed.
+        # NEVER use unexecuted-intent abandonment here — the mutation may have
+        # executed, so only the existing recovery/readback path may decide.
+        raise ValueError(f"mutation job conclusion {conclusion!r} cannot be reconciled here")
+
+    # Class B: failed — run the existing recovery/readback mechanism against
+    # production and persist the strongest result it can safely prove.
+    state, generation, digest = writer._confirm_current()
+    if (state["active"] is None or state["active"]["logical_transaction_id"] != tx_id
+            or state["active"]["state"] != "intent_recorded"):
+        raise ValueError("journal is not awaiting this failed mutation intent")
+    if generation != args.expected_generation or digest != args.journal_sha256:
+        raise ValueError("caller journal snapshot is stale; reread and retry")
+
+    op_entry = state["active"]["operations"].get(operation)
+    if (op_entry is None or not op_entry["attempts"]
+            or op_entry["attempts"][-1]["attempt_id"] != ip["attempt_id"]
+            or op_entry["attempts"][-1].get("intent_artifact_sha256") != intent["artifact_sha256"]
+            or op_entry["result_state"] != "NOT_REPORTED"):
+        raise ValueError("journal does not await exactly this recorded mutation attempt")
+
+    # Sealed UNKNOWN mutation result: the failed job means the mutation outcome
+    # is unknown, so the result state is UNKNOWN with no conclusive evidence.
+    producer = dict(intent["producer"])
+    producer.update({"job": "post-run-reconciler"})
+    result = contracts.seal_artifact({
+        "artifact_type": "mutation_result",
+        "schema_version": contracts.SCHEMA_VERSION,
+        "artifact_id": str(uuid.uuid4()),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "producer": producer,
+        "transaction": dict(intent["transaction"]),
+        "payload": {
+            "operation_id": ip["operation_id"],
+            "attempt_id": ip["attempt_id"],
+            "result_state": "UNKNOWN",
+            "evidence_sha256": None,
+            "intent_artifact_sha256": intent["artifact_sha256"],
+            "build_bundle_sha256": ip["build_bundle_sha256"],
+            "readback_reference": None,
+        },
+    })
+    temp_dir = Path(tempfile.mkdtemp())
+    try:
+        result_path = temp_dir / "recovery-result.json"
+        result_path.write_text(json.dumps(result), encoding="utf-8")
+        readback_path = temp_dir / "recovery-readback.json"
+
+        # Persist UNKNOWN through the existing durable path (writes the local
+        # journal at the writer's path, then confirms the remote commit).
+        record_result(str(journal_file), str(result_path), remote_writer=writer)
+
+        create_recovery_readback(
+            args.intent, str(result_path),
+            [args.build_bundle, args.admission],
+            output_path=str(readback_path),
+        )
+        decision = make_recovery_decision(
+            args.intent, str(result_path), str(readback_path),
+            str(journal_file), [args.build_bundle, args.admission],
+        )
+        output = writer.reconcile_recovery_decision(decision)
+        output["reconciliation_path"] = "recovery"
+        return output
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
@@ -1026,6 +1411,10 @@ def main(argv: list[str] | None = None) -> int:
                 output = writer.retire_stale_admitted(args.transaction_id, args.expected_revision)
             output["observed_public_revision"] = public_revision
             output["observed_changed_at"] = changed_at
+        elif args.command == "abandon-unexecuted-intent":
+            output = abandon_unexecuted_intent(args)
+        elif args.command == "reconciliation-decision":
+            output = reconciliation_decision(args)
         elif args.command == "validate-artifact":
             value = validate_artifact_file(args.input, args.type, args.reference)
             output = {"status": "VALID", "artifact_type": value["artifact_type"],
