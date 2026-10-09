@@ -181,6 +181,22 @@ class UnexecutedIntentAbandonmentTests(unittest.TestCase):
         with self.assertRaises(ua.AbandonmentEvidenceRejected):
             _validate(_mutate(_success_evidence(), mutation_job_conclusion="cancelled"))
 
+    def test_success_run_conclusion_success_circuit_breaker_gated(self):
+        # A completed run concluded "success" with the mutation job skipped
+        # (circuit-breaker gated) is a legitimate unexecuted-intent case.
+        ev = _mutate(_success_evidence(), github_run_conclusion="success")
+        result = _validate(ev)
+        self.assertEqual(result["github_run_conclusion"], "success")
+        self.assertEqual(result["mutation_job_conclusion"], "skipped")
+
+    def test_failure_run_conclusion_cancelled_rejected(self):
+        with self.assertRaises(ua.AbandonmentEvidenceRejected):
+            _validate(_mutate(_success_evidence(), github_run_conclusion="cancelled"))
+
+    def test_failure_run_conclusion_unknown_rejected(self):
+        with self.assertRaises(ua.AbandonmentEvidenceRejected):
+            _validate(_mutate(_success_evidence(), github_run_conclusion="timed_out"))
+
     def test_failure_mutation_step_executed(self):
         with self.assertRaises(ua.AbandonmentEvidenceRejected):
             _validate(_mutate(_success_evidence(), github_attempts_count=2))

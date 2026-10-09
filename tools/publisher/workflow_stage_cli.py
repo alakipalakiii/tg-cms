@@ -1256,7 +1256,7 @@ def reconciliation_decision(args) -> dict:
 
     if conclusion == "skipped":
         # Class A: provably unexecuted — abandon via the accepted contract.
-        baseline_raw = _json(args.production_baseline)
+        baseline_raw = _json(args.production_baseline) if args.production_baseline else {}
         baseline = {"production_version_id": baseline_raw.get("current_version"),
                     "production_deployment_id": baseline_raw.get("deployment_id"),
                     "production_type": baseline_raw.get("current_version_type")}

@@ -30,11 +30,16 @@ _FIELDS = {
 }
 _GITHUB_EXACT = {
     "github_run_status": "completed",
-    "github_run_conclusion": "failure",
     "github_attempts_count": 1,
     "mutation_job_conclusion": "skipped",
     "mutation_job_restarted": False,
 }
+# A completed source run whose mutation job is skipped proves the mutation
+# never executed whether the run overall concluded success (mutation jobs
+# gated off by the circuit breaker, so the run's non-mutation stages still
+# pass) or failure (a preceding stage failed before the mutation job ran).
+# Cancelled runs cannot establish skip semantics and remain rejected.
+_ACCEPTED_RUN_CONCLUSIONS = {"success", "failure"}
 
 
 class AbandonmentEvidenceRejected(ValueError):
@@ -133,6 +138,11 @@ def validate_abandonment_evidence(value: object, *,
         if value.get(key) != expected:
             raise AbandonmentEvidenceRejected(
                 f"github execution evidence: {key} is {value.get(key)!r}, expected {expected!r}")
+    if value.get("github_run_conclusion") not in _ACCEPTED_RUN_CONCLUSIONS:
+        raise AbandonmentEvidenceRejected(
+            f"github execution evidence: github_run_conclusion is "
+            f"{value.get('github_run_conclusion')!r}, expected one of "
+            f"{sorted(_ACCEPTED_RUN_CONCLUSIONS)}")
     if value.get("production_baseline_equal") is not True:
         raise AbandonmentEvidenceRejected(
             "production baseline readback does not prove production is unchanged")
