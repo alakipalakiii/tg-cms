@@ -964,8 +964,8 @@ jobs:
         with: { python-version: '3.12' }
       - id: record
         run: |
-          python code/tools/publisher/workflow_stage_cli.py record-result --intent handoff/upload-intent.json --result handoff/upload-result.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main --reference handoff/runner-evidence/v1-build-bundle.json --reference handoff/admission.json | tee record.json
-          python -c "import json,os; open(os.environ['GITHUB_OUTPUT'],'a').write('result_state='+json.load(open('record.json'))['status']+'\n')"
+          python code/tools/publisher/workflow_stage_cli.py record-result --intent handoff/upload-intent.json --result handoff/upload-result.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main --reference handoff/admission.json | tee record.json
+          python -c "import json,os,sys; raw=open('record.json').read().strip(); sys.exit('record-result CLI produced no output; journal write may have completed - inspect before retrying') if not raw else open(os.environ['GITHUB_OUTPUT'],'a').write('result_state='+json.loads(raw)['status']+'\n')"
       - uses: actions/upload-artifact@v4
         with: { name: 'a6-upload-direct-result-${{ github.run_id }}', path: handoff/upload-result.json, if-no-files-found: error }
 
