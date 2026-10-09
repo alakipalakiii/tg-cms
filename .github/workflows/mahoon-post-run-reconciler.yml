@@ -16,6 +16,16 @@ on:
   workflow_run:
     workflows: ["MAHOON static publisher"]
     types: [completed]
+  # Manual entry point: the journal may hold an orphan whose recording run
+  # completed as "success" (a success run whose mutation job was skipped and
+  # whose journal write is still open cannot be reached by the conclusion gate
+  # below). Bind such a reconciliation to that exact recording run id.
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Exact publisher workflow run id that recorded the orphan intent"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -27,16 +37,22 @@ concurrency:
 
 jobs:
   reconcile:
-    # A success run is already closed by the in-run flow. Only failed/cancelled
-    # completed publisher runs can leave a durable mutation intent unresolved.
-    if: ${{ github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled' }}
+    # A success run is normally already closed by the in-run flow; only
+    # failed/cancelled completed publisher runs leave a durable mutation
+    # intent unresolved. The manual dispatch bypasses that conclusion gate
+    # and binds to the exact recording run supplied in inputs.run_id.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Check out publisher workflow code
+      - name: Check out the reconciler tooling
+        # The reconciler runs the CURRENT toolchain; the original run's sealed
+        # artifacts carry their own producer provenance and are verified
+        # against it. Checking out the source head would predate
+        # reconciliation-decision entirely.
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: main
           path: code
 
       - name: Check out production journal
@@ -46,9 +62,18 @@ jobs:
           path: state
 
       - name: Download required artifacts from original run
+        if: ${{ github.event_name == 'workflow_run' }}
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: handoff
+
+      - name: Download required artifacts from the bound recording run
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: handoff
 
@@ -76,17 +101,27 @@ jobs:
                                       capture_output=True, text=True, check=True)
               return json.loads(result.stdout)
 
-          # The workflow_run trigger payload is available as a workflow expression,
-          # not as an env var in this job context; pass it through the job output.
-          run = json.loads(os.environ["EVENT_PAYLOAD"])["workflow_run"]
-          # The workflow_run trigger payload is available as a workflow expression,
-          # not as an env var in this job context; pass it through the job output.
-          run_id = str(run["id"])
-          source_sha = run["head_sha"]
-          source_attempt = int(run["run_attempt"])
-          source_repo = run["head_repository"]["full_name"]
+          def github_repo():
+              return os.environ.get("GITHUB_REPOSITORY", "alakipalakiii/tg-cms")
 
+          # The source recording run is bound explicitly: workflow_run events
+          # carry it in the trigger payload; manual dispatch pins it via
+          # inputs.run_id so a success-run orphan (skipped mutation job with
+          # journal still open) can still be reconciled without touching the
+          # conclusion gate.
+          event = json.loads(os.environ["EVENT_PAYLOAD"])
+          source_repo = event.get("repository", {}).get("full_name") or github_repo()
+          if event.get("name") == "workflow_dispatch":
+              run_id = str(event.get("inputs", {}).get("run_id", "")).strip()
+              if not run_id.isdigit():
+                  print("RECONCILE=blocked; workflow_dispatch requires a numeric inputs.run_id")
+                  sys.exit(1)
+          else:
+              run = event["workflow_run"]
+              run_id = str(run["id"])
           run_data = gh(source_repo, f"actions/runs/{run_id}")
+          source_sha = run_data["head_sha"]
+          source_attempt = int(run_data["run_attempt"])
           jobs = gh(source_repo, f"actions/runs/{run_id}/jobs").get("jobs", [])
           job_by_name = {j.get("name"): j for j in jobs}
 
@@ -110,6 +145,35 @@ jobs:
               print("RECONCILE=none; no operation has a recorded unreported attempt")
               sys.exit(0)
 
+          # Artifact names and sealed file names are operation-specific; map
+          # them so the reconciler can open exactly the right handoff files.
+          intent_artifact_map = {
+              "upload_version": ("a6-upload-intent", "upload-intent.json"),
+              "deploy_zero_percent": ("a6-zero-intent", "zero-percent-intent.json"),
+              "promote": ("a6-promote-intent", "promote-intent.json"),
+              "rollback": ("a6-rollback-intent", "rollback-intent.json"),
+          }
+          if target not in intent_artifact_map:
+              print(f"RECONCILE=blocked; operation {target!r} has no known intent artifact mapping")
+              sys.exit(1)
+
+          # An orphan intent belongs to the run that recorded it. The journal
+          # binds the active transaction to recording runs via
+          # execution_attempts[].run_id; the sealed intent artifact is named
+          # after its recording run. CHECK_ONLY and early-failing runs record
+          # no durable intent, so when this source run is not the recorder it
+          # left nothing behind: say "none" instead of failing the pipeline
+          # on someone else's orphan.
+          art = gh(source_repo, f"actions/runs/{run_id}/artifacts")
+          artifact_names = {a.get("name") for a in art.get("artifacts", [])}
+          attempts = [str(e.get("run_id")) for e in active.get("execution_attempts", []) if e.get("run_id")]
+          recorded_by_this_run = run_id in attempts
+          intent_artifact, intent_file = intent_artifact_map[target]
+          intent_artifact_full = f"{intent_artifact}-{run_id}"
+          if not (recorded_by_this_run and intent_artifact_full in artifact_names):
+              print(f"RECONCILE=none; run {run_id} did not record the active orphan intent (recording runs={attempts}, intent artifact {intent_artifact_full!r} present={intent_artifact_full in artifact_names})")
+              sys.exit(0)
+
           job_map = {
               "upload_version": "cloudflare-upload-operation",
               "deploy_zero_percent": "cloudflare-zero-percent-operation",
@@ -130,6 +194,9 @@ jobs:
               print(f"RECONCILE=none; CF job {cf_job_name!r} conclusion is {conclusion!r}; no orphan intent pending")
               sys.exit(0)
 
+          # Artifact names and sealed file names are operation-specific; map
+          # them so the reconciler can open exactly the right handoff files.
+
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"operation={target}\n")
               f.write(f"cls={cls}\n")
@@ -138,7 +205,9 @@ jobs:
               f.write(f"source_attempt={source_attempt}\n")
               f.write(f"reconcile=needed\n")
               f.write(f"source_repo={source_repo}\n")
-          print(f"RECONCILE=needed CLASS={cls} OP={target} JOB={cf_job_name} CONCL={conclusion}")
+              f.write(f"intent_artifact={intent_artifact}\n")
+              f.write(f"intent_file={intent_file}\n")
+          print(f"RECONCILE=needed CLASS={cls} OP={target} JOB={cf_job_name} CONCL={conclusion} ART={intent_artifact}-{run_id}")
           PY
 
       - name: Load production baseline and journal CAS guard
@@ -177,9 +246,8 @@ jobs:
 
           # Production baseline for abandonment evidence (Class A only).
           # The original publisher run uploads it as a6-production-baseline-<run_id>.
-          # Read the original run id from the same EVENT_PAYLOAD used by classify.
           event = json.loads(os.environ["EVENT_PAYLOAD"])
-          original_run_id = str(event["workflow_run"]["id"])
+          original_run_id = str(event.get("inputs", {}).get("run_id")) if event.get("name") == "workflow_dispatch" else str(event["workflow_run"]["id"])
           baseline = None
           candidate = Path("handoff") / f"a6-production-baseline-{original_run_id}"
           if candidate.is_dir():
@@ -212,7 +280,7 @@ jobs:
           OWNER_NAME=$(echo "${{ steps.classify.outputs.source_repo }}" | awk -F/ '{print $1}')
           python code/tools/publisher/workflow_stage_cli.py reconciliation-decision \
             --operation "${{ steps.classify.outputs.operation }}" \
-            --intent "handoff/${{ steps.classify.outputs.run_id }}/a6-${{ steps.classify.outputs.operation }}-intent.json" \
+            --intent "handoff/${{ steps.classify.outputs.intent_artifact }}-${{ steps.classify.outputs.run_id }}/${{ steps.classify.outputs.intent_file }}" \
             --journal state/publisher-state/production-transaction-journal.json \
             --repository state \
             --remote origin \
@@ -222,8 +290,8 @@ jobs:
             --source-sha "${{ steps.classify.outputs.source_sha }}" \
             --github-owner "${OWNER_NAME}" \
             --github-repo "${BASE_NAME}" \
-            --build-bundle "handoff/${{ steps.classify.outputs.run_id }}/a6-build.json" \
-            --admission "handoff/${{ steps.classify.outputs.run_id }}/a6-admission.json" \
+            --build-bundle "handoff/a6-build-${{ steps.classify.outputs.run_id }}/runner-evidence/v1-build-bundle.json" \
+            --admission "handoff/a6-admission-${{ steps.classify.outputs.run_id }}/admission.json" \
             --production-baseline "${{ steps.baseline.outputs.production_baseline }}" \
             --expected-generation "${{ steps.baseline.outputs.expected_generation }}" \
             --journal-sha256 "${{ steps.baseline.outputs.journal_sha256 }}" \
@@ -242,7 +310,7 @@ jobs:
           OWNER_NAME=$(echo "${{ steps.classify.outputs.source_repo }}" | awk -F/ '{print $1}')
           python code/tools/publisher/workflow_stage_cli.py reconciliation-decision \
             --operation "${{ steps.classify.outputs.operation }}" \
-            --intent "handoff/${{ steps.classify.outputs.run_id }}/a6-${{ steps.classify.outputs.operation }}-intent.json" \
+            --intent "handoff/${{ steps.classify.outputs.intent_artifact }}-${{ steps.classify.outputs.run_id }}/${{ steps.classify.outputs.intent_file }}" \
             --journal state/publisher-state/production-transaction-journal.json \
             --repository state \
             --remote origin \
@@ -252,8 +320,8 @@ jobs:
             --source-sha "${{ steps.classify.outputs.source_sha }}" \
             --github-owner "${OWNER_NAME}" \
             --github-repo "${BASE_NAME}" \
-            --build-bundle "handoff/${{ steps.classify.outputs.run_id }}/a6-build.json" \
-            --admission "handoff/${{ steps.classify.outputs.run_id }}/a6-admission.json" \
+            --build-bundle "handoff/a6-build-${{ steps.classify.outputs.run_id }}/runner-evidence/v1-build-bundle.json" \
+            --admission "handoff/a6-admission-${{ steps.classify.outputs.run_id }}/admission.json" \
             --production-baseline "${{ steps.baseline.outputs.production_baseline }}" \
             --expected-generation "${{ steps.baseline.outputs.expected_generation }}" \
             --journal-sha256 "${{ steps.baseline.outputs.journal_sha256 }}" \
