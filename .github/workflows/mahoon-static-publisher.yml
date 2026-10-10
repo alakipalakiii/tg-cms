@@ -647,14 +647,6 @@ jobs:
           mkdir -p runner-evidence/a6
           python code/tools/publisher/workflow_stage_cli.py admit --revision handoff/revision-resolution.json --repository state --source '${{ github.event_name }}' --run-id '${{ github.run_id }}' --trigger-attempt '${{ github.run_attempt }}' --output runner-evidence/a6/admission.json | tee admission-status.json
           python -c "import json,os; d=json.load(open('admission-status.json')); open(os.environ['GITHUB_OUTPUT'],'a').write('decision='+d['status']+'\n')"
-      - name: Diag publish inputs (temporary, remove after diagnosis)
-        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' }}
-        run: |
-          echo "DIAG mode='${{ inputs.mode }}' ready='${{ inputs.ready }}' resume_source_run_id='${{ inputs.resume_source_run_id }}'"
-          echo "DIAG mode_not_resume_admitted=${{ inputs.mode != 'RESUME_ADMITTED' }}"
-          echo "DIAG resume_eq_empty=${{ inputs.resume_source_run_id == '' }}"
-          echo "DIAG resume_eq_null=${{ inputs.resume_source_run_id == null }}"
-          echo "DIAG resume_neq_zero=${{ inputs.resume_source_run_id != '0' }}"
       - uses: actions/upload-artifact@v4
         with:
           name: a6-admission-${{ github.run_id }}
@@ -728,7 +720,7 @@ jobs:
 
   build-validate:
     needs: [admission, resume-admission]
-    if: ${{ always() && ((inputs.mode == 'RESUME_ADMITTED' && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED' && (inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null) && inputs.resume_source_run_id != '0') || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED')) }}
+    if: ${{ always() && ((inputs.mode == 'RESUME_ADMITTED' && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED' && (inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0')) || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED')) }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     steps:
