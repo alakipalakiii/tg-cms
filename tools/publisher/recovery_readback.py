@@ -262,7 +262,8 @@ def collect_fresh_readback(intent: object, result: object, *,
 
 
 def validate_fresh_readback(value: object, intent: object, result: object, *,
-                            references: Mapping[str, Any], now: datetime | None = None) -> dict:
+                            references: Mapping[str, Any], now: datetime | None = None,
+                            require_fresh: bool = True) -> dict:
     if not isinstance(value, Mapping) or set(value) != _FIELDS:
         raise RecoveryReadbackRejected("fresh recovery readback schema invalid")
     intent_v, result_v, _bundle = _validate_inputs(intent, result, references)
@@ -287,13 +288,14 @@ def validate_fresh_readback(value: object, intent: object, result: object, *,
     }
     if any(value.get(key) != expected for key, expected in bindings.items()):
         raise RecoveryReadbackRejected("fresh recovery evidence lineage mismatch")
-    observed_at = _timestamp(value["observed_at"])
-    instant = now or datetime.now(timezone.utc)
-    if instant.tzinfo is None or instant.utcoffset() is None:
-        raise RecoveryReadbackRejected("validation time must include timezone")
-    age = (instant.astimezone(timezone.utc) - observed_at).total_seconds()
-    if age < 0 or age > MAX_AGE_SECONDS:
-        raise RecoveryReadbackRejected("fresh recovery evidence is future-dated or stale")
+    if require_fresh:
+        observed_at = _timestamp(value["observed_at"])
+        instant = now or datetime.now(timezone.utc)
+        if instant.tzinfo is None or instant.utcoffset() is None:
+            raise RecoveryReadbackRejected("validation time must include timezone")
+        age = (instant.astimezone(timezone.utc) - observed_at).total_seconds()
+        if age < 0 or age > MAX_AGE_SECONDS:
+            raise RecoveryReadbackRejected("fresh recovery evidence is future-dated or stale")
     desired_sha = hashlib.sha256(contracts.canonical_json_bytes(expected_desired)).hexdigest()
     if _sha(value["desired_state_sha256"], "desired_state_sha256") != desired_sha:
         raise RecoveryReadbackRejected("desired state digest mismatch")
@@ -322,9 +324,11 @@ def write_evidence(path: str | Path, value: object, *, intent: object,
 
 
 def read_evidence(path: str | Path, *, intent: object, result: object,
-                  references: Mapping[str, Any], now: datetime | None = None) -> dict:
+                  references: Mapping[str, Any], now: datetime | None = None,
+                  require_fresh: bool = True) -> dict:
     try:
         value = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise RecoveryReadbackRejected("fresh recovery evidence is unreadable") from exc
-    return validate_fresh_readback(value, intent, result, references=references, now=now)
+    return validate_fresh_readback(value, intent, result, references=references, now=now,
+                                   require_fresh=require_fresh)

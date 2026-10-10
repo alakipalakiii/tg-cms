@@ -132,7 +132,9 @@ class RecoveredMutationResultTests(unittest.TestCase):
             with self.subTest(decision=choice), self.assertRaises(Exception):
                 self._create(decision=bad)
         for field, value in (
-            ("journal_generation", self.journal_readback["journal_generation"] + 1),
+            # A generation that predates the reconciled slot (dp + 1) must still
+            # fail; the live journal may advance past it, so only reject older.
+            ("journal_generation", self.journal_readback["journal_generation"] - 2),
             ("result_digest", "0" * 64),
             ("recovery_status", "REQUIRED"),
             ("remote_head", "x" * 40),

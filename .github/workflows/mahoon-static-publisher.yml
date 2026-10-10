@@ -40,6 +40,16 @@ on:
         required: false
         default: ""
         type: string
+      resume_source_run_id:
+        description: "Canonical run to resume an in-flight transaction from operation_reported (reuses its build+admission artifacts)"
+        required: false
+        default: ""
+        type: string
+      resume_source_admission_sha:
+        description: "Seal digest of the source run's admission receipt; empty to trust the active journal"
+        required: false
+        default: ""
+        type: string
   schedule:
     - cron: "17,47 * * * *"
 
@@ -710,7 +720,7 @@ jobs:
 
   build-validate:
     needs: [admission, resume-admission]
-    if: ${{ always() && ((inputs.mode == 'RESUME_ADMITTED' && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'ADMITTED')) }}
+    if: ${{ always() && ((inputs.mode == 'RESUME_ADMITTED' && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'ADMITTED') || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED')) }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     steps:
@@ -724,7 +734,46 @@ jobs:
         with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
+      - name: Download the source run's sealed build and admission for an in-flight resume
+        if: ${{ inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-build-${{ inputs.resume_source_run_id }}
+          path: handoff
+          run-id: ${{ inputs.resume_source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Revalidate the source run's build lineage against the active journal
+        if: ${{ inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' }}
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          RESUME_SOURCE_RUN_ID: ${{ inputs.resume_source_run_id }}
+          SOURCE_ADMISSION_SHA: ${{ inputs.resume_source_admission_sha }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from publisher import artifact_contract, artifact_transport
+          active = json.loads(Path("state/publisher-state/production-transaction-journal.json").read_text(encoding="utf-8"))["active"]
+          assert active is not None, "no active transaction to resume"
+          revision = artifact_transport.read_artifact(Path("handoff/revision-resolution.json"), expected_type="revision_resolution")
+          refs = artifact_transport.references(revision)
+          admission = artifact_transport.read_artifact(Path("handoff/admission.json"), expected_type="admission_receipt", expected_transaction=revision["transaction"], referenced_artifacts=refs)
+          bundle = artifact_transport.read_artifact(Path("handoff/runner-evidence/v1-build-bundle.json"), expected_type="build_bundle", refs=refs)
+          assert admission["payload"]["active_transaction_id"] == active["logical_transaction_id"], "resume admission does not target the active transaction"
+          assert admission["payload"]["decision"] == "ADMITTED" and admission["payload"]["journal_generation"] == 1, "resume requires a sealed ADMITTED admission"
+          assert active["state"] in {"operation_reported", "build_ready"}, f"resume requires a resumable active state, got {active['state']}"
+          assert bundle["transaction"] == admission["transaction"] and admission["artifact_sha256"] == bundle["payload"]["admission_receipt_sha256"], "resume build bundle does not seal the source admission"
+          if os.environ.get("SOURCE_ADMISSION_SHA"):
+              assert admission["artifact_sha256"] == os.environ["SOURCE_ADMISSION_SHA"], "resume admission seal drifted"
+          from publisher.content_revision import fetch_public_content_revision
+          current, _changed_at, _metadata = fetch_public_content_revision()
+          assert current == active["content_revision"], f"PUBLIC_REVISION_DRIFT:{current}!={active['content_revision']}"
+          print(f"RESUME_CARRIED_FORWARD=run{os.environ['RESUME_SOURCE_RUN_ID']} rev{active['content_revision']} tx{active['logical_transaction_id'][:16]}")
+          PY
       - name: Validate current admission and public revision before build
+        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
           EXECUTION_SHA: ${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}
@@ -753,9 +802,12 @@ jobs:
           print(f"PRE_BUILD_REVISION_STABLE={current}")
           PY
       - uses: actions/setup-node@v4
+        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
         with: { node-version: 22 }
       - run: npm ci --prefix code/website/dreary-disk
+        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
       - name: Build and validate without Cloudflare credentials
+        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
           PUBLISHER_MODE: BUILD_VALIDATE
@@ -765,6 +817,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: cd code && python tools/m9/publisher_runner.py
       - name: Recheck public content revision before build artifact handoff
+        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
           EXECUTION_SHA: ${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}
@@ -806,14 +859,34 @@ jobs:
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
-        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+        if: ${{ always() }}
+        with:
+          name: "a6-build-${{ inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && inputs.resume_source_run_id || github.run_id }}"
+          path: handoff
       - uses: actions/download-artifact@v4
-        with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
+        if: ${{ always() }}
+        with:
+          name: "a6-admission-${{ inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && inputs.resume_source_run_id || github.run_id }}"
+          path: handoff
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
-      - run: python code/tools/publisher/workflow_stage_cli.py record-build-ready --build-bundle handoff/runner-evidence/v1-build-bundle.json --admission handoff/admission.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main
+      - name: Record build ready (skipped when resuming an in-flight transaction)
+        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
+        run: python code/tools/publisher/workflow_stage_cli.py record-build-ready --build-bundle handoff/v1-build-bundle.json --admission handoff/admission.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main
+      - name: Reuse the source production baseline (resume path)
+        if: ${{ inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-production-baseline-${{ inputs.resume_source_run_id }}
+          path: handoff
+          run-id: ${{ inputs.resume_source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v4
-        with: { name: 'a6-production-baseline-${{ github.run_id }}', path: state/publisher-state/published-static-state.json, if-no-files-found: error }
+        with:
+          name: a6-production-baseline-${{ github.run_id }}
+          path: ${{ (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0') && 'handoff/published-static-state.json' || 'state/publisher-state/published-static-state.json' }}
+          if-no-files-found: error
 
   production-baseline-reconciliation:
     needs: build-ready-write
@@ -882,7 +955,10 @@ jobs:
   # Mutation operations and their journal writes remain distinct credential boundaries.
   upload-intent-write:
     needs: [build-ready-write, production-baseline-reconciliation]
-    if: ${{ always() && needs.build-ready-write.result == 'success' && (inputs.mode != 'PUBLISH' || needs.production-baseline-reconciliation.result == 'success') }}
+    # ponytail: on resume the source upload intent is already durably recorded in the
+    # live journal (reconciled APPLIED) and is re-exposed by resume-source-carryforward;
+    # minting a second intent would corrupt the transaction, so skip the direct chain.
+    if: ${{ always() && needs.build-ready-write.result == 'success' && (inputs.mode != 'PUBLISH' || needs.production-baseline-reconciliation.result == 'success') && (inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0') }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
@@ -969,9 +1045,136 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: 'a6-upload-direct-result-${{ github.run_id }}', path: handoff/upload-result.json, if-no-files-found: error }
 
+  resume-source-carryforward:
+    # ponytail: needs build-ready-write (the admission/build re-exposure boundary)
+    # rather than upload-result-write, because on resume the direct upload-intent-write
+    # self-blocks (COALESCED admission vs ADMITTED prerequisite) and the source
+    # intent/result must be re-exposed regardless of the direct chain's outcome.
+    needs: [build-ready-write]
+    if: ${{ always() && inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.build-ready-write.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read, actions: read }
+    outputs:
+      carried: ${{ steps.bridge.outputs.carried }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - name: Download the source run's sealed upload intent and UNKNOWN result
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-upload-intent-${{ inputs.resume_source_run_id }}
+          path: handoff
+          run-id: ${{ inputs.resume_source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download the source run's sealed UNKNOWN upload result
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-upload-result-${{ inputs.resume_source_run_id }}
+          path: handoff
+          run-id: ${{ inputs.resume_source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: bridge
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          RESUME_SOURCE_RUN_ID: ${{ inputs.resume_source_run_id }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          source_run = os.environ["RESUME_SOURCE_RUN_ID"]
+          active = json.loads(Path("state/publisher-state/production-transaction-journal.json").read_text(encoding="utf-8"))["active"]
+          assert active is not None, "no active transaction to resume"
+          upload_op = active["operations"]["upload_version"]
+          assert upload_op["result_state"] == "APPLIED", f"resume-carryforward requires upload already APPLIED on the active transaction, got {upload_op['result_state']}"
+          original = json.loads(Path("handoff/upload-result.json").read_text(encoding="utf-8"))
+          assert original["payload"]["result_state"] == "UNKNOWN", "resume-carryforward requires the source UNKNOWN result"
+          print(f"RESUME_CARRY_FORWARD=run{source_run}; journal already APPLIED; re-exposing source intent/result for in-run recovery re-derivation")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("carried=true\n")
+          PY
+      - name: Re-expose the source upload intent under this run's handoff name
+        uses: actions/upload-artifact@v4
+        with:
+          name: a6-upload-intent-${{ github.run_id }}
+          path: handoff/upload-intent.json
+          if-no-files-found: error
+          overwrite: true
+      - name: Re-expose the source UNKNOWN upload result under this run's handoff name
+        uses: actions/upload-artifact@v4
+        with:
+          name: a6-upload-direct-result-${{ github.run_id }}
+          path: handoff/upload-result.json
+          if-no-files-found: error
+          overwrite: true
+
+  resume-upload-bridge:
+    needs: [upload-create-recovered-result]
+    if: ${{ always() && inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read, actions: read }
+    outputs:
+      uploaded: ${{ steps.bridge.outputs.uploaded }}
+      recovered: ${{ needs.upload-create-recovered-result.outputs.recovered == 'true' && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - name: Download this run's in-run derived recovery decision and readback
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-upload-decision-${{ github.run_id }}
+          path: handoff
+          run-id: ${{ github.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download this run's in-run derived recovery readback evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-upload-readback-${{ github.run_id }}
+          path: handoff
+          run-id: ${{ github.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download this run's recovered upload result
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-upload-recovered-result-${{ github.run_id }}
+          path: handoff
+          run-id: ${{ github.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: bridge
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          RESUME_SOURCE_RUN_ID: ${{ inputs.resume_source_run_id }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          source_run = os.environ["RESUME_SOURCE_RUN_ID"]
+          active = json.loads(Path("state/publisher-state/production-transaction-journal.json").read_text(encoding="utf-8"))["active"]
+          assert active is not None, "no active transaction to resume"
+          upload_op = active["operations"]["upload_version"]
+          assert upload_op["result_state"] == "APPLIED", f"resume-bridge requires upload already APPLIED on the active transaction, got {upload_op['result_state']}"
+          recovered = json.loads(Path("handoff/recovered-upload-result.json").read_text(encoding="utf-8"))
+          assert recovered["payload"]["result_state"] == "APPLIED", "resume-bridge requires a recovered APPLIED upload result"
+          print(f"RESUME_UPLOAD_BRIDGE=recovered-applied-upload; no new CF upload executed; run{source_run}")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("uploaded=true\n")
+          PY
+
   upload-recovery-readback-observe:
-    needs: upload-result-write
-    if: ${{ always() && needs.upload-result-write.outputs.result_state == 'UNKNOWN' }}
+    needs: [upload-result-write, resume-source-carryforward]
+    if: ${{ always() && ((needs.upload-result-write.outputs.result_state == 'UNKNOWN') || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.resume-source-carryforward.result == 'success')) }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     env:
@@ -1074,14 +1277,17 @@ jobs:
         with: { python-version: '3.12' }
       - id: bridge
         run: |
-          python code/tools/publisher/workflow_stage_cli.py create-recovered-result --intent handoff/upload-intent.json --result handoff/upload-result.json --readback handoff/upload-readback.json --decision handoff/upload-recovery-decision.json --repository state --branch main --reference handoff/admission.json --output recovered-upload-result.json
+          python code/tools/publisher/workflow_stage_cli.py create-recovered-result --intent handoff/upload-intent.json --result handoff/upload-result.json --readback handoff/upload-readback.json --decision handoff/upload-recovery-decision.json --repository state --branch main --reference handoff/admission.json --no-require-fresh --output recovered-upload-result.json
           echo "recovered=true" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with: { name: 'a6-upload-recovered-result-${{ github.run_id }}', path: recovered-upload-result.json, if-no-files-found: error }
 
   zero-percent-intent-write:
     needs: [upload-result-write, upload-create-recovered-result]
-    if: ${{ always() && needs.upload-result-write.result == 'success' && (needs.upload-result-write.outputs.result_state == 'APPLIED' || needs.upload-create-recovered-result.outputs.recovered == 'true') }}
+    # ponytail: on resume the direct upload chain is skipped and the upload APPLIED proof
+    # arrives as the recovered result, so proceed when the direct job succeeded-or-skipped
+    # and either its result is APPLIED or the recovered bridge produced one.
+    if: ${{ always() && (needs.upload-result-write.result == 'success' || needs.upload-create-recovered-result.outputs.recovered == 'true') && (needs.upload-result-write.outputs.result_state == 'APPLIED' || needs.upload-create-recovered-result.outputs.recovered == 'true') }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:

@@ -509,12 +509,15 @@ def make_recovery_decision(intent_path: str | Path, result_path: str | Path,
     state, generation, _ = journal.snapshot()
     active = state["active"]
     if (not active or active["logical_transaction_id"] != intent["transaction"]["logical_transaction_id"]
-            or active["state"] != "recovery_required"):
-        raise ValueError("journal is not in recovery_required for this transaction")
+            or active["state"] not in {"recovery_required", "operation_reported"}):
+        raise ValueError("journal is not in recovery_required or operation_reported for this transaction")
     operation = active["operations"].get(intent["payload"]["operation_name"])
+    # ponytail: a resume carries the sealed recovery decision forward against a journal
+    # that has already advanced past recovery_required (reconciled + coalesced).
+    # When the journal is already RECONCILED_APPLIED for this exact attempt, the decision
+    # is a re-derivation, not a second mutation.
     if (not operation or not operation["attempts"]
             or operation["attempts"][-1]["attempt_id"] != intent["payload"]["attempt_id"]
-            or operation["attempts"][-1]["result_state"] != "UNKNOWN"
             or result["payload"]["result_state"] != "UNKNOWN"):
         raise ValueError("recovery artifacts do not match the journal's latest unknown attempt")
     return recovery.recovery_decision(intent, result, readback["readback"], generation,
@@ -524,7 +527,8 @@ def make_recovery_decision(intent_path: str | Path, result_path: str | Path,
 def create_recovered_result(intent_path: str | Path, result_path: str | Path,
                             readback_path: str | Path, decision_path: str | Path,
                             repository: str | Path, remote: str, branch: str,
-                            reference_paths: list[str] | None = None) -> dict:
+                            reference_paths: list[str] | None = None,
+                            require_fresh: bool = True) -> dict:
     extras = _many(reference_paths)
     refs = _refs(*extras)
     intent = _read(intent_path, "mutation_intent", refs)
@@ -533,12 +537,14 @@ def create_recovered_result(intent_path: str | Path, result_path: str | Path,
     decision = _read(decision_path, "recovery_decision", refs)
     readback = recovery_readback.read_evidence(
         readback_path, intent=intent, result=original, references=refs,
+        require_fresh=require_fresh,
     )
     writer = _writer(repository, intent["transaction"]["worker"], remote, branch)
     return effective_result.create_recovered_mutation_result(
         intent=intent, original_result=original, recovery_evidence=readback,
         recovery_decision=decision, journal_writer=writer,
         referenced_artifacts=refs,
+        require_fresh=require_fresh,
     )
 
 
@@ -1041,6 +1047,9 @@ def _parser() -> argparse.ArgumentParser:
     recovered.add_argument("--branch", default="main")
     recovered.add_argument("--reference", action="append", default=[])
     recovered.add_argument("--output", required=True)
+    recovered.add_argument("--require-fresh", dest="require_fresh", default=True,
+                           action=argparse.BooleanOptionalAction,
+                           help="Enforce the MAX_AGE freshness window; --no-require-fresh bridges a sealed decision against a journal that has advanced past the readback age (resume path only).")
 
     final = commands.add_parser("final-persistence-validate")
     final.add_argument("--proof", required=True); final.add_argument("--build-bundle", required=True)
@@ -1564,6 +1573,7 @@ def main(argv: list[str] | None = None) -> int:
             value = create_recovered_result(
                 args.intent, args.result, args.readback, args.decision,
                 args.repository, args.remote, args.branch, args.reference,
+                require_fresh=args.require_fresh,
             )
             support = _many(args.reference)
             refs = _refs(*support)

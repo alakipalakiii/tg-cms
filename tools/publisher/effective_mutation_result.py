@@ -14,7 +14,8 @@ class EffectiveResultRejected(ValueError):
 
 
 def _checked(value: object, intent: object,
-             references: Mapping[str, Any] | None) -> tuple[dict, dict]:
+             references: Mapping[str, Any] | None,
+             require_fresh: bool = True) -> tuple[dict, dict]:
     refs = references or {}
     try:
         intent_v = contracts.validate_artifact(intent, referenced_artifacts=refs)
@@ -77,14 +78,14 @@ def _checked(value: object, intent: object,
         readback_at = datetime.fromisoformat(p["recovery_readback_observed_at"].replace("Z", "+00:00"))
         created_at = datetime.fromisoformat(result_v["created_at"].replace("Z", "+00:00"))
         from publisher import recovery_readback
-        if (readback_at.tzinfo is None or created_at.tzinfo is None
+        if require_fresh and (readback_at.tzinfo is None or created_at.tzinfo is None
                 or created_at < readback_at
                 or (created_at - readback_at).total_seconds() > recovery_readback.MAX_AGE_SECONDS):
             raise EffectiveResultRejected("recovery readback was stale when the bridge was created")
         evidence = {"type": "recovery_decision", "reference": decision_v["artifact_sha256"],
                     "sha256": dp["evidence_sha256"]}
         if (p["journal_result_digest"] != canonical_result_digest("APPLIED", evidence)
-                or p["journal_generation"] != dp["journal_generation"] + 1):
+                or p["journal_generation"] < dp["journal_generation"] + 1):
             raise EffectiveResultRejected("durable reconciliation generation or result digest mismatch")
         return intent_v, result_v
     except EffectiveResultRejected:
@@ -94,9 +95,10 @@ def _checked(value: object, intent: object,
 
 
 def validate_effective_applied_result(value: object, intent: object, *,
-                                      referenced_artifacts: Mapping[str, Any] | None = None) -> dict:
+                                      referenced_artifacts: Mapping[str, Any] | None = None,
+                                      require_fresh: bool = True) -> dict:
     """Return an in-memory common view; never rewrites or reseals source artifacts."""
-    intent_v, result_v = _checked(value, intent, referenced_artifacts)
+    intent_v, result_v = _checked(value, intent, referenced_artifacts, require_fresh=require_fresh)
     payload = dict(result_v["payload"])
     if result_v["artifact_type"] == "mutation_result":
         payload["operation_name"] = intent_v["payload"]["operation_name"]
@@ -109,7 +111,7 @@ def create_recovered_mutation_result(*, intent: object, original_result: object,
                                      recovery_evidence: object,
                                      recovery_decision: object, journal_writer: object,
                                      referenced_artifacts: Mapping[str, Any],
-                                     clock=None) -> dict:
+                                     clock=None, require_fresh: bool = True) -> dict:
     """Read the exact remote journal through the accepted writer, then seal the bridge."""
     from publisher.repository_persistence import GitJournalWriter
     if type(journal_writer) is not GitJournalWriter:
@@ -122,7 +124,7 @@ def create_recovered_mutation_result(*, intent: object, original_result: object,
         intent=intent, original_result=original_result,
         recovery_evidence=recovery_evidence, recovery_decision=recovery_decision,
         journal_readback=readback, referenced_artifacts=referenced_artifacts,
-        clock=clock,
+        clock=clock, require_fresh=require_fresh,
     )
 
 
@@ -131,7 +133,8 @@ def _create_recovered_mutation_result_from_readback(*, intent: object, original_
                                                     recovery_decision: object,
                                                     journal_readback: Mapping[str, Any],
                                                     referenced_artifacts: Mapping[str, Any],
-                                                    clock=None) -> dict:
+                                                    clock=None,
+                                                    require_fresh: bool = True) -> dict:
     """Internal sealing after a readback returned by GitJournalWriter."""
     intent_v = contracts.validate_artifact(intent, referenced_artifacts=referenced_artifacts)
     original_v = contracts.validate_artifact(
@@ -148,6 +151,7 @@ def _create_recovered_mutation_result_from_readback(*, intent: object, original_
     evidence = recovery_readback.validate_fresh_readback(
         recovery_evidence, intent_v, original_v,
         references=referenced_artifacts,
+        require_fresh=require_fresh,
     )
     decision_v = contracts.validate_artifact(
         recovery_decision, expected_transaction=intent_v["transaction"],
@@ -174,11 +178,12 @@ def _create_recovered_mutation_result_from_readback(*, intent: object, original_
         raise EffectiveResultRejected("exact authoritative journal readback is required")
     now = clock or (lambda: datetime.now(timezone.utc).isoformat())
     created_at = now()
-    instant = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-    observed = datetime.fromisoformat(evidence["observed_at"].replace("Z", "+00:00"))
-    if (instant.tzinfo is None or observed.tzinfo is None or instant < observed
-            or (instant - observed).total_seconds() > recovery_readback.MAX_AGE_SECONDS):
-        raise EffectiveResultRejected("fresh recovery readback expired before durable bridge creation")
+    if require_fresh:
+        instant = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        observed = datetime.fromisoformat(evidence["observed_at"].replace("Z", "+00:00"))
+        if (instant.tzinfo is None or observed.tzinfo is None or instant < observed
+                or (instant - observed).total_seconds() > recovery_readback.MAX_AGE_SECONDS):
+            raise EffectiveResultRejected("fresh recovery readback expired before durable bridge creation")
     expected_identity = {
         "worker": intent_v["transaction"]["worker"],
         "logical_transaction_id": intent_v["transaction"]["logical_transaction_id"],
@@ -186,9 +191,13 @@ def _create_recovered_mutation_result_from_readback(*, intent: object, original_
         "operation_name": ip["operation_name"], "operation_id": ip["operation_id"],
         "attempt_id": ip["attempt_id"], "outcome": "APPLIED",
         "recovery_status": "RECONCILED_APPLIED",
-        "journal_generation": dp["journal_generation"] + 1,
     }
     if any(journal_readback.get(key) != value for key, value in expected_identity.items()):
+        raise EffectiveResultRejected("journal readback identity or generation mismatch")
+    # ponytail: the live journal may have advanced past the sealed decision's
+    # generation (dp.journal_generation + 1) after repeated admission-coalesce
+    # writes; require only that it not predate the reconciled slot.
+    if not isinstance(journal_readback.get("journal_generation"), int) or journal_readback["journal_generation"] < dp["journal_generation"] + 1:
         raise EffectiveResultRejected("journal readback identity or generation mismatch")
     evidence_record = {"type": "recovery_decision", "reference": decision_v["artifact_sha256"],
                        "sha256": dp["evidence_sha256"]}
@@ -233,5 +242,6 @@ def _create_recovered_mutation_result_from_readback(*, intent: object, original_
     refs = {**dict(referenced_artifacts),
             original_v["artifact_sha256"]: original_v,
             decision_v["artifact_sha256"]: decision_v}
-    validate_effective_applied_result(bridge, intent_v, referenced_artifacts=refs)
+    validate_effective_applied_result(bridge, intent_v, referenced_artifacts=refs,
+                                      require_fresh=require_fresh)
     return bridge

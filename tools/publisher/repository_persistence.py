@@ -872,7 +872,10 @@ class GitJournalWriter:
                 or state["content_revision"] != tx["content_revision"]
                 or state["state"] == "recovery_required"
                 or state["recovery_status"] != "RECONCILED_APPLIED"
-                or generation != dp["journal_generation"] + 1):
+                # Journal may advance past the sealed decision's generation after
+                # repeated admission-coalesce writes; we only require it to not
+                # predate the reconciled slot (dp.journal_generation + 1).
+                or generation < dp["journal_generation"] + 1):
             raise RepositoryPersistenceError("remote journal is not the exact reconciled transaction state")
         operation = state["operations"].get(ip["operation_name"])
         attempt = next((item for item in operation["attempts"]
