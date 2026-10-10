@@ -720,7 +720,7 @@ jobs:
 
   build-validate:
     needs: [admission, resume-admission]
-    if: ${{ always() && ((inputs.mode == 'RESUME_ADMITTED' && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'ADMITTED') || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED')) }}
+    if: ${{ always() && ((inputs.mode == 'RESUME_ADMITTED' && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED' && inputs.resume_source_run_id == '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0') || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED')) }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     steps:
@@ -788,13 +788,20 @@ jobs:
           revision = artifact_transport.read_artifact('handoff/revision-resolution.json', expected_type='revision_resolution', expected_source_sha=source)
           admission = artifact_transport.read_artifact('handoff/admission.json', expected_type='admission_receipt', expected_transaction=revision['transaction'], expected_source_sha=source, referenced_artifacts=artifact_transport.references(revision))
           assert revision['payload']['decision'] == 'CHANGED'
-          assert admission['payload']['decision'] == 'ADMITTED'
+          # COALESCED is valid when mark_terminal promoted a pending tx to active admitted
+          # and the PUBLISH re-admits the same tx, landing in a clean admitted state.
+          assert admission['payload']['decision'] in {'ADMITTED', 'COALESCED'}
           assert admission['transaction']['logical_transaction_id'] == revision['transaction']['logical_transaction_id']
           assert admission['payload']['active_transaction_id'] == revision['transaction']['logical_transaction_id']
           assert admission['payload']['revision_resolution_sha256'] == revision['artifact_sha256']
           journal = json.loads(Path('state/publisher-state/production-transaction-journal.json').read_text(encoding='utf-8'))
           active = journal['active']
-          assert active and active['logical_transaction_id'] == revision['transaction']['logical_transaction_id'] and active['state'] == 'admitted'
+          assert active and active['logical_transaction_id'] == revision['transaction']['logical_transaction_id'] and active['state'] in {'admitted', 'build_ready'}
+          if admission['payload']['decision'] == 'COALESCED':
+              # mark_terminal left the tx in clean admitted state — no operations have progress
+              assert active['state'] == 'admitted', f"COALESCED admission requires clean admitted active state, got {active['state']}"
+              for op in active['operations'].values():
+                  assert op['result_state'] == 'NOT_REPORTED' and op['attempts'] == [], "COALESCED active tx has operation progress; not a clean post-mark_terminal state"
           current, _changed_at, _meta = fetch_public_content_revision()
           if os.environ['RESUME_MODE'].lower() == 'true':
               assert current == revision['payload']['revision'], f'RESUME_PUBLIC_REVISION_MISMATCH:{current}'

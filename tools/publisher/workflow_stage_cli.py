@@ -171,7 +171,9 @@ def record_build_ready(bundle_path: str | Path, admission_path: str | Path,
     admission = _read(admission_path, "admission_receipt")
     bundle = _read(bundle_path, "build_bundle", _refs(admission))
     tx = bundle["transaction"]
-    if (admission["transaction"] != tx or admission["payload"]["decision"] != "ADMITTED"
+    # COALESCED admission is valid when mark_terminal promoted a pending tx to
+    # active admitted and the PUBLISH re-admitted the same tx without progress.
+    if (admission["transaction"] != tx or admission["payload"]["decision"] not in {"ADMITTED", "COALESCED"}
             or bundle["payload"]["admission_receipt_sha256"] != admission["artifact_sha256"]):
         raise ValueError("BUILD_READY requires the exact admitted bundle lineage")
     if remote_writer is None:
