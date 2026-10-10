@@ -104,7 +104,11 @@ def _build_authorization() -> tuple[dict, dict, str]:
     )
     if revision["payload"]["decision"] != "CHANGED":
         raise BuildBoundaryError("BUILD_REQUIRES_CHANGED_REVISION")
-    if admission["payload"]["decision"] != "ADMITTED":
+    # COALESCED is a valid receipt when mark_terminal promoted a pending tx to
+    # active admitted and the PUBLISH re-admitted the same tx without progress.
+    # It is accepted here for the same reason record_build_ready accepts it:
+    # the active tx is in a clean admitted state with no operation progress.
+    if admission["payload"]["decision"] not in {"ADMITTED", "COALESCED"}:
         raise BuildBoundaryError("BUILD_REQUIRES_ADMITTED_RECEIPT")
     if revision["transaction"]["worker"] != BUILD_WORKER:
         raise BuildBoundaryError("BUILD_WORKER_MISMATCH")
