@@ -27,6 +27,12 @@
         "run_id": "38094604671",
         "source": "workflow_dispatch",
         "timestamp": "2026-10-10T23:19:43.362948+00:00"
+      },
+      {
+        "attempt_id": "1",
+        "run_id": "38095341391",
+        "source": "workflow_dispatch",
+        "timestamp": "2026-10-10T23:32:11.317133+00:00"
       }
     ],
     "logical_transaction_id": "0426f7a9fbfe8dfd3a056bf3c8aaca2632dfc9257c349079de78481b19649142",
@@ -75,11 +81,11 @@
     "trigger_sources": [
       "workflow_dispatch"
     ],
-    "updated_at": "2026-10-10T23:19:43.362948+00:00",
+    "updated_at": "2026-10-10T23:32:11.317133+00:00",
     "worker": "mahoon-art-magazine"
   },
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 25,
+  "generation": 26,
   "history": [
     {
       "build_bundle_sha256": null,
