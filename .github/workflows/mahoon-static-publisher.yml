@@ -848,6 +848,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: a6-build-${{ github.run_id }}
+          include-hidden-files: true
           path: |
             code/runner-evidence/publisher-sealed/
             code/runner-evidence/v1-build-bundle.json
@@ -1213,6 +1214,11 @@ jobs:
         with: { name: 'a6-upload-readback-${{ github.run_id }}', path: upload-readback.json, if-no-files-found: error }
 
   upload-recovery-decision:
+    # ponytail: an always-gated readback-observe can still sit on a skipped
+    # sibling (resume-source-carryforward), and a default success() would
+    # propagate that skip. The observe's own if already encodes when the
+    # decision is meaningful, so require it to have actually run.
+    if: ${{ always() && needs.upload-recovery-readback-observe.result == 'success' }}
     needs: upload-recovery-readback-observe
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -1241,6 +1247,7 @@ jobs:
         with: { name: 'a6-upload-decision-${{ github.run_id }}', path: upload-recovery-decision.json, if-no-files-found: error }
 
   upload-reconcile-recovery-decision:
+    if: ${{ always() && needs.upload-recovery-decision.result == 'success' }}
     needs: upload-recovery-decision
     runs-on: ubuntu-latest
     permissions: { contents: write }
@@ -1446,6 +1453,7 @@ jobs:
         with: { name: 'a6-zero-readback-${{ github.run_id }}', path: zero-recovery-readback.json, if-no-files-found: error }
 
   zero-recovery-decision:
+    if: ${{ always() && needs.zero-recovery-readback-observe.result == 'success' }}
     needs: zero-recovery-readback-observe
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -1476,6 +1484,7 @@ jobs:
         with: { name: 'a6-zero-decision-${{ github.run_id }}', path: zero-recovery-decision.json, if-no-files-found: error }
 
   zero-reconcile-recovery-decision:
+    if: ${{ always() && needs.zero-recovery-decision.result == 'success' }}
     needs: zero-recovery-decision
     runs-on: ubuntu-latest
     permissions: { contents: write }
@@ -1738,6 +1747,7 @@ jobs:
         with: { name: 'a6-promote-readback-${{ github.run_id }}', path: promote-recovery-readback.json, if-no-files-found: error }
 
   promote-recovery-decision:
+    if: ${{ always() && needs.promote-recovery-readback-observe.result == 'success' }}
     needs: promote-recovery-readback-observe
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -1766,6 +1776,7 @@ jobs:
         with: { name: 'a6-promote-decision-${{ github.run_id }}', path: promote-recovery-decision.json, if-no-files-found: error }
 
   promote-reconcile-recovery-decision:
+    if: ${{ always() && needs.promote-recovery-decision.result == 'success' }}
     needs: promote-recovery-decision
     runs-on: ubuntu-latest
     permissions: { contents: write }
@@ -2211,6 +2222,7 @@ jobs:
         with: { name: 'a6-rollback-readback-${{ github.run_id }}', path: rollback-recovery-readback.json, if-no-files-found: error }
 
   rollback-recovery-decision:
+    if: ${{ always() && needs.rollback-recovery-readback-observe.result == 'success' }}
     needs: rollback-recovery-readback-observe
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -2239,6 +2251,7 @@ jobs:
         with: { name: 'a6-rollback-decision-${{ github.run_id }}', path: rollback-recovery-decision.json, if-no-files-found: error }
 
   rollback-reconcile-recovery-decision:
+    if: ${{ always() && needs.rollback-recovery-decision.result == 'success' }}
     needs: rollback-recovery-decision
     runs-on: ubuntu-latest
     permissions: { contents: write }
