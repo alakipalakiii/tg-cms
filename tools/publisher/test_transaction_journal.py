@@ -306,6 +306,20 @@ class TransactionJournalTests(unittest.TestCase):
         with self.assertRaises(JournalInvalid):
             self.journal.reset_build_ready_for_rebuild(tx)
 
+    def test_reset_build_ready_rejects_pending_transaction(self):
+        # A pending transaction must never be resettable; only the active slot may be.
+        tx158 = self._admit(10)
+        status, _tx159 = self.journal.admit(11, "synthetic")
+        self.assertEqual("PENDING", status)
+        self.journal.record_build_ready(tx158, BUILD)
+        active, pending = self._state()["active"], self._state()["pending"]
+        self.assertEqual(10, active["content_revision"])
+        self.assertEqual(11, pending["content_revision"])
+        with self.assertRaises(JournalInvalid):
+            self.journal.reset_build_ready_for_rebuild(pending["logical_transaction_id"])
+        # active slot is unaffected
+        self.assertEqual("build_ready", self._state()["active"]["state"])
+
 
 if __name__ == "__main__":
     unittest.main()
