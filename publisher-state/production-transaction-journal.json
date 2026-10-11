@@ -42,23 +42,27 @@
           {
             "attempt_id": "fe9d55fa-c419-4533-8f71-a5cfb217ef98",
             "attempt_number": 1,
-            "evidence": null,
+            "evidence": {
+              "reference": "0e8a895eaa0e93ab602aadafa82bc7f3e792f08c3ea53fe4dbf049063b2d6335",
+              "sha256": "226dfdd502fcf681997990bd58bb9c3091b669df4735b92e259ac5104ee6c097",
+              "type": "mutation_result_artifact"
+            },
             "intent_artifact_sha256": "7af36d2f37f107873f29c8dcbfa859fbd60c5809ea2549b22a91365f30e44ed1",
             "intent_at": "2026-10-11T19:24:30.594904+00:00",
             "intent_state": "RECORDED",
-            "result_at": null,
-            "result_digest": null,
-            "result_state": "NOT_REPORTED"
+            "result_at": "2026-10-11T19:25:37.311342+00:00",
+            "result_digest": "552830bca99669a5b847d7c6a43c2e8a1ac2cee27c18f17a4070a35553924abd",
+            "result_state": "UNKNOWN"
           }
         ],
         "intent_state": "RECORDED",
         "operation_id": "de85543263270ff933071e2f0c609ce2d92e66d6fcaed1a384e931779f274ab8",
-        "result_state": "NOT_REPORTED"
+        "result_state": "UNKNOWN"
       }
     },
     "proof_evidence_sha256": null,
-    "recovery_status": "NONE",
-    "state": "intent_recorded",
+    "recovery_status": "REQUIRED",
+    "state": "recovery_required",
     "state_commit_sha": null,
     "transitions": [
       {
@@ -75,16 +79,21 @@
         "from": "build_ready",
         "timestamp": "2026-10-11T19:24:30.594921+00:00",
         "to": "intent_recorded"
+      },
+      {
+        "from": "intent_recorded",
+        "timestamp": "2026-10-11T19:25:37.311390+00:00",
+        "to": "recovery_required"
       }
     ],
     "trigger_sources": [
       "workflow_dispatch"
     ],
-    "updated_at": "2026-10-11T19:24:30.594923+00:00",
+    "updated_at": "2026-10-11T19:25:37.311397+00:00",
     "worker": "mahoon-art-magazine"
   },
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 46,
+  "generation": 47,
   "history": [
     {
       "build_bundle_sha256": null,
