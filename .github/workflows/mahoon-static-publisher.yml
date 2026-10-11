@@ -1567,7 +1567,7 @@ jobs:
           --snapshot handoff/runner-evidence/current-v2-snapshot.json
           --route-manifest handoff/runner-build/published-route-manifest.json
           --media-manifest handoff/runner-build/production-media-manifest.json
-          --base-url https://mahoon.art --evidence-dir runner-evidence/pre-promotion-proof
+          --base-url https://mahoonartmagazine.ir --evidence-dir runner-evidence/pre-promotion-proof
           --output pre-promotion-proof.json --reference handoff/zero-percent-intent.json
           --reference handoff/zero-percent-result.json --reference handoff/zero-recovery-readback.json
           --reference handoff/zero-recovery-decision.json
@@ -1890,7 +1890,7 @@ jobs:
           --route-manifest handoff/runner-build/published-route-manifest.json
           --media-manifest handoff/runner-build/production-media-manifest.json
           --local-gates handoff/runner-evidence/prepromotion-local-gates.json
-          --base-url https://mahoon.art --evidence-dir runner-evidence/production-proof
+          --base-url https://mahoonartmagazine.ir --evidence-dir runner-evidence/production-proof
           --output production-proof.json
           --reference handoff/upload-intent.json --reference handoff/zero-percent-intent.json --reference handoff/promote-intent.json
           --reference handoff/upload-result.json --reference handoff/zero-percent-result.json --reference handoff/promote-result.json

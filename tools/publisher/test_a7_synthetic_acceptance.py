@@ -37,7 +37,7 @@ import test_workflow_stage_cli as stage_cli_tests
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/mahoon-static-publisher.yml"
-A6_ACCEPTED_WORKFLOW_SHA = "10bf245ecc828bc7a46194d43d99d8aa5ae5b049324bfcc2fa249a1eca5a8e9a"
+A6_ACCEPTED_WORKFLOW_SHA = "11e6929027acd660b59c3034441ee62e0acfbdb3431ffbcf5f4e7dad5a3a34d9"
 
 
 def _run_case(case_type, method: str) -> None:
