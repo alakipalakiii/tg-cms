@@ -125,7 +125,7 @@
     "worker": "mahoon-art-magazine"
   },
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 34,
+  "generation": 35,
   "history": [
     {
       "build_bundle_sha256": null,
@@ -585,6 +585,12 @@
         "run_id": "38124964101",
         "source": "workflow_dispatch",
         "timestamp": "2026-10-11T08:29:44.709658+00:00"
+      },
+      {
+        "attempt_id": "1",
+        "run_id": "38125303691",
+        "source": "workflow_dispatch",
+        "timestamp": "2026-10-11T08:35:23.954398+00:00"
       }
     ],
     "logical_transaction_id": "e6e3893135234102d7cf381fa997927c3737ddfaa454e35d26737468a12ed08d",
@@ -628,7 +634,7 @@
     "trigger_sources": [
       "workflow_dispatch"
     ],
-    "updated_at": "2026-10-11T08:29:44.709658+00:00",
+    "updated_at": "2026-10-11T08:35:23.954398+00:00",
     "worker": "mahoon-art-magazine"
   },
   "schema_version": 2,
