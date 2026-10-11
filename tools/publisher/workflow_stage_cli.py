@@ -280,7 +280,7 @@ def create_mutation_intent(operation: str, build_path: str | Path,
     if operation == "upload_version":
         admission = prerequisite
         if (admission["artifact_type"] != "admission_receipt"
-                or admission["payload"]["decision"] != "ADMITTED"
+                or admission["payload"]["decision"] not in {"ADMITTED", "COALESCED"}
                 or bundle["payload"]["admission_receipt_sha256"] != admission["artifact_sha256"]):
             raise ValueError("upload requires the exact admitted build prerequisite")
     if operation == "rollback":
