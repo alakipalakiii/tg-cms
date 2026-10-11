@@ -1532,7 +1532,7 @@ def main(argv: list[str] | None = None) -> int:
                         "pending_revision": pending2["content_revision"] if pending2 else None,
                         "active_transaction_id": active2["logical_transaction_id"] if active2 else None,
                     }
-                    contracts.seal_artifact(value)
+                    value = contracts.seal_artifact(value)
             transport.write_artifact(args.output, value, expected_type="admission_receipt")
             output = {"status": value["payload"]["decision"],
                       "artifact_sha256": value["artifact_sha256"],
