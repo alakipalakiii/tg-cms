@@ -227,6 +227,7 @@ def _validate_transaction(tx: object, worker: str, *, pending: bool = False) -> 
     allowed_edges = {
         (None, "admitted"), (None, "pending"),
         ("admitted", "build_ready"), ("admitted", "intent_recorded"),
+        ("build_ready", "admitted"),  # narrow recovery edge: only from reset_build_ready_for_rebuild
         ("build_ready", "intent_recorded"),
         ("intent_recorded", "operation_reported"), ("intent_recorded", "recovery_required"),
         ("operation_reported", "intent_recorded"), ("operation_reported", "proof_ready"),
@@ -521,6 +522,37 @@ class TransactionJournal:
                 raise JournalInvalid("build can become ready only from admitted state")
             tx["build_bundle_sha256"] = build_bundle_sha256
             self._transition(tx, "build_ready")
+        self._change(update, expected_generation=expected_generation, expected_digest=expected_digest)
+
+    def reset_build_ready_for_rebuild(self, tx_id: str, *, expected_generation: int | None = None, expected_digest: str | None = None) -> None:
+        """Narrowly-scoped recovery: return a clean build_ready transaction to admitted for a fresh rebuild.
+
+        Allowed ONLY when the active transaction is build_ready, its identity and revision are
+        intact, no mutation operation has started or been reported, no pending revision exists,
+        and no proof/state binding is recorded. Clears only the build bundle digest.
+        """
+        def update(journal: dict) -> None:
+            tx = self._active(journal, tx_id)
+            if tx["state"] != "build_ready":
+                raise JournalInvalid("build bundle regeneration recovery requires build_ready state")
+            for name, operation in tx["operations"].items():
+                if operation["attempts"]:
+                    raise JournalInvalid("build bundle regeneration recovery is not allowed after a mutation attempt")
+                if operation["intent_state"] != "NOT_STARTED" or operation["result_state"] != "NOT_REPORTED":
+                    raise JournalInvalid("build bundle regeneration recovery requires unstarted, unreported operations")
+            if journal["pending"] is not None:
+                raise JournalInvalid("build bundle regeneration recovery is not allowed with a pending revision")
+            if tx["recovery_status"] != "NONE":
+                raise JournalInvalid("build bundle regeneration recovery is not allowed with recovery required")
+            if tx["proof_evidence_sha256"] is not None:
+                raise JournalInvalid("build bundle regeneration recovery is not allowed with proof evidence recorded")
+            if tx["state_commit_sha"] is not None:
+                raise JournalInvalid("build bundle regeneration recovery is not allowed with state commit recorded")
+            if tx["build_bundle_sha256"] is None:
+                raise JournalInvalid("build bundle regeneration recovery requires a recorded build bundle")
+            # Identity and revision are immutable; only the ephemeral build binding is cleared.
+            tx["build_bundle_sha256"] = None
+            self._transition(tx, "admitted")
         self._change(update, expected_generation=expected_generation, expected_digest=expected_digest)
 
     def record_intent(self, tx_id: str, operation_name: str, *, attempt_id: str | None = None, intent_artifact_sha256: str | None = None, expected_generation: int | None = None, expected_digest: str | None = None) -> tuple[str, str]:

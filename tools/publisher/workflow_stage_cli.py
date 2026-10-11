@@ -891,6 +891,14 @@ def _parser() -> argparse.ArgumentParser:
     abandon.add_argument("--github-repo", default=None,
                          help="Repository name for read-only GitHub run evidence")
 
+    rebuild = commands.add_parser("reset-build-ready",
+                                  help="Narrowly-scoped recovery: reset a clean build_ready transaction to admitted for a fresh rebuild")
+    rebuild.add_argument("--repository", required=True)
+    rebuild.add_argument("--transaction-id", required=True)
+    rebuild.add_argument("--expected-revision", required=True, type=int)
+    rebuild.add_argument("--remote", default="origin")
+    rebuild.add_argument("--branch", default="main")
+
     # Post-run reconciler: handles both Class A (skipped) and Class B (failed) orphan intents
     reconcile = commands.add_parser("reconciliation-decision")
     reconcile.add_argument("--operation", choices=contracts.OPERATION_NAMES, required=True,
@@ -1424,6 +1432,11 @@ def main(argv: list[str] | None = None) -> int:
             output["observed_changed_at"] = changed_at
         elif args.command == "abandon-unexecuted-intent":
             output = abandon_unexecuted_intent(args)
+        elif args.command == "reset-build-ready":
+            writer = _writer(args.repository, DEFAULT_WORKER, args.remote, args.branch)
+            output = writer.reset_build_ready_for_rebuild(
+                args.transaction_id, args.expected_revision)
+            output["status"] = "BUILD_READY_RESET_FOR_REBUILD"
         elif args.command == "reconciliation-decision":
             output = reconciliation_decision(args)
         elif args.command == "validate-artifact":

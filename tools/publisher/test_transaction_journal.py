@@ -218,6 +218,94 @@ class TransactionJournalTests(unittest.TestCase):
         with self.assertRaisesRegex(JournalInvalid, "disabled"):
             self.journal.complete(tx)
 
+    def test_reset_build_ready_for_rebuild_allows_clean_build_ready(self):
+        tx = self._admit()
+        self.journal.record_build_ready(tx, BUILD)
+        active = self._state()["active"]
+        generation = self._state()["generation"]
+        digest = journal_digest(self._state())
+        prior_transitions = [dict(t) for t in active["transitions"]]
+        prior_attempts = {name: [dict(a) for a in op["attempts"]] for name, op in active["operations"].items()}
+        self.journal.reset_build_ready_for_rebuild(tx,
+                                                    expected_generation=generation,
+                                                    expected_digest=digest)
+        value = self._state()
+        active = value["active"]
+        self.assertEqual(tx, active["logical_transaction_id"])
+        self.assertEqual("admitted", active["state"])
+        self.assertIsNone(active["build_bundle_sha256"])
+        self.assertIsNone(active["proof_evidence_sha256"])
+        self.assertIsNone(active["state_commit_sha"])
+        self.assertEqual("NONE", active["recovery_status"])
+        self.assertEqual(prior_attempts, {name: [dict(a) for a in op["attempts"]]
+                                          for name, op in active["operations"].items()})
+        for op in active["operations"].values():
+            self.assertEqual([], op["attempts"])
+            self.assertEqual("NOT_STARTED", op["intent_state"])
+            self.assertEqual("NOT_REPORTED", op["result_state"])
+        self.assertEqual(generation + 1, value["generation"])
+        transitions = active["transitions"]
+        self.assertEqual(prior_transitions, transitions[:-1])
+        self.assertEqual("build_ready", transitions[-2]["to"])
+        self.assertEqual("admitted", transitions[-1]["to"])
+
+    def test_reset_build_ready_rejects_after_any_upload_attempt(self):
+        tx = self._admit()
+        self.journal.record_build_ready(tx, BUILD)
+        op_id, _ = self.journal.record_intent(tx, "upload_version")
+        with self.assertRaises(JournalInvalid):
+            self.journal.reset_build_ready_for_rebuild(tx)
+        self.assertEqual("intent_recorded", self._state()["active"]["state"])
+
+    def test_reset_build_ready_rejects_after_any_reported_result(self):
+        tx = self._admit()
+        self.journal.record_build_ready(tx, BUILD)
+        op_id, attempt = self.journal.record_intent(tx, "promote")
+        self.journal.record_result(tx, op_id, attempt, "APPLIED", EVIDENCE)
+        with self.assertRaises(JournalInvalid):
+            self.journal.reset_build_ready_for_rebuild(tx)
+        self.assertEqual("operation_reported", self._state()["active"]["state"])
+
+    def test_reset_build_ready_rejects_unknown_result(self):
+        tx = self._admit()
+        self.journal.record_build_ready(tx, BUILD)
+        op_id, attempt = self.journal.record_intent(tx, "promote")
+        self.journal.record_result(tx, op_id, attempt, "UNKNOWN")
+        with self.assertRaises(JournalInvalid):
+            self.journal.reset_build_ready_for_rebuild(tx)
+        self.assertEqual("recovery_required", self._state()["active"]["state"])
+
+    def test_reset_build_ready_rejects_wrong_transaction_id(self):
+        tx = self._admit(10)
+        self.journal.record_build_ready(tx, BUILD)
+        wrong_tx = logical_transaction_id(WORKER, 999)
+        with self.assertRaises(JournalInvalid):
+            self.journal.reset_build_ready_for_rebuild(wrong_tx)
+
+    def test_reset_build_ready_rejects_wrong_revision_cas_mismatch(self):
+        tx = self._admit(10)
+        self.journal.record_build_ready(tx, BUILD)
+        _, generation, digest = self.journal.snapshot()
+        with self.assertRaises(JournalConflict):
+            self.journal.reset_build_ready_for_rebuild(tx, expected_generation=0)
+
+    def test_reset_build_ready_rejects_pending_newer_revision(self):
+        tx = self._admit(10)
+        self.journal.record_build_ready(tx, BUILD)
+        self.journal.admit(11, "github")
+        with self.assertRaises(JournalInvalid):
+            self.journal.reset_build_ready_for_rebuild(tx)
+
+    def test_reset_build_ready_rejects_missing_bundle(self):
+        tx = self._admit()
+        with self.assertRaises(JournalInvalid):
+            self.journal.reset_build_ready_for_rebuild(tx)
+
+    def test_reset_build_ready_rejects_non_build_ready_state(self):
+        tx = self._admit()
+        with self.assertRaises(JournalInvalid):
+            self.journal.reset_build_ready_for_rebuild(tx)
+
 
 if __name__ == "__main__":
     unittest.main()

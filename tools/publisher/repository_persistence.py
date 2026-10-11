@@ -636,6 +636,42 @@ class GitJournalWriter:
         next_generation, next_digest, _commit = self._commit_and_verify()
         return next_generation, next_digest
 
+    def reset_build_ready_for_rebuild(self, transaction_id: str, expected_revision: int) -> dict:
+        """Clear the ephemeral build bundle and return a clean build_ready transaction to admitted.
+
+        Fails closed unless the active transaction is build_ready at the expected revision with
+        zero mutation attempts, no pending revision, and no proof/state bindings.
+        """
+        state, generation, digest = self._confirm_current()
+        active = state["active"]
+        if not active or active["logical_transaction_id"] != transaction_id:
+            raise RepositoryPersistenceError("journal does not own the recovery transaction")
+        if active["content_revision"] != expected_revision:
+            raise RepositoryPersistenceError("recovery revision does not match the active transaction")
+        if active["state"] != "build_ready":
+            raise RepositoryPersistenceError("build bundle regeneration recovery requires build_ready state")
+        if state["pending"] is not None:
+            raise RepositoryPersistenceError("recovery is not allowed with a pending revision")
+        if active["recovery_status"] != "NONE":
+            raise RepositoryPersistenceError("recovery is blocked while recovery status is not NONE")
+        if active["proof_evidence_sha256"] is not None:
+            raise RepositoryPersistenceError("recovery is blocked with proof evidence recorded")
+        if active["state_commit_sha"] is not None:
+            raise RepositoryPersistenceError("recovery is blocked with state commit recorded")
+        if active["build_bundle_sha256"] is None:
+            raise RepositoryPersistenceError("recovery requires a recorded build bundle")
+        for operation in active["operations"].values():
+            if (operation["attempts"] or operation["intent_state"] != "NOT_STARTED"
+                    or operation["result_state"] != "NOT_REPORTED"):
+                raise RepositoryPersistenceError("recovery is not allowed after any mutation attempt or report")
+        journal = self._journal()
+        journal.reset_build_ready_for_rebuild(
+            transaction_id, expected_generation=generation, expected_digest=digest)
+        next_generation, next_digest, _commit = self._commit_and_verify()
+        return {"transaction_id": transaction_id, "revision": expected_revision,
+                "state": "admitted", "generation": next_generation,
+                "journal_sha256": next_digest}
+
     def record_intent(self, transaction_id: str, operation_name: str, attempt_id: str,
                       intent_artifact_sha256: str, expected_generation: int) -> tuple[int, str, bool]:
         if not _sha256(intent_artifact_sha256):
