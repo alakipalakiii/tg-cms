@@ -646,6 +646,30 @@ class GitJournalWriter:
         if set(active["operations"]) != set(OPERATIONS):
             raise RepositoryPersistenceError("retirement operation identities are incomplete")
 
+        # ponytail: a prior CAS run pushed the commit but the readback failed; the
+        # active slot still reads recovery_required while the same tx_id already
+        # sits in history as blocked. Treat that as idempotent success rather than
+        # re-raising JournalInvalid on duplicate identity. Re-verify against the
+        # live head before returning the receipt.
+        already_blocked_in_history = any(
+            h["logical_transaction_id"] == transaction_id
+            and h["state"] == "blocked"
+            for h in state.get("history", [])
+        )
+        if already_blocked_in_history:
+            remote, remote_generation, remote_digest, remote_head, raw = self._remote_journal_snapshot()
+            if remote_generation != generation or remote_digest != digest:
+                raise RepositoryPersistenceError("remote journal changed during idempotent retirement")
+            return {
+                "status": "BLOCKED_UNKNOWN_RETIRED", "generation": remote_generation,
+                "journal_sha256": remote_digest, "remote_head": remote_head,
+                "retired_transaction_id": transaction_id, "retired_revision": revision,
+                "retired_upload_attempt_id": expected_upload_attempt_id,
+                "retired_upload_operation_id": expected_upload_operation_id,
+                "retired_upload_intent_sha256": expected_upload_intent_sha256,
+                "recorded_upload_outcome": "UNKNOWN", "idempotent": True,
+            }
+
         journal = self._journal()
         journal.mark_terminal(transaction_id, "blocked")
         expected_state, next_generation, next_digest = journal.snapshot()

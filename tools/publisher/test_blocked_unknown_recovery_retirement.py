@@ -158,6 +158,57 @@ class RetireBlockedUnknownRecoveryV2Tests(unittest.TestCase):
             self.assertFalse(_run_gate(post),
                              "gate must stay closed once the slot is empty")
 
+    def test_idempotent_retire_when_already_blocked_in_history(self):
+        """Regression: prior partial CAS pushed a blocked entry but the active slot
+        still reads recovery_required with the same tx_id (921c82d's shape). A second
+        retire call must NOT raise JournalInvalid for duplicate history identity."""
+        with tempfile.TemporaryDirectory() as raw:
+            work = _make_repo(Path(raw))
+            j = _fresh_journal(work)
+            tx_id = _admit_tx(j, 159)
+            _advance_to_blocked_unknown(j, tx_id, "a" * 64)
+            state, generation, digest = j.snapshot()
+            active = state["active"]
+            op = active["operations"]["upload_version"]
+            attempt = op["attempts"][0]
+
+            # Push a first commit so the stub has a real HEAD.
+            _git("add", "publisher-state/production-transaction-journal.json", cwd=work)
+            _git("-c", "user.name=stub", "-c", "user.email=stub@stub",
+                 "commit", "-qm", "pre retire", cwd=work)
+
+            # Mutate the on-disk journal into the half-retired shape:
+            # history gains a blocked copy of the active tx; active stays recovery_required.
+            import copy as _copy
+            jpath = work / "publisher-state/production-transaction-journal.json"
+            half_state = json.loads(jpath.read_bytes().decode("utf-8"))
+            blocked_tx = _copy.deepcopy(half_state["active"])
+            blocked_tx["state"] = "blocked"
+            blocked_tx["transitions"].append({
+                "from": "recovery_required", "to": "blocked",
+                "timestamp": blocked_tx["updated_at"],
+            })
+            half_state["history"].append(blocked_tx)
+            transaction_journal.validate_journal(half_state, WORKER)
+            jpath.write_text(json.dumps(half_state, indent=2, ensure_ascii=False) + "\n")
+
+            j_half = transaction_journal.TransactionJournal.from_file(jpath, WORKER)
+            pre_generation, pre_digest = j_half.snapshot()[1:]
+            writer = _Writer(work)
+            receipt = GitJournalWriter.retire_blocked_unknown_recovery_v2(
+                writer, tx_id, 159,
+                expected_generation=pre_generation, expected_digest=pre_digest,
+                expected_upload_attempt_id=attempt["attempt_id"],
+                expected_upload_operation_id=op["operation_id"],
+                expected_upload_intent_sha256="a" * 64,
+                expected_upload_result_state="UNKNOWN",
+            )
+            self.assertEqual(receipt["status"], "BLOCKED_UNKNOWN_RETIRED")
+            self.assertTrue(receipt["idempotent"])
+            self.assertEqual(receipt["retired_transaction_id"], tx_id)
+            # No new generation was minted; the method only verified and returned.
+            self.assertEqual(receipt["generation"], pre_generation)
+
     def test_gate_refuses_pristine_admitted_slot(self):
         with tempfile.TemporaryDirectory() as raw:
             work = _make_repo(Path(raw))
