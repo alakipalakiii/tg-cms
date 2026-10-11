@@ -798,8 +798,10 @@ jobs:
           active = journal['active']
           assert active and active['logical_transaction_id'] == revision['transaction']['logical_transaction_id'] and active['state'] in {'admitted', 'build_ready'}
           if admission['payload']['decision'] == 'COALESCED':
-              # mark_terminal left the tx in clean admitted state — no operations have progress
-              assert active['state'] == 'admitted', f"COALESCED admission requires clean admitted active state, got {active['state']}"
+              # COALESCED is legal when the active tx has no operation progress,
+              # whether it was admitted fresh or already advanced to build_ready
+              # by a prior partial PUBLISH that stopped at upload-intent-write.
+              assert active['state'] in {'admitted', 'build_ready'}, f"COALESCED admission requires clean active state, got {active['state']}"
               for op in active['operations'].values():
                   assert op['result_state'] == 'NOT_REPORTED' and op['attempts'] == [], "COALESCED active tx has operation progress; not a clean post-mark_terminal state"
           current, _changed_at, _meta = fetch_public_content_revision()
