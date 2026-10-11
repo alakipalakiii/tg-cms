@@ -604,6 +604,77 @@ class GitJournalWriter:
                 "promoted_pending_revision": pending["content_revision"],
                 "promoted_transaction_id": pending["logical_transaction_id"]}
 
+    def retire_blocked_unknown_recovery_v2(self, transaction_id: str, revision: int, *,
+                                           expected_generation: int, expected_digest: str,
+                                           expected_upload_attempt_id: str,
+                                           expected_upload_operation_id: str,
+                                           expected_upload_intent_sha256: str,
+                                           expected_upload_result_state: str,
+                                           ) -> dict:
+        """Retire a recovery_required transaction whose recorded upload outcome is permanently UNKNOWN.
+
+        One CAS-guarded journal commit moves the active transaction to blocked without
+        reconciling its historical upload_version result. The original sealed evidence
+        and recorded UNKNOWN result are preserved in history; no APPLIED or NOT_APPLIED
+        outcome is invented for the stuck transaction. A PUBLISH for the same revision
+        may be re-admitted in a new transaction afterward.
+        """
+        state, generation, digest = self._confirm_current()
+        if not isinstance(expected_generation, int) or isinstance(expected_generation, bool) \
+                or expected_generation != generation:
+            raise RepositoryPersistenceError("expected journal generation does not match the remote journal")
+        if digest != expected_digest:
+            raise RepositoryPersistenceError("expected journal digest does not match the remote journal")
+        approved_head = _branch_head(self.root, self.branch)
+        active, pending = state["active"], state["pending"]
+        if active is None:
+            raise RepositoryPersistenceError("journal has no active transaction to retire")
+        upload = active["operations"].get("upload_version")
+        attempts = upload["attempts"] if upload else []
+        if (transaction_id != active["logical_transaction_id"] or revision != active["content_revision"]
+                or active["state"] != "recovery_required"
+                or active["recovery_status"] not in {"REQUIRED", "BLOCKED_UNKNOWN"}
+                or pending is not None
+                or expected_upload_result_state != "UNKNOWN"
+                or len(attempts) != 1
+                or attempts[0]["attempt_id"] != expected_upload_attempt_id
+                or attempts[0].get("intent_artifact_sha256") != expected_upload_intent_sha256
+                or attempts[0]["result_state"] != expected_upload_result_state
+                or upload["operation_id"] != expected_upload_operation_id
+                or upload["result_state"] != expected_upload_result_state):
+            raise RepositoryPersistenceError("active journal slot is not the exact blocked-unknown recovery transaction to retire")
+        if set(active["operations"]) != set(OPERATIONS):
+            raise RepositoryPersistenceError("retirement operation identities are incomplete")
+
+        journal = self._journal()
+        journal.mark_terminal(transaction_id, "blocked")
+        expected_state, next_generation, next_digest = journal.snapshot()
+        try:
+            commit = self._commit_journal()
+        except RepositoryPersistenceError:
+            # A lost push response may be reconciled only by exact remote state and one-file commit readback.
+            remote, remote_generation, remote_digest, remote_head, remote_raw = self._remote_journal_snapshot()
+            parent = _git(self.root, "rev-list", "--parents", "-n", "1", remote_head).stdout.split()
+            if (remote != expected_state or remote_generation != next_generation == generation + 1
+                    or remote_digest != next_digest or remote_raw != (self.root / JOURNAL_PATH).read_bytes()
+                    or len(parent) != 2 or parent[1] != approved_head
+                    or _commit_paths(self.root, remote_head) != {JOURNAL_PATH}):
+                raise RepositoryPersistenceError("retirement push was not confirmed by exact remote readback")
+            commit = remote_head
+        installed, installed_generation, installed_digest, installed_head, raw = self._remote_journal_snapshot()
+        if (installed != expected_state or installed_generation != next_generation
+                or installed_digest != next_digest
+                or installed_head != commit or raw != (self.root / JOURNAL_PATH).read_bytes()
+                or _commit_paths(self.root, commit) != {JOURNAL_PATH}):
+            raise RepositoryPersistenceError("retirement remote readback is not exact")
+        return {"status": "BLOCKED_UNKNOWN_RETIRED", "generation": installed_generation,
+                "journal_sha256": installed_digest, "remote_head": installed_head,
+                "retired_transaction_id": transaction_id, "retired_revision": revision,
+                "retired_upload_attempt_id": expected_upload_attempt_id,
+                "retired_upload_operation_id": expected_upload_operation_id,
+                "retired_upload_intent_sha256": expected_upload_intent_sha256,
+                "recorded_upload_outcome": "UNKNOWN"}
+
     def abandon_unexecuted_intent_v2(self, transaction_id: str, revision: int, *,
                                      expected_generation: int, expected_digest: str,
                                      expected_build_bundle_sha256: str,

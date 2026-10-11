@@ -63,6 +63,35 @@ def _writer(repository: str | Path, worker: str, remote: str, branch: str) -> Gi
 def _writer_journal_path(writer: GitJournalWriter) -> Path:
     return writer.root / "publisher-state/production-transaction-journal.json"
 
+def _is_blocked_unknown_recovery(jstate: Mapping[str, Any], active: Mapping[str, Any]) -> bool:
+    """Gate 1: exactly one unknown-upload recovery slot that a PUBLISH may re-admit.
+
+    A re-admission of the revision stuck in a permanently UNKNOWN upload_version
+    slot retires that blocked transaction (UNKNOWN preserved in journal history)
+    and admits a fresh forward transaction. Each is its own exact CAS commit.
+    recovery_status is REQUIRED right after record_result, then BLOCKED_UNKNOWN
+    after the decision gate — either state is eligible for the re-admission.
+    """
+    return (
+        active is not None
+        and active["state"] == "recovery_required"
+        and active["recovery_status"] in {"REQUIRED", "BLOCKED_UNKNOWN"}
+        and jstate["pending"] is None
+        and active["operations"]["upload_version"]["result_state"] == "UNKNOWN"
+    )
+
+def _blocked_unknown_retire_receipt(writer: GitJournalWriter, active: Mapping[str, Any]) -> dict:
+    jstate, generation, digest = writer._confirm_current()
+    upload = active["operations"]["upload_version"]
+    return writer.retire_blocked_unknown_recovery_v2(
+        active["logical_transaction_id"], active["content_revision"],
+        expected_generation=generation, expected_digest=digest,
+        expected_upload_attempt_id=upload["attempts"][0]["attempt_id"],
+        expected_upload_operation_id=upload["operation_id"],
+        expected_upload_intent_sha256=upload["attempts"][0].get("intent_artifact_sha256"),
+        expected_upload_result_state="UNKNOWN",
+    )
+
 
 def _producer(source: Mapping[str, Any], job: str) -> dict:
     run_id = os.environ.get("GITHUB_RUN_ID", "local-synthetic")
@@ -1475,11 +1504,46 @@ def main(argv: list[str] | None = None) -> int:
                 args.revision, _writer_journal_path(writer), args.source,
                 args.run_id, args.trigger_attempt, remote_writer=writer,
             )
+            retired_receipt = None
+            if value["payload"]["decision"] == "DEFERRED":
+                jstate, _jgen, _jdigest = writer._confirm_current()
+                active = jstate["active"]
+                if (_is_blocked_unknown_recovery(jstate, active)
+                        and active["logical_transaction_id"] == revision["transaction"]["logical_transaction_id"]):
+                    retired_receipt = _blocked_unknown_retire_receipt(writer, active)
+                    decision2, _tx2, gen_after, digest_after = writer.admit_revision(
+                        active["content_revision"], args.source, args.run_id, args.trigger_attempt,
+                    )
+                    mapped2 = {
+                        "ADMITTED": "ADMITTED", "COALESCED_ACTIVE": "COALESCED",
+                        "COALESCED_COMPLETED": "COALESCED", "PENDING": "DEFERRED",
+                        "PENDING_REPLACED": "DEFERRED", "SUPERSEDED": "SUPERSEDED",
+                        "STALE": "DEFERRED", "RECOVERY_REQUIRED": "DEFERRED",
+                    }[decision2]
+                    journal_now = json.loads(Path(_writer_journal_path(writer)).read_text(encoding="utf-8"))
+                    active2, pending2 = journal_now["active"], journal_now["pending"]
+                    # Re-seal the original admission receipt against the post-admission journal state.
+                    value = dict(value)
+                    value["payload"] = {
+                        "decision": mapped2,
+                        "journal_generation": gen_after,
+                        "journal_sha256": digest_after,
+                        "revision_resolution_sha256": value["payload"]["revision_resolution_sha256"],
+                        "pending_revision": pending2["content_revision"] if pending2 else None,
+                        "active_transaction_id": active2["logical_transaction_id"] if active2 else None,
+                    }
+                    contracts.seal_artifact(value)
             transport.write_artifact(args.output, value, expected_type="admission_receipt")
             output = {"status": value["payload"]["decision"],
                       "artifact_sha256": value["artifact_sha256"],
                       "journal_generation": value["payload"]["journal_generation"],
                       "journal_sha256": value["payload"]["journal_sha256"]}
+            if retired_receipt is not None:
+                receipt_text = json.dumps(retired_receipt, sort_keys=True)
+                Path(args.output).with_name(
+                    Path(args.output).stem + "-retirement-receipt.json"
+                ).write_text(receipt_text + "\n", encoding="utf-8")
+                output["retired_blocked_unknown_recovery"] = retired_receipt
         elif args.command == "record-build-ready":
             bundle = _read(args.build_bundle, "build_bundle")
             writer = _writer(args.repository, bundle["transaction"]["worker"], args.remote, args.branch)
