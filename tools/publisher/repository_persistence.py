@@ -648,27 +648,44 @@ class GitJournalWriter:
 
         # ponytail: a prior CAS run pushed the commit but the readback failed; the
         # active slot still reads recovery_required while the same tx_id already
-        # sits in history as blocked. Treat that as idempotent success rather than
-        # re-raising JournalInvalid on duplicate identity. Re-verify against the
-        # live head before returning the receipt.
+        # sits in history as blocked. Clear active without re-appending to history
+        # (which would raise a duplicate-identity error), then commit+verify.
         already_blocked_in_history = any(
             h["logical_transaction_id"] == transaction_id
             and h["state"] == "blocked"
             for h in state.get("history", [])
         )
         if already_blocked_in_history:
-            remote, remote_generation, remote_digest, remote_head, raw = self._remote_journal_snapshot()
-            if remote_generation != generation or remote_digest != digest:
-                raise RepositoryPersistenceError("remote journal changed during idempotent retirement")
-            return {
-                "status": "BLOCKED_UNKNOWN_RETIRED", "generation": remote_generation,
-                "journal_sha256": remote_digest, "remote_head": remote_head,
-                "retired_transaction_id": transaction_id, "retired_revision": revision,
-                "retired_upload_attempt_id": expected_upload_attempt_id,
-                "retired_upload_operation_id": expected_upload_operation_id,
-                "retired_upload_intent_sha256": expected_upload_intent_sha256,
-                "recorded_upload_outcome": "UNKNOWN", "idempotent": True,
-            }
+            journal = self._journal()
+            journal.clear_half_retired_active(
+                transaction_id,
+                expected_generation=generation, expected_digest=digest,
+            )
+            expected_state, next_generation, next_digest = journal.snapshot()
+            try:
+                commit = self._commit_journal()
+            except RepositoryPersistenceError:
+                remote, remote_generation, remote_digest, remote_head, remote_raw = self._remote_journal_snapshot()
+                parent = _git(self.root, "rev-list", "--parents", "-n", "1", remote_head).stdout.split()
+                if (remote != expected_state or remote_generation != next_generation == generation + 1
+                        or remote_digest != next_digest or remote_raw != (self.root / JOURNAL_PATH).read_bytes()
+                        or len(parent) != 2 or parent[1] != approved_head
+                        or _commit_paths(self.root, remote_head) != {JOURNAL_PATH}):
+                    raise RepositoryPersistenceError("half-retired clear push was not confirmed by exact remote readback")
+                commit = remote_head
+            installed, installed_generation, installed_digest, installed_head, raw = self._remote_journal_snapshot()
+            if (installed != expected_state or installed_generation != next_generation
+                    or installed_digest != next_digest
+                    or installed_head != commit or raw != (self.root / JOURNAL_PATH).read_bytes()
+                    or _commit_paths(self.root, commit) != {JOURNAL_PATH}):
+                raise RepositoryPersistenceError("half-retired clear remote readback is not exact")
+            return {"status": "BLOCKED_UNKNOWN_RETIRED", "generation": installed_generation,
+                    "journal_sha256": installed_digest, "remote_head": installed_head,
+                    "retired_transaction_id": transaction_id, "retired_revision": revision,
+                    "retired_upload_attempt_id": expected_upload_attempt_id,
+                    "retired_upload_operation_id": expected_upload_operation_id,
+                    "retired_upload_intent_sha256": expected_upload_intent_sha256,
+                    "recorded_upload_outcome": "UNKNOWN", "idempotent": True}
 
         journal = self._journal()
         journal.mark_terminal(transaction_id, "blocked")

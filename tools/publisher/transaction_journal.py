@@ -735,3 +735,24 @@ class TransactionJournal:
             if journal["active"]:
                 self._transition(journal["active"], "admitted")
         self._change(update, retry_coordination=False)
+
+    def clear_half_retired_active(self, tx_id: str, *, expected_generation: int | None = None, expected_digest: str | None = None) -> None:
+        """Clear an active slot whose transaction already sits in history as blocked.
+
+        A prior CAS run may have pushed the retired blocked entry into history but
+        failed before clearing the active slot. This clears active/pending without
+        re-appending to history (which would raise a duplicate-identity error).
+        """
+        def update(journal: dict) -> None:
+            active = journal.get("active")
+            if active is None or active["logical_transaction_id"] != tx_id:
+                raise JournalInvalid("active slot does not match the half-retired transaction")
+            if not any(h["logical_transaction_id"] == tx_id and h["state"] == "blocked"
+                       for h in journal["history"]):
+                raise JournalInvalid("transaction is not already blocked in history")
+            journal["active"] = journal["pending"]
+            journal["pending"] = None
+            if journal["active"]:
+                self._transition(journal["active"], "admitted")
+        self._change(update, expected_generation=expected_generation,
+                     expected_digest=expected_digest, retry_coordination=False)

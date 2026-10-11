@@ -206,8 +206,12 @@ class RetireBlockedUnknownRecoveryV2Tests(unittest.TestCase):
             self.assertEqual(receipt["status"], "BLOCKED_UNKNOWN_RETIRED")
             self.assertTrue(receipt["idempotent"])
             self.assertEqual(receipt["retired_transaction_id"], tx_id)
-            # No new generation was minted; the method only verified and returned.
-            self.assertEqual(receipt["generation"], pre_generation)
+            # The clear CAS minted exactly one new generation and left no active slot.
+            self.assertEqual(receipt["generation"], pre_generation + 1)
+            post_state, post_generation, _ = j_half.snapshot()
+            self.assertIsNone(post_state["active"])
+            self.assertIsNone(post_state["pending"])
+            self.assertEqual(post_generation, pre_generation + 1)
 
     def test_gate_refuses_pristine_admitted_slot(self):
         with tempfile.TemporaryDirectory() as raw:
