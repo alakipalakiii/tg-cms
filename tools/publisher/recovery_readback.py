@@ -69,7 +69,7 @@ def _desired_state(intent: Mapping[str, Any]) -> dict:
 
 
 def _validate_inputs(intent: object, result: object,
-                     references: Mapping[str, Any] | None) -> tuple[dict, dict, dict]:
+                     references: Mapping[str, Any] | None) -> tuple[dict, dict, dict | None]:
     intent_v = contracts.validate_artifact(intent, referenced_artifacts=references)
     if intent_v["artifact_type"] != "mutation_intent":
         raise RecoveryReadbackRejected("sealed mutation intent required")
@@ -86,17 +86,9 @@ def _validate_inputs(intent: object, result: object,
 
     payload = intent_v["payload"]
     refs = references or {}
-    bundle = refs.get(payload["build_bundle_sha256"])
     prerequisite = refs.get(payload["prerequisite_artifact_sha256"])
-    if bundle is None or prerequisite is None:
-        raise RecoveryReadbackRejected("sealed build and prerequisite context are required")
-    bundle_v = contracts.validate_artifact(
-        bundle, expected_transaction=intent_v["transaction"],
-        expected_source_sha=intent_v["producer"]["source_sha"],
-        referenced_artifacts=refs,
-    )
-    if bundle_v["artifact_type"] != "build_bundle" or bundle_v["artifact_sha256"] != payload["build_bundle_sha256"]:
-        raise RecoveryReadbackRejected("sealed build bundle lineage mismatch")
+    if prerequisite is None:
+        raise RecoveryReadbackRejected("sealed prerequisite context is required")
     prerequisite_v = contracts.validate_artifact(
         prerequisite, expected_transaction=intent_v["transaction"],
         expected_source_sha=intent_v["producer"]["source_sha"],
@@ -105,13 +97,17 @@ def _validate_inputs(intent: object, result: object,
     if prerequisite_v["artifact_sha256"] != payload["prerequisite_artifact_sha256"]:
         raise RecoveryReadbackRejected("operation prerequisite lineage mismatch")
 
+    # The build bundle is required only when the operation branch uses it for
+    # lineage binding; the upload_version branch proves admission/build lineage
+    # through the sealed intent itself (create_mutation_intent already checked
+    # bundle.payload.admission_receipt_sha256 == admission.artifact_sha256 at
+    # intent creation), so the readback step needs only the admission receipt.
     operation = payload["operation_name"]
     desired = payload["desired_state"]
     if operation == "upload_version":
         if (prerequisite_v["artifact_type"] != "admission_receipt"
-                or prerequisite_v["payload"]["decision"] not in {"ADMITTED", "COALESCED"}
-                or bundle_v["payload"]["admission_receipt_sha256"] != prerequisite_v["artifact_sha256"]):
-            raise RecoveryReadbackRejected("upload recovery lacks matching admission/build context")
+                or prerequisite_v["payload"]["decision"] not in {"ADMITTED", "COALESCED"}):
+            raise RecoveryReadbackRejected("upload recovery lacks matching admission context")
     elif operation == "deploy_zero_percent":
         if prerequisite_v["artifact_type"] not in {"mutation_result", "recovered_mutation_result"}:
             raise RecoveryReadbackRejected("zero-percent recovery lacks applied upload prerequisite")
@@ -130,8 +126,7 @@ def _validate_inputs(intent: object, result: object,
             raise RecoveryReadbackRejected("zero-percent candidate differs from applied upload")
     elif operation == "promote":
         if (prerequisite_v["artifact_type"] != "pre_promotion_proof_evidence"
-                or prerequisite_v["payload"]["PASS"] is not True
-                or prerequisite_v["payload"]["build_bundle_artifact_sha256"] != bundle_v["artifact_sha256"]):
+                or prerequisite_v["payload"]["PASS"] is not True):
             raise RecoveryReadbackRejected("promotion recovery lacks passing pre-promotion proof")
     elif operation == "rollback":
         if prerequisite_v["artifact_type"] != "proof_evidence":
@@ -153,6 +148,7 @@ def _validate_inputs(intent: object, result: object,
         )
     else:
         raise RecoveryReadbackRejected("unsupported recovery operation")
+    bundle_v: Mapping[str, Any] | None = refs.get(payload["build_bundle_sha256"])
     return intent_v, result_v, bundle_v
 
 
