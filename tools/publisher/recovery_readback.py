@@ -109,7 +109,7 @@ def _validate_inputs(intent: object, result: object,
     desired = payload["desired_state"]
     if operation == "upload_version":
         if (prerequisite_v["artifact_type"] != "admission_receipt"
-                or prerequisite_v["payload"]["decision"] != "ADMITTED"
+                or prerequisite_v["payload"]["decision"] not in {"ADMITTED", "COALESCED"}
                 or bundle_v["payload"]["admission_receipt_sha256"] != prerequisite_v["artifact_sha256"]):
             raise RecoveryReadbackRejected("upload recovery lacks matching admission/build context")
     elif operation == "deploy_zero_percent":

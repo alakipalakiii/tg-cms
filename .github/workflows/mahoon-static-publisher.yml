@@ -879,7 +879,7 @@ jobs:
         with: { python-version: '3.12' }
       - name: Record build ready (skipped when resuming an in-flight transaction)
         if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
-        run: python code/tools/publisher/workflow_stage_cli.py record-build-ready --build-bundle handoff/v1-build-bundle.json --admission handoff/admission.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main
+        run: python code/tools/publisher/workflow_stage_cli.py record-build-ready --build-bundle handoff/runner-evidence/v1-build-bundle.json --admission handoff/admission.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main
       - name: Reuse the source production baseline (resume path)
         if: ${{ inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' }}
         uses: actions/download-artifact@v4

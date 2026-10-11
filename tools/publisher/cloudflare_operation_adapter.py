@@ -75,7 +75,7 @@ def _validate_prerequisite(intent: dict, prerequisite: object,
     desired = payload["desired_state"]
     if operation == "upload_version":
         if (parent["artifact_type"] != "admission_receipt"
-                or parent["payload"]["decision"] != "ADMITTED"):
+                or parent["payload"]["decision"] not in {"ADMITTED", "COALESCED"}):
             raise OperationRejected("upload requires an ADMITTED receipt")
         return parent
     if operation == "rollback":
