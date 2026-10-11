@@ -23,6 +23,10 @@ WORKER = "mahoon-art-magazine"
 JOURNAL = "publisher-state/production-transaction-journal.json"
 JOURNAL_FIXTURE = Path(__file__).resolve().parent / "fixtures/pre-retirement-journal-v2.json"
 JOURNAL_118_FIXTURE = Path(__file__).resolve().parent / "fixtures/pre-retirement-revision-118-journal-v2.json"
+JOURNAL_SUPERSEDED_FIXTURE = Path(__file__).resolve().parent / "fixtures/pre-superseded-retirement-journal-v2.json"
+TX158 = "0426f7a9fbfe8dfd3a056bf3c8aaca2632dfc9257c349079de78481b19649142"
+TX159 = "e6e3893135234102d7cf381fa997927c3737ddfaa454e35d26737468a12ed08d"
+SUPERSEDED_DIGEST = "5023ca1e6804fc9f1c0b8fdeee29af3a84529b4212e26aa73c19947ccc4d6a6a"
 
 
 def git(root, *args, check=True):
@@ -376,6 +380,150 @@ class StaleRetirementV2Tests(unittest.TestCase):
                                return_value=(119, "2026-10-06T21:12:24+00:00", {"offline": True})):
             self.assertEqual(2, cli.main(argv))
         self.assertEqual(3, self.repo.journal()["generation"])
+
+
+class SupersededRetirementRepository:
+    """Build a git repo whose journal is pristine active=158 admitted + pending=159 (gen 35)."""
+
+    def __init__(self, parent):
+        self.root, self.remote = parent / "repo", parent / "remote.git"
+        self.root.mkdir()
+        git(parent, "init", "--bare", str(self.remote))
+        git(self.root, "init", "-b", "main")
+        git(self.root, "config", "user.name", "Superseded test")
+        git(self.root, "config", "user.email", "superseded@example.invalid")
+        (self.root / JOURNAL).parent.mkdir(parents=True)
+        (self.root / JOURNAL).write_bytes(JOURNAL_SUPERSEDED_FIXTURE.read_bytes())
+        git(self.root, "add", JOURNAL)
+        git(self.root, "commit", "-m", "superseded retirement fixture")
+        git(self.root, "remote", "add", "origin", str(self.remote))
+        git(self.root, "push", "-u", "origin", "main")
+
+    def writer(self):
+        return persistence.GitJournalWriter(self.root, WORKER, "origin", "main")
+
+    def journal(self):
+        head = git(self.root, "rev-parse", "origin/main")
+        return json.loads(git(self.root, "show", f"{head}:{JOURNAL}"))
+
+    def gen_and_digest(self):
+        value = self.journal()
+        return value["generation"], journal_digest(value)
+
+
+class SupersededRetirementV2Tests(unittest.TestCase):
+    """Coverage for retire_stale_admitted_superseded_v2: close pristine active, promote newer pending."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="mahoon-retire-superseded-")
+        self.addCleanup(self.temp.cleanup)
+        self.repo = SupersededRetirementRepository(Path(self.temp.name))
+
+    def test_closes_active_and_promotes_newer_pending_as_one_commit(self):
+        before = git(self.repo.root, "rev-parse", "HEAD")
+        generation, digest = self.repo.gen_and_digest()
+        self.assertEqual((35, SUPERSEDED_DIGEST), (generation, digest))
+        result = self.repo.writer().retire_stale_admitted_superseded_v2(
+            TX158, 158, expected_generation=generation, expected_digest=digest)
+        state = self.repo.journal()
+        self.assertEqual("RETIRED_BLOCKED_SUPERSEDED", result["status"])
+        self.assertEqual(36, state["generation"])
+        # Promoted pending becomes the sole active/admitted transaction.
+        self.assertEqual(159, state["active"]["content_revision"])
+        self.assertEqual("admitted", state["active"]["state"])
+        self.assertEqual(TX159, state["active"]["logical_transaction_id"])
+        self.assertIsNone(state["pending"])
+        # Retired 158 is preserved in history as blocked, with full transition evidence.
+        old = next(item for item in state["history"] if item["logical_transaction_id"] == TX158)
+        self.assertEqual("blocked", old["state"])
+        self.assertEqual("blocked", old["transitions"][-1]["to"])
+        self.assertEqual(result["promoted_transaction_id"], TX159)
+        commit = result["remote_head"]
+        self.assertEqual(before, git(self.repo.root, "rev-parse", f"{commit}^"))
+        self.assertEqual(JOURNAL, git(self.repo.root, "diff-tree", "--no-commit-id", "--name-only", "-r", commit))
+        self.assertEqual((self.repo.root / JOURNAL).read_bytes(), subprocess.run(
+            ["git", "show", f"origin/main:{JOURNAL}"], cwd=self.repo.root,
+            capture_output=True, check=True,
+        ).stdout)
+
+    def test_rejects_when_no_pending_exists(self):
+        # Without a newer pending transaction, the v2 retire path (pending=None) is the only one.
+        generation, digest = self.repo.gen_and_digest()
+        state = self.journal() if False else self.repo.journal()
+        # Strip pending to simulate a no-pending journal, commit, then retry.
+        journal = self.repo.journal()
+        journal["pending"] = None
+        path = self.repo.root / JOURNAL
+        path.write_bytes(serialize_journal(journal))
+        git(self.repo.root, "add", JOURNAL)
+        git(self.repo.root, "commit", "-m", "no pending")
+        git(self.repo.root, "push", "origin", "main")
+        generation, digest = self.repo.gen_and_digest()
+        with self.assertRaises(persistence.RepositoryPersistenceError):
+            self.repo.writer().retire_stale_admitted_superseded_v2(
+                TX158, 158, expected_generation=generation, expected_digest=digest)
+
+    def test_rejects_when_pending_not_newer(self):
+        journal = self.repo.journal()
+        journal["pending"]["content_revision"] = 157  # older than active 158
+        path = self.repo.root / JOURNAL
+        path.write_bytes(serialize_journal(journal))
+        git(self.repo.root, "add", JOURNAL)
+        git(self.repo.root, "commit", "-m", "pending not newer")
+        git(self.repo.root, "push", "origin", "main")
+        generation, digest = self.repo.gen_and_digest()
+        with self.assertRaises((persistence.RepositoryPersistenceError, JournalInvalid)):
+            self.repo.writer().retire_stale_admitted_superseded_v2(
+                TX158, 158, expected_generation=generation, expected_digest=digest)
+
+    def test_rejects_after_mutation_evidence(self):
+        journal = self.repo.journal()
+        journal["active"]["operations"]["upload_version"]["attempts"] = [
+            {"attempt_number": 1, "attempt_id": "11111111-1111-1111-1111-111111111111",
+             "intent_state": "RECORDED", "result_state": "NOT_REPORTED", "intent_at": "x"}]
+        path = self.repo.root / JOURNAL
+        path.write_bytes(serialize_journal(journal))
+        git(self.repo.root, "add", JOURNAL)
+        git(self.repo.root, "commit", "-m", "mutation evidence")
+        git(self.repo.root, "push", "origin", "main")
+        generation, digest = self.repo.gen_and_digest()
+        with self.assertRaises(persistence.RepositoryPersistenceError):
+            self.repo.writer().retire_stale_admitted_superseded_v2(
+                TX158, 158, expected_generation=generation, expected_digest=digest)
+
+    def test_rejects_wrong_generation_or_digest(self):
+        generation, digest = self.repo.gen_and_digest()
+        with self.assertRaises(persistence.RepositoryPersistenceError):
+            self.repo.writer().retire_stale_admitted_superseded_v2(
+                TX158, 158, expected_generation=generation + 1, expected_digest=digest)
+        with self.assertRaises(persistence.RepositoryPersistenceError):
+            self.repo.writer().retire_stale_admitted_superseded_v2(
+                TX158, 158, expected_generation=generation, expected_digest="a" * 64)
+
+    def test_failed_push_fails_closed(self):
+        with mock.patch.object(persistence, "_push", side_effect=persistence.RepositoryPersistenceError("offline")):
+            generation, digest = self.repo.gen_and_digest()
+            with self.assertRaises(persistence.RepositoryPersistenceError):
+                self.repo.writer().retire_stale_admitted_superseded_v2(
+                    TX158, 158, expected_generation=generation, expected_digest=digest)
+        self.assertEqual(35, self.repo.journal()["generation"])
+
+    def test_cli_superseded_routes_to_v2_method(self):
+        generation, digest = self.repo.gen_and_digest()
+        argv = ["retire-stale-admitted-superseded",
+                "--repository", str(self.repo.root),
+                "--transaction-id", TX158, "--expected-revision", "158",
+                "--remote", "origin", "--branch", "main",
+                "--expected-generation", str(generation), "--journal-sha256", digest]
+        captured = io.StringIO()
+        with redirect_stdout(captured):
+            self.assertEqual(0, cli.main(argv))
+        evidence = json.loads(captured.getvalue())
+        self.assertEqual("RETIRED_BLOCKED_SUPERSEDED", evidence["status"])
+        self.assertEqual(TX158, evidence["retired_transaction_id"])
+        self.assertEqual(TX159, evidence["promoted_transaction_id"])
+        self.assertEqual(159, evidence["promoted_pending_revision"])
+        self.assertEqual(36, self.repo.journal()["generation"])
 
 
 if __name__ == "__main__":

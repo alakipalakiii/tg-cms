@@ -899,6 +899,18 @@ def _parser() -> argparse.ArgumentParser:
     rebuild.add_argument("--remote", default="origin")
     rebuild.add_argument("--branch", default="main")
 
+    retire_superseded = commands.add_parser("retire-stale-admitted-superseded",
+                                            help="Close a pristine admitted active transaction and promote the queued newer pending revision in one CAS-guarded commit")
+    retire_superseded.add_argument("--repository", required=True)
+    retire_superseded.add_argument("--transaction-id", required=True)
+    retire_superseded.add_argument("--expected-revision", required=True, type=int)
+    retire_superseded.add_argument("--remote", default="origin")
+    retire_superseded.add_argument("--branch", default="main")
+    retire_superseded.add_argument("--expected-generation", required=True, type=int,
+                                   help="Caller-supplied journal generation; exact CAS guard")
+    retire_superseded.add_argument("--journal-sha256", required=True,
+                                   help="Caller-supplied expected journal digest; exact CAS guard")
+
     # Post-run reconciler: handles both Class A (skipped) and Class B (failed) orphan intents
     reconcile = commands.add_parser("reconciliation-decision")
     reconcile.add_argument("--operation", choices=contracts.OPERATION_NAMES, required=True,
@@ -1437,6 +1449,13 @@ def main(argv: list[str] | None = None) -> int:
             output = writer.reset_build_ready_for_rebuild(
                 args.transaction_id, args.expected_revision)
             output["status"] = "BUILD_READY_RESET_FOR_REBUILD"
+        elif args.command == "retire-stale-admitted-superseded":
+            writer = _writer(args.repository, DEFAULT_WORKER, args.remote, args.branch)
+            output = writer.retire_stale_admitted_superseded_v2(
+                args.transaction_id, args.expected_revision,
+                expected_generation=args.expected_generation,
+                expected_digest=args.journal_sha256,
+            )
         elif args.command == "reconciliation-decision":
             output = reconciliation_decision(args)
         elif args.command == "validate-artifact":
