@@ -1,6 +1,6 @@
 {
   "active": {
-    "build_bundle_sha256": null,
+    "build_bundle_sha256": "7a572e0fcaf767d306803f1fadfd924465c2e53fbf2e966c32b5e700ab050901",
     "content_revision": 158,
     "created_at": "2026-10-10T22:34:44.950758+00:00",
     "execution_attempts": [
@@ -88,7 +88,7 @@
     },
     "proof_evidence_sha256": null,
     "recovery_status": "NONE",
-    "state": "admitted",
+    "state": "build_ready",
     "state_commit_sha": null,
     "transitions": [
       {
@@ -100,16 +100,21 @@
         "from": "pending",
         "timestamp": "2026-10-10T22:50:48.480118+00:00",
         "to": "admitted"
+      },
+      {
+        "from": "admitted",
+        "timestamp": "2026-10-11T01:03:35.514579+00:00",
+        "to": "build_ready"
       }
     ],
     "trigger_sources": [
       "workflow_dispatch"
     ],
-    "updated_at": "2026-10-11T00:45:17.596586+00:00",
+    "updated_at": "2026-10-11T01:03:35.514596+00:00",
     "worker": "mahoon-art-magazine"
   },
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 30,
+  "generation": 31,
   "history": [
     {
       "build_bundle_sha256": null,
