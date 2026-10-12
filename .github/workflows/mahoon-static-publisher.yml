@@ -1568,18 +1568,22 @@ jobs:
           PYTHONPATH: code/tools/publisher:code/tools:code
           MAHOON_WRANGLER: npx wrangler@4.83.0
           CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
-        run: >-
+        run: |
+          zero_result=handoff/zero-percent-result.json
+          refs=(--reference handoff/zero-percent-intent.json)
+          if [ '${{ needs.zero-create-recovered-result.outputs.recovered }}' = 'true' ]; then
+            zero_result=handoff/recovered-zero-result.json
+            refs+=(--reference handoff/zero-percent-result.json --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json)
+          fi
           python code/tools/publisher/workflow_stage_cli.py pre-promotion-proof-observe
-          --build-bundle handoff/runner-evidence/v1-build-bundle.json
-          --deploy-intent handoff/zero-percent-intent.json --deploy-result "${{ needs.zero-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-zero-result.json' || 'handoff/zero-percent-result.json' }}"
-          --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site"
-          --snapshot handoff/runner-evidence/current-v2-snapshot.json
-          --route-manifest handoff/runner-build/published-route-manifest.json
-          --media-manifest handoff/runner-build/production-media-manifest.json
-          --base-url https://mahoonartmagazine.ir --evidence-dir runner-evidence/pre-promotion-proof
-          --output pre-promotion-proof.json --reference handoff/zero-percent-intent.json
-          --reference handoff/zero-percent-result.json --reference handoff/zero-recovery-readback.json
-          --reference handoff/zero-recovery-decision.json
+            --build-bundle handoff/runner-evidence/v1-build-bundle.json
+            --deploy-intent handoff/zero-percent-intent.json --deploy-result "$zero_result"
+            --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site"
+            --snapshot handoff/runner-evidence/current-v2-snapshot.json
+            --route-manifest handoff/runner-build/published-route-manifest.json
+            --media-manifest handoff/runner-build/production-media-manifest.json
+            --base-url https://mahoonartmagazine.ir --evidence-dir runner-evidence/pre-promotion-proof
+            --output pre-promotion-proof.json "${refs[@]}"
       - uses: actions/upload-artifact@v4
         with: { name: 'a6-preproof-${{ github.run_id }}', path: pre-promotion-proof.json, if-no-files-found: error }
 
@@ -1889,25 +1893,37 @@ jobs:
           PYTHONPATH: code/tools/publisher:code/tools:code
           MAHOON_WRANGLER: npx wrangler@4.83.0
           CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
-        run: >-
+        run: |
+          upload_result=handoff/upload-result.json
+          zero_result=handoff/zero-percent-result.json
+          promote_result=handoff/promote-result.json
+          refs=(--reference handoff/upload-intent.json --reference handoff/zero-percent-intent.json --reference handoff/promote-intent.json
+                --reference handoff/upload-result.json --reference handoff/zero-percent-result.json --reference handoff/promote-result.json)
+          if [ '${{ needs.upload-create-recovered-result.outputs.recovered }}' = 'true' ]; then
+            upload_result=handoff/recovered-upload-result.json
+            refs+=(--reference handoff/upload-result.json --reference handoff/upload-readback.json --reference handoff/upload-recovery-decision.json)
+          fi
+          if [ '${{ needs.zero-create-recovered-result.outputs.recovered }}' = 'true' ]; then
+            zero_result=handoff/recovered-zero-result.json
+            refs+=(--reference handoff/zero-percent-result.json --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json)
+          fi
+          if [ '${{ needs.promote-create-recovered-result.outputs.recovered }}' = 'true' ]; then
+            promote_result=handoff/recovered-promote-result.json
+            refs+=(--reference handoff/promote-result.json --reference handoff/promote-recovery-readback.json --reference handoff/promote-recovery-decision.json)
+          fi
           python code/tools/publisher/workflow_stage_cli.py production-proof-observe
-          --build-bundle handoff/runner-evidence/v1-build-bundle.json
-          --upload-intent handoff/upload-intent.json --upload-result "${{ needs.upload-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-upload-result.json' || 'handoff/upload-result.json' }}"
-          --deploy-intent handoff/zero-percent-intent.json --deploy-result "${{ needs.zero-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-zero-result.json' || 'handoff/zero-percent-result.json' }}"
-          --pre-promotion-proof handoff/pre-promotion-proof.json
-          --promote-intent handoff/promote-intent.json --promote-result "${{ needs.promote-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-promote-result.json' || 'handoff/promote-result.json' }}"
-          --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site"
-          --snapshot handoff/runner-evidence/current-v2-snapshot.json
-          --route-manifest handoff/runner-build/published-route-manifest.json
-          --media-manifest handoff/runner-build/production-media-manifest.json
-          --local-gates handoff/runner-evidence/prepromotion-local-gates.json
-          --base-url https://mahoonartmagazine.ir --evidence-dir runner-evidence/production-proof
-          --output production-proof.json
-          --reference handoff/upload-intent.json --reference handoff/zero-percent-intent.json --reference handoff/promote-intent.json
-          --reference handoff/upload-result.json --reference handoff/zero-percent-result.json --reference handoff/promote-result.json
-          --reference handoff/upload-readback.json --reference handoff/upload-recovery-decision.json
-          --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json
-          --reference handoff/promote-recovery-readback.json --reference handoff/promote-recovery-decision.json > proof-status.json
+            --build-bundle handoff/runner-evidence/v1-build-bundle.json
+            --upload-intent handoff/upload-intent.json --upload-result "$upload_result"
+            --deploy-intent handoff/zero-percent-intent.json --deploy-result "$zero_result"
+            --pre-promotion-proof handoff/pre-promotion-proof.json
+            --promote-intent handoff/promote-intent.json --promote-result "$promote_result"
+            --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site"
+            --snapshot handoff/runner-evidence/current-v2-snapshot.json
+            --route-manifest handoff/runner-build/published-route-manifest.json
+            --media-manifest handoff/runner-build/production-media-manifest.json
+            --local-gates handoff/runner-evidence/prepromotion-local-gates.json
+            --base-url https://mahoonartmagazine.ir --evidence-dir runner-evidence/production-proof
+            --output production-proof.json "${refs[@]}" > proof-status.json
       - id: proof-state
         if: ${{ always() && hashFiles('proof-status.json') != '' }}
         run: python -c "import json,os; d=json.load(open('proof-status.json')); open(os.environ['GITHUB_OUTPUT'],'a').write('proof_state='+d['status']+'\n')"
@@ -1973,22 +1989,35 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - name: Materialize the exact six publisher-state files after PASS proof
-        run: >-
+        run: |
+          upload_result=handoff/upload-result.json
+          zero_result=handoff/zero-percent-result.json
+          promote_result=handoff/promote-result.json
+          refs=(--reference handoff/upload-intent.json --reference handoff/zero-percent-intent.json --reference handoff/promote-intent.json
+                --reference handoff/upload-result.json --reference handoff/zero-percent-result.json --reference handoff/promote-result.json)
+          if [ '${{ needs.upload-create-recovered-result.outputs.recovered }}' = 'true' ]; then
+            upload_result=handoff/recovered-upload-result.json
+            refs+=(--reference handoff/upload-result.json --reference handoff/upload-readback.json --reference handoff/upload-recovery-decision.json)
+          fi
+          if [ '${{ needs.zero-create-recovered-result.outputs.recovered }}' = 'true' ]; then
+            zero_result=handoff/recovered-zero-result.json
+            refs+=(--reference handoff/zero-percent-result.json --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json)
+          fi
+          if [ '${{ needs.promote-create-recovered-result.outputs.recovered }}' = 'true' ]; then
+            promote_result=handoff/recovered-promote-result.json
+            refs+=(--reference handoff/promote-result.json --reference handoff/promote-recovery-readback.json --reference handoff/promote-recovery-decision.json)
+          fi
           python code/tools/publisher/workflow_stage_cli.py materialize-final-state
-          --proof handoff/production-proof.json --build-bundle handoff/runner-evidence/v1-build-bundle.json
-          --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site"
-          --artifact-seal "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/artifact-seal.json"
-          --snapshot handoff/runner-evidence/current-v2-snapshot.json
-          --media-manifest handoff/runner-build/production-media-manifest.json
-          --route-manifest handoff/runner-build/published-route-manifest.json
-          --upload-version-intent handoff/upload-intent.json --upload-version-result "${{ needs.upload-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-upload-result.json' || 'handoff/upload-result.json' }}"
-          --deploy-zero-percent-intent handoff/zero-percent-intent.json --deploy-zero-percent-result "${{ needs.zero-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-zero-result.json' || 'handoff/zero-percent-result.json' }}"
-          --promote-intent handoff/promote-intent.json --promote-result "${{ needs.promote-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-promote-result.json' || 'handoff/promote-result.json' }}"
-          --reference handoff/upload-intent.json --reference handoff/zero-percent-intent.json --reference handoff/promote-intent.json
-          --reference handoff/upload-result.json --reference handoff/zero-percent-result.json --reference handoff/promote-result.json
-          --reference handoff/upload-readback.json --reference handoff/upload-recovery-decision.json
-          --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json
-          --reference handoff/promote-recovery-readback.json --reference handoff/promote-recovery-decision.json
+            --proof handoff/production-proof.json --build-bundle handoff/runner-evidence/v1-build-bundle.json
+            --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site"
+            --artifact-seal "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/artifact-seal.json"
+            --snapshot handoff/runner-evidence/current-v2-snapshot.json
+            --media-manifest handoff/runner-build/production-media-manifest.json
+            --route-manifest handoff/runner-build/published-route-manifest.json
+            --upload-version-intent handoff/upload-intent.json --upload-version-result "$upload_result"
+            --deploy-zero-percent-intent handoff/zero-percent-intent.json --deploy-zero-percent-result "$zero_result"
+            --promote-intent handoff/promote-intent.json --promote-result "$promote_result"
+            "${refs[@]}"
       - uses: actions/upload-artifact@v4
         with:
           name: a6-final-state-${{ github.run_id }}
@@ -2056,22 +2085,35 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - name: Execute integrated readiness, persistence, and exact remote readback
-        run: >-
+        run: |
+          upload_result=handoff/upload-result.json
+          zero_result=handoff/zero-percent-result.json
+          promote_result=handoff/promote-result.json
+          refs=(--reference handoff/admission.json --reference handoff/upload-intent.json
+                --reference handoff/zero-percent-intent.json --reference handoff/promote-intent.json
+                --reference handoff/upload-result.json --reference handoff/zero-percent-result.json --reference handoff/promote-result.json)
+          if [ '${{ needs.upload-create-recovered-result.outputs.recovered }}' = 'true' ]; then
+            upload_result=handoff/recovered-upload-result.json
+            refs+=(--reference handoff/upload-result.json --reference handoff/upload-readback.json --reference handoff/upload-recovery-decision.json)
+          fi
+          if [ '${{ needs.zero-create-recovered-result.outputs.recovered }}' = 'true' ]; then
+            zero_result=handoff/recovered-zero-result.json
+            refs+=(--reference handoff/zero-percent-result.json --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json)
+          fi
+          if [ '${{ needs.promote-create-recovered-result.outputs.recovered }}' = 'true' ]; then
+            promote_result=handoff/recovered-promote-result.json
+            refs+=(--reference handoff/promote-result.json --reference handoff/promote-recovery-readback.json --reference handoff/promote-recovery-decision.json)
+          fi
           python code/tools/publisher/workflow_stage_cli.py final-persistence-execute
-          --proof handoff/production-proof.json --build-bundle handoff/runner-evidence/v1-build-bundle.json
-          --upload-result "${{ needs.upload-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-upload-result.json' || 'handoff/upload-result.json' }}"
-          --deploy-result "${{ needs.zero-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-zero-result.json' || 'handoff/zero-percent-result.json' }}"
-          --promote-result "${{ needs.promote-create-recovered-result.outputs.recovered == 'true' && 'handoff/recovered-promote-result.json' || 'handoff/promote-result.json' }}"
-          --repository state
-          --state-dir "handoff/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["transaction"]["logical_transaction_id"])')/publisher-state"
-          --journal state/publisher-state/production-transaction-journal.json
-          --remote origin --branch main --output final-persistence-result.json
-          --reference handoff/admission.json --reference handoff/upload-intent.json
-          --reference handoff/zero-percent-intent.json --reference handoff/promote-intent.json
-          --reference handoff/upload-result.json --reference handoff/zero-percent-result.json --reference handoff/promote-result.json
-          --reference handoff/upload-readback.json --reference handoff/upload-recovery-decision.json
-          --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json
-          --reference handoff/promote-recovery-readback.json --reference handoff/promote-recovery-decision.json
+            --proof handoff/production-proof.json --build-bundle handoff/runner-evidence/v1-build-bundle.json
+            --upload-result "$upload_result"
+            --deploy-result "$zero_result"
+            --promote-result "$promote_result"
+            --repository state
+            --state-dir "handoff/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["transaction"]["logical_transaction_id"])')/publisher-state"
+            --journal state/publisher-state/production-transaction-journal.json
+            --remote origin --branch main --output final-persistence-result.json
+            "${refs[@]}"
 
   rollback-intent-write:
     needs: [production-proof, promote-result-write, promote-create-recovered-result]
