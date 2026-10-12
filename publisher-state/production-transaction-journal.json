@@ -18,18 +18,22 @@
           {
             "attempt_id": "525ddee6-eb69-40df-b80e-e574c842e85d",
             "attempt_number": 1,
-            "evidence": null,
+            "evidence": {
+              "reference": "fbcb03ac7d6127e931f24030b35eaae4b9eba6f7ef2dbbacbd70c355158cbe5c",
+              "sha256": "6252e0645a867c229b6929d11108c4e24697b460f388cb156ad8557a19bc21b6",
+              "type": "mutation_result_artifact"
+            },
             "intent_artifact_sha256": "8d893b39d4574689dde36101a6426f3b138591be8472b9165b617594ce411c98",
             "intent_at": "2026-10-12T02:22:37.222988+00:00",
             "intent_state": "RECORDED",
-            "result_at": null,
-            "result_digest": null,
-            "result_state": "NOT_REPORTED"
+            "result_at": "2026-10-12T02:23:27.262906+00:00",
+            "result_digest": "9e36a3256dae9cf6fc107d51e9b0185b576406f27f80f1f659bd202bdc6d9689",
+            "result_state": "NOT_APPLIED"
           }
         ],
         "intent_state": "RECORDED",
         "operation_id": "c5204a64dff2a4fade5247f439cef6bd19d3ecd3fee52852d7acbfcde7a2c4fe",
-        "result_state": "NOT_REPORTED"
+        "result_state": "NOT_APPLIED"
       },
       "promote": {
         "attempts": [],
@@ -68,7 +72,7 @@
     },
     "proof_evidence_sha256": null,
     "recovery_status": "NONE",
-    "state": "intent_recorded",
+    "state": "operation_reported",
     "state_commit_sha": null,
     "transitions": [
       {
@@ -95,16 +99,21 @@
         "from": "operation_reported",
         "timestamp": "2026-10-12T02:22:37.223004+00:00",
         "to": "intent_recorded"
+      },
+      {
+        "from": "intent_recorded",
+        "timestamp": "2026-10-12T02:23:27.262928+00:00",
+        "to": "operation_reported"
       }
     ],
     "trigger_sources": [
       "workflow_dispatch"
     ],
-    "updated_at": "2026-10-12T02:22:37.223006+00:00",
+    "updated_at": "2026-10-12T02:23:27.262930+00:00",
     "worker": "mahoon-art-magazine"
   },
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 99,
+  "generation": 100,
   "history": [
     {
       "build_bundle_sha256": null,
