@@ -298,14 +298,24 @@ class CloudflareOperationAdapter:
         elif before["desired_state_matches"] is not False or before["resource_id"] is None:
             return self._result(operation_intent, before, "UNKNOWN", referenced_artifacts)
         self._attempted.add(attempt_key)
+        mutate_error = None
         try:
             self.backend.mutate(operation_intent, bundle)
-        except Exception:
+        except Exception as exc:
             # Request outcome is uncertain: read back, never retry in this invocation.
-            pass
+            mutate_error = f"{type(exc).__name__}: {exc}"
         try:
             after = _readback(self.backend.read_state(operation_intent), operation)
         except Exception:
+            after = None
+        if mutate_error is not None:
+            # ponytail: surface the swallowed mutate failure to stderr so the
+            # UNKNOWN path is debuggable; result state semantics are unchanged.
+            import sys
+            print(f"MAHOON-OP-DIAG: mutate failed ({mutate_error}); "
+                  f"readback match={after['desired_state_matches'] if after else None}",
+                  file=sys.stderr)
+        if after is None:
             return self._result(operation_intent, None, "UNKNOWN", referenced_artifacts)
         if after["desired_state_matches"] is True:
             return self._result(operation_intent, after, "APPLIED", referenced_artifacts)
