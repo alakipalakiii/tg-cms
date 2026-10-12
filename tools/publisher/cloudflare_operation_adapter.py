@@ -187,13 +187,20 @@ class WranglerOperationBackend:
         target = self._target(operation, desired)
         desired_matches = actual == target
         expected = desired["expected_current_deployment_id"]
-        if operation == "deploy_zero_percent":
-            starting = {desired["baseline_version_id"]: 100}
-        elif operation == "promote":
-            starting = {desired["baseline_version_id"]: 100, desired["candidate_version_id"]: 0}
+        if operation == "promote":
+            precondition = deployment_id == expected and actual == {
+                desired["baseline_version_id"]: 100, desired["candidate_version_id"]: 0
+            }
         else:
-            starting = {desired["failed_candidate_version_id"]: 100}
-        precondition = deployment_id == expected and actual == starting
+            # deploy_zero_percent / rollback: baseline carries 100%; wrangler's deploy_pair
+            # leaves a 0% placeholder version in the split, so a single leftover 0% entry
+            # is tolerated as long as no other version carries live traffic.
+            precondition = (
+                deployment_id == expected
+                and actual.get(desired.get("baseline_version_id", desired.get("failed_candidate_version_id", ""))) == 100
+                and sum(actual.values()) == 100
+                and sum(1 for p in actual.values() if p > 0) == 1
+            )
         return {
             "desired_state_matches": desired_matches,
             "precondition_matches": precondition,
