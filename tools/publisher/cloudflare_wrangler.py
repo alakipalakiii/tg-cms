@@ -81,10 +81,11 @@ def upload_version(worker_name: str, sealed_artifact_root: str | Path,
         raise WranglerError("mutable candidate root refused")
     # ponytail: the repo wrangler.jsonc points assets.directory at ./dist and
     # main at ./src/worker.js, neither of which exist on a runner. Write a
-    # sealed config at the repo root (CWD) so wrangler resolves main correctly:
-    # assets.directory pinned to the sealed site, main pinned to the
-    # version-attribution entry. All other fields are preserved.
-    sealed_config = Path.cwd() / "wrangler-sealed.json"
+    # sealed config at the repo checkout root (the config file's own directory)
+    # so wrangler resolves main relative to it: assets.directory pinned to the
+    # sealed site, main pinned to the version-attribution entry relative to
+    # that checkout root. All other fields are preserved.
+    sealed_config = Path(config_path).parent.parent.parent / "wrangler-sealed.json"
     base = json.loads(Path(config_path).read_text(encoding="utf-8"))
     base["main"] = "tools/publisher/static_version_main.js"
     base["assets"]["directory"] = str(root)
