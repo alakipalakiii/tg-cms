@@ -209,6 +209,24 @@ class DownstreamDagHardeningTests(unittest.TestCase):
     # run's canonical artifact names so the pre-promotion-proof and promote chain
     # can complete WITHOUT re-recording (DuplicateMutation) or re-executing the
     # operation. This is the minimal bounded fix for the in-flight resume gap.
+    # The carryforward chain re-exposes the source zero intent/result under this
+    # run's canonical artifact names.  The build bundle and production baseline
+    # must also be re-exposed by build-ready-write so that pre-promotion-proof
+    # and all downstream jobs can download them by the current run's ID.
+    def test_build_ready_write_reexposes_source_build_bundle_on_resume(self):
+        gate = str(self.job("build-ready-write"))
+        # The re-expose step must be gated on the resume path.
+        self.assertIn(
+            "a6-build-${{ github.run_id }}",
+            gate,
+            "build-ready-write must re-expose the source build bundle under this run's canonical name",
+        )
+        self.assertIn(
+            "inputs.resume_source_run_id != ''",
+            gate,
+            "the build re-expose must only run on the resume path",
+        )
+
     def test_zero_carryforward_bypasses_zero_intent_write(self):
         gate = self.gate("zero-percent-intent-write")
         # The gate must NOT run when the carryforward job succeeded.
