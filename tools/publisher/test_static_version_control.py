@@ -14,6 +14,24 @@ from tools.publisher.resumable_transaction import split_is_baseline_zero
 
 
 class StaticVersionControlTests(unittest.TestCase):
+    def test_article_ssr_uses_read_only_slug_seo_lookup(self):
+        page = Path("website/dreary-disk/src/pages/post/[slug].astro").read_text(encoding="utf-8")
+        fetch = page.split("async function fetchPublicPost", 1)[1].split(
+            "async function fetchRelatedPosts", 1
+        )[0]
+        self.assertIn("`${workerUrl}/seo/post/${encodeURIComponent(postSlug)}`", fetch)
+        self.assertIn("normalizePost(directResult.payload?.post)", fetch)
+        self.assertNotIn("`${workerUrl}/post/", fetch)
+        self.assertNotIn("`${workerUrl}/id/", fetch)
+
+        worker = Path("workers/api/src/index.ts").read_text(encoding="utf-8")
+        seo = worker.split('url.pathname.startsWith("/seo/post/")', 1)[1].split(
+            'url.pathname.startsWith("/post/")', 1
+        )[0]
+        self.assertIn(".bind(slug)", seo)
+        self.assertNotIn("UPDATE", seo)
+        self.assertNotIn("view_count", seo)
+
     def test_static_version_worker_is_tracked_and_uses_asset_binding(self):
         worker = Path("tools/publisher/static_version_main.js")
         runner = Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8")

@@ -327,7 +327,7 @@ async function fetchPublicPost(postSlug: string): Promise<PostFetchResult> {
   }
 
   const directResult = await fetchJson(
-    `${workerUrl}/post/${encodeURIComponent(postSlug)}`,
+    `${workerUrl}/seo/post/${encodeURIComponent(postSlug)}`,
     3500
   );
 
@@ -338,25 +338,8 @@ async function fetchPublicPost(postSlug: string): Promise<PostFetchResult> {
     };
   }
 
-  const directPost = normalizePost(directResult.payload);
+  const directPost = normalizePost(directResult.payload?.post);
   if (directPost) return { post: directPost, status: 200 };
-
-  if (/^\d+$/.test(postSlug)) {
-    const idResult = await fetchJson(
-      `${workerUrl}/id/${encodeURIComponent(postSlug)}`,
-      3500
-    );
-
-    if (!idResult.ok) {
-      return {
-        post: null,
-        status: idResult.status >= 500 ? 503 : idResult.status
-      };
-    }
-
-    const idPost = normalizePost(idResult.payload);
-    if (idPost) return { post: idPost, status: 200 };
-  }
 
   return { post: null, status: 404 };
 }
