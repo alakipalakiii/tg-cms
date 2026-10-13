@@ -760,7 +760,7 @@ jobs:
           revision = artifact_transport.read_artifact(Path("handoff/revision-resolution.json"), expected_type="revision_resolution")
           refs = artifact_transport.references(revision)
           admission = artifact_transport.read_artifact(Path("handoff/admission.json"), expected_type="admission_receipt", expected_transaction=revision["transaction"], referenced_artifacts=refs)
-          bundle = artifact_transport.read_artifact(Path("handoff/runner-evidence/v1-build-bundle.json"), expected_type="build_bundle", refs=refs)
+          bundle = artifact_transport.read_artifact(Path("handoff/runner-evidence/v1-build-bundle.json"), expected_type="build_bundle", referenced_artifacts=refs)
           assert admission["payload"]["active_transaction_id"] == active["logical_transaction_id"], "resume admission does not target the active transaction"
           assert admission["payload"]["decision"] == "ADMITTED" and admission["payload"]["journal_generation"] == 1, "resume requires a sealed ADMITTED admission"
           assert active["state"] in {"operation_reported", "build_ready"}, f"resume requires a resumable active state, got {active['state']}"
