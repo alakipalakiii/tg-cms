@@ -1295,7 +1295,9 @@ jobs:
 
   resume-upload-bridge:
     needs: [upload-create-recovered-result]
-    if: ${{ always() && inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' }}
+    # ponytail: only meaningful when an UNKNOWN upload was recovered in-run;
+    # on the APPLIED carryforward path these artifacts do not exist.
+    if: ${{ always() && inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.upload-create-recovered-result.outputs.recovered == 'true' }}
     runs-on: ubuntu-latest
     permissions: { contents: read, actions: read }
     outputs:

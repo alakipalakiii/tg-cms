@@ -1720,7 +1720,12 @@ def main(argv: list[str] | None = None) -> int:
                      and output.get("status") == "FAIL") else 0
     except Exception as exc:
         # Exception messages from external backends may contain sensitive diagnostics.
-        print("WORKFLOW_STAGE_BLOCKED: " + type(exc).__name__, file=sys.stderr)
+        # ObservationRejected is a fail-closed proof rejection: its message names
+        # exactly which read-only check fired, which is safe to surface for triage.
+        if hasattr(exc, "__class__") and exc.__class__.__name__ == "ObservationRejected":
+            print("WORKFLOW_STAGE_BLOCKED: ObservationRejected — " + str(exc), file=sys.stderr)
+        else:
+            print("WORKFLOW_STAGE_BLOCKED: " + type(exc).__name__, file=sys.stderr)
         return 2
 
 
