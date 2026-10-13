@@ -1187,6 +1187,101 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
+  # Re-expose the source run's sealed zero-percent intent/result under this run's
+  # canonical artifact names when the journal already records deploy_zero_percent
+  # APPLIED. This carries forward the completed zero-percent operation without
+  # re-recording (which would raise DuplicateMutation) or re-executing it.
+  # The pre-promotion-proof and promote chain then complete using the carried
+  # sealed evidence, preserving the original APPLIED identity.
+  resume-zero-carryforward:
+    needs: [resume-source-carryforward]
+    # ponytail: skip when the source zero-percent is not already APPLIED,
+    # or when we are not on the resume path with an APPLIED source upload.
+    if: ${{ always() && inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.resume-source-carryforward.result == 'success' && needs.resume-source-carryforward.outputs.source_result_state == 'APPLIED' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read, actions: read }
+    outputs:
+      carried: ${{ steps.bridge.outputs.carried }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - name: Download the source run's sealed zero-percent intent
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-zero-intent-${{ inputs.resume_source_run_id }}
+          path: handoff
+          run-id: ${{ inputs.resume_source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download the source run's sealed zero-percent direct result
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-zero-direct-result-${{ inputs.resume_source_run_id }}
+          path: handoff
+          run-id: ${{ inputs.resume_source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: bridge
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          RESUME_SOURCE_RUN_ID: ${{ inputs.resume_source_run_id }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          source_run = os.environ["RESUME_SOURCE_RUN_ID"]
+          journal = json.loads(Path("state/publisher-state/production-transaction-journal.json").read_text(encoding="utf-8"))
+          active = journal["active"]
+          assert active is not None, "no active transaction to resume"
+
+          zero_op = active["operations"]["deploy_zero_percent"]
+          assert zero_op["result_state"] == "APPLIED", \
+              f"zero-carryforward requires journal zero-percent APPLIED, got {zero_op['result_state']}"
+
+          zero_intent = json.loads(Path("handoff/zero-percent-intent.json").read_text(encoding="utf-8"))
+          zero_result = json.loads(Path("handoff/zero-percent-result.json").read_text(encoding="utf-8"))
+
+          for art in (zero_intent, zero_result):
+              tx = art["transaction"]
+              assert tx["logical_transaction_id"] == active["logical_transaction_id"], \
+                  "zero carryforward: transaction ID mismatch"
+              assert tx["content_revision"] == active["content_revision"], \
+                  "zero carryforward: content revision mismatch"
+              assert tx["worker"] == active["worker"], "zero carryforward: worker mismatch"
+
+          assert zero_result["payload"]["intent_artifact_sha256"] == zero_intent["artifact_sha256"], \
+              "zero carryforward: result does not seal to the source intent"
+          assert zero_intent["payload"]["build_bundle_sha256"] == zero_result["payload"]["build_bundle_sha256"], \
+              "zero carryforward: build bundle SHA mismatch between intent and result"
+          assert zero_result["payload"]["result_state"] == "APPLIED", \
+              f"zero carryforward: source result state is {zero_result['payload']['result_state']}, expected APPLIED"
+          assert zero_result["producer"]["workflow_run_id"] == source_run, \
+              f"zero carryforward: result produced by run {zero_result['producer']['workflow_run_id']}, expected {source_run}"
+
+          print(f"RESUME_ZERO_CARRY_FORWARD=run{source_run}; journal zero-percent APPLIED; re-exposing source zero intent/result")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("carried=true\n")
+          PY
+      - name: Re-expose the source zero-percent intent under this run's canonical name
+        uses: actions/upload-artifact@v4
+        with:
+          name: a6-zero-intent-${{ github.run_id }}
+          path: handoff/zero-percent-intent.json
+          if-no-files-found: error
+          overwrite: true
+      - name: Re-expose the source zero-percent direct result under this run's canonical name
+        uses: actions/upload-artifact@v4
+        with:
+          name: a6-zero-direct-result-${{ github.run_id }}
+          path: handoff/zero-percent-result.json
+          if-no-files-found: error
+          overwrite: true
+
   resume-upload-bridge:
     needs: [upload-create-recovered-result]
     if: ${{ always() && inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' }}
@@ -1365,10 +1460,13 @@ jobs:
         with: { name: 'a6-upload-recovered-result-${{ github.run_id }}', path: recovered-upload-result.json, if-no-files-found: error }
 
   zero-percent-intent-write:
-    needs: [upload-result-write, upload-create-recovered-result, resume-source-carryforward]
+    needs: [upload-result-write, upload-create-recovered-result, resume-source-carryforward, resume-zero-carryforward]
     # ponytail: the upload APPLIED proof arrives from the direct chain, the recovered
     # bridge (UNKNOWN source result), or the direct carryforward (APPLIED source result).
-    if: ${{ always() && ((needs.upload-result-write.result == 'success' && needs.upload-result-write.outputs.result_state == 'APPLIED') || needs.upload-create-recovered-result.outputs.recovered == 'true' || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.resume-source-carryforward.result == 'success' && needs.resume-source-carryforward.outputs.source_result_state == 'APPLIED')) }}
+    # When the source zero-percent is already APPLIED and re-exposed by
+    # resume-zero-carryforward, the direct intent-write is skipped to avoid
+    # DuplicateMutation; the carried sealed evidence is used downstream instead.
+    if: ${{ always() && ((needs.upload-result-write.result == 'success' && needs.upload-result-write.outputs.result_state == 'APPLIED') || needs.upload-create-recovered-result.outputs.recovered == 'true' || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.resume-source-carryforward.result == 'success' && needs.resume-source-carryforward.outputs.source_result_state == 'APPLIED')) && !(needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true') }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
@@ -1598,8 +1696,11 @@ jobs:
         with: { name: 'a6-zero-recovered-result-${{ github.run_id }}', path: recovered-zero-result.json, if-no-files-found: error }
 
   pre-promotion-proof:
-    needs: [zero-percent-result-write, zero-create-recovered-result]
-    if: ${{ always() && (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true') }}
+    needs: [zero-percent-result-write, zero-create-recovered-result, resume-zero-carryforward]
+    # ponytail: the zero-percent proof arrives from the direct result-write, the
+    # recovered bridge, or the direct carryforward (when the source zero-percent
+    # is already APPLIED and re-exposed under this run's canonical names).
+    if: ${{ always() && (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true' || (needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true')) }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     env:
@@ -1653,8 +1754,10 @@ jobs:
         with: { name: 'a6-preproof-${{ github.run_id }}', path: pre-promotion-proof.json, if-no-files-found: error }
 
   promote-intent-write:
-    needs: [pre-promotion-proof, zero-percent-result-write, zero-create-recovered-result]
-    if: ${{ always() && needs.pre-promotion-proof.result == 'success' && (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true') }}
+    needs: [pre-promotion-proof, zero-percent-result-write, zero-create-recovered-result, resume-zero-carryforward]
+    # ponytail: requires a passing pre-promotion proof and a zero-percent proof from
+    # the direct result, the recovered bridge, or the carryforward path.
+    if: ${{ always() && needs.pre-promotion-proof.result == 'success' && (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true' || (needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     outputs:

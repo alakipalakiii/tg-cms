@@ -204,6 +204,104 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         self.assertIn("always()", gate,
                       "pre-promotion-proof must observe even a skipped recovery branch")
 
+    # Zero-carryforward: when the source run already recorded deploy_zero_percent
+    # APPLIED, the resume path re-exposes the sealed zero intent/result under this
+    # run's canonical artifact names so the pre-promotion-proof and promote chain
+    # can complete WITHOUT re-recording (DuplicateMutation) or re-executing the
+    # operation. This is the minimal bounded fix for the in-flight resume gap.
+    def test_zero_carryforward_bypasses_zero_intent_write(self):
+        gate = self.gate("zero-percent-intent-write")
+        # The gate must NOT run when the carryforward job succeeded.
+        self.assertIn(
+            "needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true'",
+            gate,
+            "zero-percent-intent-write must be skipped when the zero carryforward job re-exposed the sealed evidence",
+        )
+        self.assertIn(
+            "!(",
+            gate,
+            "the carryforward skip must be an explicit negation of the carried condition",
+        )
+        # The job must also depend on the carryforward job.
+        self.assertIn(
+            "resume-zero-carryforward",
+            self.needs("zero-percent-intent-write"),
+            "zero-percent-intent-write must list resume-zero-carryforward in needs",
+        )
+
+    def test_pre_promotion_proof_accepts_zero_carryforward(self):
+        gate = self.gate("pre-promotion-proof")
+        self.assertIn(
+            "needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true'",
+            gate,
+            "pre-promotion-proof must accept the carried zero path",
+        )
+        self.assertIn(
+            "resume-zero-carryforward",
+            self.needs("pre-promotion-proof"),
+            "pre-promotion-proof must list resume-zero-carryforward in needs",
+        )
+
+    def test_promote_intent_write_accepts_zero_carryforward(self):
+        gate = self.gate("promote-intent-write")
+        self.assertIn(
+            "needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true'",
+            gate,
+            "promote-intent-write must accept the carried zero path",
+        )
+        self.assertIn(
+            "resume-zero-carryforward",
+            self.needs("promote-intent-write"),
+            "promote-intent-write must list resume-zero-carryforward in needs",
+        )
+
+    def test_resume_zero_carryforward_job_exists_and_gates_correctly(self):
+        job = self.job("resume-zero-carryforward")
+        gate = str(job.get("if", ""))
+        # Must be gated on the resume path with APPLIED source result.
+        self.assertIn("inputs.resume_source_run_id != ''", gate)
+        self.assertIn("needs.resume-source-carryforward.result == 'success'", gate)
+        self.assertIn("needs.resume-source-carryforward.outputs.source_result_state == 'APPLIED'", gate)
+        # Must re-expose the source zero artifacts under this run's canonical names.
+        job_str = str(job)
+        self.assertIn("a6-zero-intent-${{ inputs.resume_source_run_id }}", job_str)
+        self.assertIn("a6-zero-direct-result-${{ inputs.resume_source_run_id }}", job_str)
+        self.assertIn("a6-zero-intent-${{ github.run_id }}", job_str)
+        self.assertIn("a6-zero-direct-result-${{ github.run_id }}", job_str)
+        # Must validate the journal state before re-exposing.
+        self.assertIn('zero_op["result_state"] == "APPLIED"', job_str)
+        self.assertIn("intent_artifact_sha256", job_str)
+        # Must output carried=true on success.
+        self.assertIn("carried=true", job_str)
+
+    # Missing or mismatched evidence must fail closed: if the carryforward job
+    # did NOT run (resume not APPLIED), the zero-percent-intent-write gate
+    # falls back to the normal direct/recovered path, and the pre-promotion-proof
+    # gate does NOT fire on the carried path.
+    def test_zero_carryforward_fails_closed_when_not_applied(self):
+        # If resume-source-carryforward source_result_state is not APPLIED,
+        # resume-zero-carryforward is skipped, so its gate is false and
+        # zero-percent-intent-write is NOT skipped (it runs the normal path).
+        gate = self.gate("zero-percent-intent-write")
+        # The skip condition requires resume-zero-carryforward.result == 'success'
+        # AND carried == 'true'. When the carryforward job is skipped (result is
+        # not success), the negation is true and the normal path runs.
+        self.assertIn(
+            "needs.resume-zero-carryforward.result == 'success'",
+            gate,
+        )
+        self.assertIn(
+            "needs.resume-zero-carryforward.outputs.carried == 'true'",
+            gate,
+        )
+        # pre-promotion-proof must NOT fire on the carried path when the
+        # carryforward job did not succeed.
+        pp_gate = self.gate("pre-promotion-proof")
+        self.assertIn(
+            "needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true'",
+            pp_gate,
+        )
+
     # every active job with multiple needs must carry an explicit gate.
     def test_multi_need_jobs_have_explicit_gates(self):
         implicit = set()
