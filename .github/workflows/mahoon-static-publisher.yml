@@ -1861,24 +1861,25 @@ jobs:
           MAHOON_WRANGLER: npx wrangler@4.83.0
           CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
         run: |
-          zero_result=handoff/zero-percent-result.json
-          refs=(--reference handoff/zero-percent-intent.json)
+          workspace="$GITHUB_WORKSPACE"
+          zero_result="$workspace/handoff/zero-percent-result.json"
+          refs=(--reference "$workspace/handoff/zero-percent-intent.json")
           if [ '${{ needs.zero-create-recovered-result.outputs.recovered }}' = 'true' ]; then
-            zero_result=handoff/recovered-zero-result.json
-            refs+=(--reference handoff/zero-percent-result.json --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json)
+            zero_result="$workspace/handoff/recovered-zero-result.json"
+            refs+=(--reference "$workspace/handoff/zero-percent-result.json" --reference "$workspace/handoff/zero-recovery-readback.json" --reference "$workspace/handoff/zero-recovery-decision.json")
           fi
-          fingerprint="$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')"
+          fingerprint="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["payload"]["content_fingerprint"])' "$workspace/handoff/runner-evidence/v1-build-bundle.json")"
           args=(
-            --build-bundle handoff/runner-evidence/v1-build-bundle.json
-            --deploy-intent handoff/zero-percent-intent.json
+            --build-bundle "$workspace/handoff/runner-evidence/v1-build-bundle.json"
+            --deploy-intent "$workspace/handoff/zero-percent-intent.json"
             --deploy-result "$zero_result"
-            --sealed-root "handoff/runner-evidence/publisher-sealed/${fingerprint}/site"
-            --snapshot handoff/runner-evidence/current-v2-snapshot.json
-            --route-manifest handoff/runner-build/published-route-manifest.json
-            --media-manifest handoff/runner-build/production-media-manifest.json
+            --sealed-root "$workspace/handoff/runner-evidence/publisher-sealed/${fingerprint}/site"
+            --snapshot "$workspace/handoff/runner-evidence/current-v2-snapshot.json"
+            --route-manifest "$workspace/handoff/runner-build/published-route-manifest.json"
+            --media-manifest "$workspace/handoff/runner-build/production-media-manifest.json"
             --base-url https://mahoonartmagazine.ir
-            --evidence-dir runner-evidence/pre-promotion-proof
-            --output pre-promotion-proof.json
+            --evidence-dir "$workspace/runner-evidence/pre-promotion-proof"
+            --output "$workspace/pre-promotion-proof.json"
           )
           python diagnostics/tools/publisher/workflow_stage_cli.py pre-promotion-proof-observe \
             "${args[@]}" "${refs[@]}"
@@ -2203,41 +2204,42 @@ jobs:
           MAHOON_WRANGLER: npx wrangler@4.83.0
           CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
         run: |
-          upload_result=handoff/upload-result.json
-          zero_result=handoff/zero-percent-result.json
-          promote_result=handoff/promote-result.json
-          refs=(--reference handoff/upload-intent.json --reference handoff/zero-percent-intent.json --reference handoff/promote-intent.json
-                --reference handoff/upload-result.json --reference handoff/zero-percent-result.json --reference handoff/promote-result.json)
+          workspace="$GITHUB_WORKSPACE"
+          upload_result="$workspace/handoff/upload-result.json"
+          zero_result="$workspace/handoff/zero-percent-result.json"
+          promote_result="$workspace/handoff/promote-result.json"
+          refs=(--reference "$workspace/handoff/upload-intent.json" --reference "$workspace/handoff/zero-percent-intent.json" --reference "$workspace/handoff/promote-intent.json"
+                --reference "$workspace/handoff/upload-result.json" --reference "$workspace/handoff/zero-percent-result.json" --reference "$workspace/handoff/promote-result.json")
           if [ '${{ needs.upload-create-recovered-result.outputs.recovered }}' = 'true' ]; then
-            upload_result=handoff/recovered-upload-result.json
-            refs+=(--reference handoff/upload-result.json --reference handoff/upload-readback.json --reference handoff/upload-recovery-decision.json)
+            upload_result="$workspace/handoff/recovered-upload-result.json"
+            refs+=(--reference "$workspace/handoff/upload-result.json" --reference "$workspace/handoff/upload-readback.json" --reference "$workspace/handoff/upload-recovery-decision.json")
           fi
           if [ '${{ needs.zero-create-recovered-result.outputs.recovered }}' = 'true' ]; then
-            zero_result=handoff/recovered-zero-result.json
-            refs+=(--reference handoff/zero-percent-result.json --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json)
+            zero_result="$workspace/handoff/recovered-zero-result.json"
+            refs+=(--reference "$workspace/handoff/zero-percent-result.json" --reference "$workspace/handoff/zero-recovery-readback.json" --reference "$workspace/handoff/zero-recovery-decision.json")
           fi
           if [ '${{ needs.promote-create-recovered-result.outputs.recovered }}' = 'true' ]; then
-            promote_result=handoff/recovered-promote-result.json
-            refs+=(--reference handoff/promote-result.json --reference handoff/promote-recovery-readback.json --reference handoff/promote-recovery-decision.json)
+            promote_result="$workspace/handoff/recovered-promote-result.json"
+            refs+=(--reference "$workspace/handoff/promote-result.json" --reference "$workspace/handoff/promote-recovery-readback.json" --reference "$workspace/handoff/promote-recovery-decision.json")
           fi
-          fingerprint="$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')"
+          fingerprint="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["payload"]["content_fingerprint"])' "$workspace/handoff/runner-evidence/v1-build-bundle.json")"
           args=(
-            --build-bundle handoff/runner-evidence/v1-build-bundle.json
-            --upload-intent handoff/upload-intent.json
+            --build-bundle "$workspace/handoff/runner-evidence/v1-build-bundle.json"
+            --upload-intent "$workspace/handoff/upload-intent.json"
             --upload-result "$upload_result"
-            --deploy-intent handoff/zero-percent-intent.json
+            --deploy-intent "$workspace/handoff/zero-percent-intent.json"
             --deploy-result "$zero_result"
-            --pre-promotion-proof handoff/pre-promotion-proof.json
-            --promote-intent handoff/promote-intent.json
+            --pre-promotion-proof "$workspace/handoff/pre-promotion-proof.json"
+            --promote-intent "$workspace/handoff/promote-intent.json"
             --promote-result "$promote_result"
-            --sealed-root "handoff/runner-evidence/publisher-sealed/${fingerprint}/site"
-            --snapshot handoff/runner-evidence/current-v2-snapshot.json
-            --route-manifest handoff/runner-build/published-route-manifest.json
-            --media-manifest handoff/runner-build/production-media-manifest.json
-            --local-gates handoff/runner-evidence/prepromotion-local-gates.json
+            --sealed-root "$workspace/handoff/runner-evidence/publisher-sealed/${fingerprint}/site"
+            --snapshot "$workspace/handoff/runner-evidence/current-v2-snapshot.json"
+            --route-manifest "$workspace/handoff/runner-build/published-route-manifest.json"
+            --media-manifest "$workspace/handoff/runner-build/production-media-manifest.json"
+            --local-gates "$workspace/handoff/runner-evidence/prepromotion-local-gates.json"
             --base-url https://mahoonartmagazine.ir
-            --evidence-dir runner-evidence/production-proof
-            --output production-proof.json
+            --evidence-dir "$workspace/runner-evidence/production-proof"
+            --output "$workspace/production-proof.json"
           )
           python diagnostics/tools/publisher/workflow_stage_cli.py production-proof-observe \
             "${args[@]}" "${refs[@]}" > proof-status.json

@@ -293,6 +293,10 @@ class A6WorkflowContractTests(unittest.TestCase):
                                if str(step.get("name", "")).startswith("Observe and seal combined"))
                 self.assertEqual("diagnostics/tools:code/tools/publisher:code/tools:code",
                                  observe["env"]["PYTHONPATH"])
+                self.assertIn('workspace="$GITHUB_WORKSPACE"', observe["run"])
+                self.assertIn('"$workspace/handoff/runner-build/published-route-manifest.json"',
+                              observe["run"])
+                self.assertIn('"$workspace/runner-evidence/', observe["run"])
         promote = next(step for step in self.jobs["cloudflare-promote-operation"]["steps"]
                        if step.get("name") == "Execute exact authorized promotion")
         self.assertEqual("code/tools/publisher:code/tools:code", promote["env"]["PYTHONPATH"])
