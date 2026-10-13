@@ -1789,7 +1789,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
-      # Keep source-pinned proof modules, while using the current wrapper that reports safe rejection details.
+      # Keep the published build source-pinned; use current read-only proof tooling for bounded diagnostics.
       - uses: actions/checkout@v4
         with: { ref: '${{ github.sha }}', path: diagnostics, persist-credentials: false }
       - uses: actions/download-artifact@v4
@@ -1815,7 +1815,7 @@ jobs:
       - run: npm ci --prefix diagnostics/website/dreary-disk
       - name: Observe and seal combined pre-promotion proof
         env:
-          PYTHONPATH: code/tools/publisher:code/tools:code
+          PYTHONPATH: diagnostics/tools:code/tools/publisher:code/tools:code
           MAHOON_WRANGLER: npx wrangler@4.83.0
           CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
         run: |
@@ -2157,7 +2157,7 @@ jobs:
       - run: npm ci --prefix diagnostics/website/dreary-disk
       - name: Observe and seal combined production proof
         env:
-          PYTHONPATH: code/tools/publisher:code/tools:code
+          PYTHONPATH: diagnostics/tools:code/tools/publisher:code/tools:code
           MAHOON_WRANGLER: npx wrangler@4.83.0
           CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
         run: |

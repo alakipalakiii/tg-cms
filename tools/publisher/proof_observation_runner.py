@@ -270,7 +270,16 @@ class RuntimeObservationBackend:
             crawler = subprocess.run([sys.executable, str(crawler_path)], cwd=Path(__file__).parents[2],
                                      env=env, capture_output=True, timeout=3600, check=False)
             if crawler.returncode:
-                raise ObservationRejected("read-only crawler did not complete")
+                lines = (crawler.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+                diagnostic = lines[-1] if lines else f"exit code {crawler.returncode}"
+                diagnostic = re.sub(r"(?i)\bBearer\s+\S+", "Bearer [redacted]", diagnostic)
+                diagnostic = re.sub(
+                    r"(?i)\b([\w-]*(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTHORIZATION|API[_-]?KEY)[\w-]*\s*[=:]\s*)\S+",
+                    r"\1[redacted]", diagnostic,
+                )
+                raise ObservationRejected(
+                    f"read-only crawler did not complete (exit {crawler.returncode}): {diagnostic[-300:]}"
+                )
             crawl_out = crawl_root / "production-override-crawl"
             summary = json.loads((crawl_out / "production-override-crawl-summary.json").read_text(encoding="utf-8"))
             state = json.loads((crawl_out / "production-override-crawl-state.json").read_text(encoding="utf-8"))

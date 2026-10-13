@@ -486,6 +486,37 @@ class ProofObservationTests(unittest.TestCase):
                 evidence_root=self.root / "runtime", sealed_root=self.sealed,
                 snapshot=self.snapshot, routes=self.routes, media=self.media)
 
+    def test_runtime_crawler_rejection_surfaces_redacted_stderr_tail(self):
+        from subprocess import CompletedProcess
+        from publisher import cloudflare_wrangler
+
+        backend = runner.RuntimeObservationBackend(
+            stage="pre-promotion", base_url="https://mahoonartmagazine.ir",
+            evidence_root=self.root / "runtime-evidence", sealed_root=self.sealed,
+            snapshot=self.snapshot, routes=self.routes, media=self.media,
+        )
+        context = {
+            "build_bundle": {}, "transaction": {"worker": "mahoon-art-magazine"},
+            "candidate_identity": {
+                "candidate_version_id": "candidate-v1", "baseline_version_id": "baseline-v1",
+                "zero_percent_deployment_id": "dep-zero",
+            },
+        }
+        completed = CompletedProcess(
+            args=[], returncode=1, stdout=b"",
+            stderr=b"RuntimeError: API_TOKEN=synthetic-secret-marker\n",
+        )
+        with patch.object(runner, "_input_files_match"), \
+             patch.object(cloudflare_wrangler, "active_deployment", return_value={
+                 "id": "dep-zero", "versions": [
+                     {"version_id": "candidate-v1", "percentage": 0},
+                     {"version_id": "baseline-v1", "percentage": 100},
+                 ],
+             }), patch.object(runner.subprocess, "run", return_value=completed):
+            with self.assertRaisesRegex(runner.ObservationRejected, "RuntimeError: API_TOKEN=\\[redacted\\]") as error:
+                backend.collect(context)
+        self.assertNotIn("synthetic-secret-marker", str(error.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

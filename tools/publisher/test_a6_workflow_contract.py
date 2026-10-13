@@ -289,6 +289,13 @@ class A6WorkflowContractTests(unittest.TestCase):
                 self.assertEqual("false", diagnostic["with"]["persist-credentials"])
                 self.assertIn(f"python diagnostics/tools/publisher/workflow_stage_cli.py {command}", str(job))
                 self.assertIn("npm ci --prefix diagnostics/website/dreary-disk", str(job))
+                observe = next(step for step in job["steps"]
+                               if str(step.get("name", "")).startswith("Observe and seal combined"))
+                self.assertEqual("diagnostics/tools:code/tools/publisher:code/tools:code",
+                                 observe["env"]["PYTHONPATH"])
+        promote = next(step for step in self.jobs["cloudflare-promote-operation"]["steps"]
+                       if step.get("name") == "Execute exact authorized promotion")
+        self.assertEqual("code/tools/publisher:code/tools:code", promote["env"]["PYTHONPATH"])
 
     def test_credential_classes_are_separated_by_job_permissions(self):
         for job_name, job in self.jobs.items():
