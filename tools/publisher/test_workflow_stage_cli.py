@@ -585,6 +585,23 @@ class WorkflowStageCliTests(unittest.TestCase):
         self.assertEqual("", stdout.getvalue())
         self.assertNotIn("TOKEN", stderr.getvalue())
 
+    def test_pre_promotion_observation_rejection_reports_safe_reason(self):
+        from contextlib import redirect_stdout, redirect_stderr
+        import io
+        stdout, stderr = io.StringIO(), io.StringIO()
+        missing = str(self.root / "missing.json")
+        args = ["pre-promotion-proof-observe"]
+        for option in ("build-bundle", "deploy-intent", "deploy-result", "sealed-root",
+                       "snapshot", "route-manifest", "media-manifest", "base-url",
+                       "evidence-dir", "output"):
+            args.extend(["--" + option, "https://mahoonartmagazine.ir" if option == "base-url" else missing])
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            status = cli.main(args)
+        self.assertEqual(2, status)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("WORKFLOW_STAGE_BLOCKED: ObservationRejected — sealed proof input is unreadable",
+                      stderr.getvalue())
+
     # ------------------------------------------------------------------
     # Post-run reconciliation decision (Class A skipped / Class B failed)
     # ------------------------------------------------------------------
