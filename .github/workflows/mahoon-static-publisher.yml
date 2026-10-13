@@ -1030,8 +1030,12 @@ jobs:
           name: a6-build-${{ github.run_id }}
           include-hidden-files: true
           path: |
-            handoff/runner-evidence/
-            handoff/runner-build/
+            handoff/runner-evidence/publisher-sealed/
+            handoff/runner-evidence/v1-build-bundle.json
+            handoff/runner-evidence/current-v2-snapshot.json
+            handoff/runner-evidence/prepromotion-local-gates.json
+            handoff/runner-build/production-media-manifest.json
+            handoff/runner-build/published-route-manifest.json
           if-no-files-found: error
           overwrite: true
 
