@@ -960,7 +960,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: a6-build-${{ github.run_id }}
-          path: handoff/runner-evidence/v1-build-bundle.json
+          include-hidden-files: true
+          path: |
+            handoff/runner-evidence/
+            handoff/runner-build/
           if-no-files-found: error
           overwrite: true
 

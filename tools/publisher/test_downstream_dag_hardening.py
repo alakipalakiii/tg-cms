@@ -226,6 +226,12 @@ class DownstreamDagHardeningTests(unittest.TestCase):
             gate,
             "the build re-expose must only run on the resume path",
         )
+        # The re-expose must include the runner-evidence and runner-build directories
+        # so that pre-promotion-proof and downstream proof jobs can read them.
+        self.assertIn("handoff/runner-evidence/", gate,
+                      "build re-expose must include the runner-evidence directory")
+        self.assertIn("handoff/runner-build/", gate,
+                      "build re-expose must include the runner-build directory")
 
     def test_zero_carryforward_bypasses_zero_intent_write(self):
         gate = self.gate("zero-percent-intent-write")
