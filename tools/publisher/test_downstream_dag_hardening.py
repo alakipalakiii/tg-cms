@@ -279,6 +279,19 @@ class DownstreamDagHardeningTests(unittest.TestCase):
             "promote-intent-write must list resume-zero-carryforward in needs",
         )
 
+    def test_production_proof_accepts_zero_carryforward(self):
+        gate = self.gate("production-proof")
+        self.assertIn(
+            "needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true'",
+            gate,
+            "production-proof must accept the carried zero-percent result",
+        )
+        self.assertIn(
+            "resume-zero-carryforward",
+            self.needs("production-proof"),
+            "production-proof must list resume-zero-carryforward in needs",
+        )
+
     def test_resume_zero_carryforward_job_exists_and_gates_correctly(self):
         job = self.job("resume-zero-carryforward")
         gate = str(job.get("if", ""))

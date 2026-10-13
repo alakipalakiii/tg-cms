@@ -516,11 +516,13 @@ jobs:
         with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state, persist-credentials: false }
-      - name: Verify the exact pristine admitted transaction without writing state
+      - name: Verify pristine admission or the exact in-flight APPLIED transaction without writing state
         env:
           REQUESTED_TRANSACTION_ID: ${{ inputs.transaction_id }}
           REQUESTED_READY: ${{ inputs.ready }}
           REQUESTED_RESUME_SOURCE_SHA: ${{ inputs.resume_source_sha }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          RESUME_SOURCE_RUN_ID: ${{ inputs.resume_source_run_id }}
         run: |
           python - <<'PY'
           import json, os, hashlib
@@ -528,11 +530,20 @@ jobs:
           tx_id = os.environ["REQUESTED_TRANSACTION_ID"]
           ready = os.environ["REQUESTED_READY"]
           resume_sha = os.environ["REQUESTED_RESUME_SOURCE_SHA"]
+          source_run_id = os.environ["SOURCE_RUN_ID"]
+          resume_source_run_id = os.environ.get("RESUME_SOURCE_RUN_ID", "")
           assert ready == "YES", "RESUME requires explicit ready=YES"
           assert tx_id and len(tx_id) == 64 and all(c in "0123456789abcdef" for c in tx_id), \
               "RESUME transaction_id must be a 64-hex-digit SHA-256"
           assert resume_sha and len(resume_sha) == 40 and all(c in "0123456789abcdef" for c in resume_sha), \
               "resume_source_sha must be a 40-hex-digit executable source SHA-1"
+          assert source_run_id.isdecimal() and int(source_run_id) > 0, "source_run_id must be a positive run ID"
+          in_flight = resume_source_run_id not in ("", "0")
+          if in_flight:
+              assert resume_source_run_id.isdecimal() and int(resume_source_run_id) > 0, \
+                  "resume_source_run_id must be a positive run ID"
+              assert resume_source_run_id == source_run_id, \
+                  "in-flight resume source_run_id must match resume_source_run_id"
           journal = json.loads(Path("state/publisher-state/production-transaction-journal.json").read_text(encoding="utf-8"))
           active = journal["active"]
           assert journal["pending"] is None, "pending transaction must be empty for resume"
@@ -545,17 +556,43 @@ jobs:
           tx_recomputed = hashlib.sha256(f"mahoon-art-magazine\0{revision}".encode("utf-8")).hexdigest()
           assert active["logical_transaction_id"] == tx_recomputed, \
               "active transaction ID does not match worker/revision"
-          assert active["state"] == "admitted", f"active state is {active['state']}, not admitted"
-          assert active["build_bundle_sha256"] is None, "build bundle already set"
           assert active["proof_evidence_sha256"] is None, "proof evidence already set"
           assert active["state_commit_sha"] is None, "state commit already set"
           assert active["recovery_status"] == "NONE", "recovery already in progress"
-          for name in ("upload_version", "deploy_zero_percent", "promote", "rollback"):
-              op = active["operations"][name]
-              assert op["attempts"] == [], f"operation {name} has recorded attempts"
-              assert op["intent_state"] == "NOT_STARTED", f"operation {name} intent already recorded"
-              assert op["result_state"] == "NOT_REPORTED", f"operation {name} result already reported"
-          print(f"RESUME_JOURNAL=PRISTINE_ADMITTED_TRANSACTION_REVISION_{revision}; GENERATION={generation}")
+          operations = active["operations"]
+          assert set(operations) == {"upload_version", "deploy_zero_percent", "promote", "rollback"}, \
+              "active operation set is not the accepted publisher transaction"
+          def valid_sha(value):
+              return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+          if in_flight:
+              assert active["state"] == "operation_reported", \
+                  f"active state is {active['state']}, not operation_reported"
+              assert valid_sha(active["build_bundle_sha256"]), "in-flight build bundle digest is missing or invalid"
+              for name in ("upload_version", "deploy_zero_percent"):
+                  op = operations[name]
+                  assert op["intent_state"] == "RECORDED" and op["result_state"] == "APPLIED", \
+                      f"operation {name} is not exactly recorded as APPLIED"
+                  assert len(op["attempts"]) == 1, f"operation {name} must have exactly one recorded attempt"
+                  attempt = op["attempts"][0]
+                  assert attempt["attempt_number"] == 1 and attempt["intent_state"] == "RECORDED" \
+                      and attempt["result_state"] == "APPLIED", f"operation {name} attempt is not APPLIED"
+                  assert valid_sha(attempt["intent_artifact_sha256"]) and valid_sha(attempt["result_digest"]), \
+                      f"operation {name} attempt evidence is incomplete"
+              for name in ("promote", "rollback"):
+                  op = operations[name]
+                  assert op["attempts"] == [] and op["intent_state"] == "NOT_STARTED" \
+                      and op["result_state"] == "NOT_REPORTED", f"operation {name} has progress"
+              resume_kind = "IN_FLIGHT_APPLIED"
+          else:
+              assert active["state"] == "admitted", f"active state is {active['state']}, not admitted"
+              assert active["build_bundle_sha256"] is None, "build bundle already set"
+              for name in ("upload_version", "deploy_zero_percent", "promote", "rollback"):
+                  op = operations[name]
+                  assert op["attempts"] == [], f"operation {name} has recorded attempts"
+                  assert op["intent_state"] == "NOT_STARTED", f"operation {name} intent already recorded"
+                  assert op["result_state"] == "NOT_REPORTED", f"operation {name} result already reported"
+              resume_kind = "PRISTINE_ADMITTED"
+          print(f"RESUME_JOURNAL={resume_kind}; REVISION={revision}; GENERATION={generation}")
           PY
 
   revision-resolve:
@@ -583,6 +620,7 @@ jobs:
         if: ${{ inputs.mode == 'RESUME_ADMITTED' }}
         env:
           REQUESTED_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          RESUME_SOURCE_RUN_ID: ${{ inputs.resume_source_run_id }}
           REQUESTED_SOURCE_SHA: ${{ inputs.resume_source_sha }}
           REQUESTED_TRANSACTION_ID: ${{ inputs.transaction_id }}
         run: |
@@ -593,6 +631,12 @@ jobs:
           from publisher.content_revision import fetch_public_content_revision
           source_sha = os.environ["REQUESTED_SOURCE_SHA"]
           tx_id = os.environ["REQUESTED_TRANSACTION_ID"]
+          source_run_id = os.environ["REQUESTED_SOURCE_RUN_ID"]
+          resume_source_run_id = os.environ.get("RESUME_SOURCE_RUN_ID", "")
+          in_flight = resume_source_run_id not in ("", "0")
+          if in_flight:
+              assert resume_source_run_id == source_run_id, \
+                  "in-flight resume source_run_id must match resume_source_run_id"
           assert source_sha and len(source_sha) == 40 and all(c in "0123456789abcdef" for c in source_sha), \
               "resume_source_sha must be a 40-hex-digit SHA-1"
           journal = json.loads(Path("state/publisher-state/production-transaction-journal.json").read_text(encoding="utf-8"))
@@ -612,10 +656,14 @@ jobs:
               f"artifact revision {artifact_revision} does not match active journal revision {active_revision}"
           assert artifact["payload"]["decision"] == "CHANGED", "revision decision is not CHANGED"
           public_revision, _changed_at, _meta = fetch_public_content_revision()
-          assert public_revision == active_revision, \
-              f"RESUME_PUBLIC_REVISION_MISMATCH:public={public_revision} admitted={active_revision}"
+          if in_flight:
+              assert public_revision >= active_revision, \
+                  f"RESUME_PUBLIC_REVISION_BEHIND:public={public_revision} active={active_revision}"
+          else:
+              assert public_revision == active_revision, \
+                  f"RESUME_PUBLIC_REVISION_MISMATCH:public={public_revision} admitted={active_revision}"
           shutil.copyfile(original, "revision-resolution.json")
-          print(f"RESUME_REVISION_ARTIFACT=UNCHANGED; PUBLIC_REVISION={public_revision}; GENERATION={journal['generation']}")
+          print(f"RESUME_REVISION_ARTIFACT=UNCHANGED; PUBLIC_REVISION={public_revision}; ACTIVE_REVISION={active_revision}; IN_FLIGHT={in_flight}; GENERATION={journal['generation']}")
           PY
       - name: Resolve revision for a new transaction
         if: ${{ inputs.mode != 'RESUME_ADMITTED' }}
@@ -712,6 +760,8 @@ jobs:
         env:
           REQUESTED_SOURCE_SHA: ${{ inputs.resume_source_sha }}
           REQUESTED_TRANSACTION_ID: ${{ inputs.transaction_id }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          RESUME_SOURCE_RUN_ID: ${{ inputs.resume_source_run_id }}
         run: |
           PYTHONPATH=code/tools/publisher:code/tools:code python - <<'PY'
           import json, os, shutil
@@ -719,6 +769,12 @@ jobs:
           from publisher import artifact_contract, artifact_transport
           source_sha = os.environ["REQUESTED_SOURCE_SHA"]
           tx_id = os.environ["REQUESTED_TRANSACTION_ID"]
+          source_run_id = os.environ["SOURCE_RUN_ID"]
+          resume_source_run_id = os.environ.get("RESUME_SOURCE_RUN_ID", "")
+          in_flight = resume_source_run_id not in ("", "0")
+          if in_flight:
+              assert resume_source_run_id == source_run_id, \
+                  "in-flight resume source_run_id must match resume_source_run_id"
           revision_path = Path("handoff/revision-resolution.json")
           original = Path(os.environ["RUNNER_TEMP"]) / "resume-admission" / "admission.json"
           raw = original.read_bytes()
@@ -731,13 +787,20 @@ jobs:
           revision = artifact_transport.read_artifact(revision_path, expected_type="revision_resolution", expected_source_sha=source_sha)
           admission = artifact_contract.validate_artifact(
               json.loads(raw), expected_transaction=revision["transaction"], expected_source_sha=source_sha,
-              expected_journal_generation=current_generation,
+              expected_journal_generation=None if in_flight else current_generation,
               referenced_artifacts=artifact_transport.references(revision),
           )
           assert admission["artifact_type"] == "admission_receipt"
-          assert admission["payload"]["decision"] == "ADMITTED"
-          assert admission["payload"]["journal_generation"] == current_generation, \
-              "admission journal generation does not match current authoritative generation"
+          assert admission["payload"]["decision"] in ({"ADMITTED", "COALESCED"} if in_flight else {"ADMITTED"}), \
+              "source admission decision is not accepted for this resume path"
+          admission_generation = admission["payload"]["journal_generation"]
+          if in_flight:
+              # The original sealed admission predates the journaled APPLIED attempts.
+              assert admission_generation <= current_generation, \
+                  "in-flight admission generation is newer than the authoritative journal"
+          else:
+              assert admission_generation == current_generation, \
+                  "admission journal generation does not match current authoritative generation"
           assert admission["payload"]["revision_resolution_sha256"] == revision["artifact_sha256"], \
               "admission lineage does not match recovered revision artifact"
           assert admission["payload"]["active_transaction_id"] == tx_id
@@ -781,6 +844,7 @@ jobs:
           PYTHONPATH: code/tools/publisher:code/tools:code
           RESUME_SOURCE_RUN_ID: ${{ inputs.resume_source_run_id }}
           SOURCE_ADMISSION_SHA: ${{ inputs.resume_source_admission_sha }}
+          RESUME_MODE: ${{ inputs.mode == 'RESUME_ADMITTED' }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python - <<'PY'
@@ -805,7 +869,11 @@ jobs:
               assert admission["artifact_sha256"] == os.environ["SOURCE_ADMISSION_SHA"], "resume admission seal drifted"
           from publisher.content_revision import fetch_public_content_revision
           current, _changed_at, _metadata = fetch_public_content_revision()
-          assert current == active["content_revision"], f"PUBLIC_REVISION_DRIFT:{current}!={active['content_revision']}"
+          if os.environ.get("RESUME_MODE", "false").lower() == "true":
+              assert current >= active["content_revision"], \
+                  f"PUBLIC_REVISION_BEHIND:{current}<{active['content_revision']}"
+          else:
+              assert current == active["content_revision"], f"PUBLIC_REVISION_DRIFT:{current}!={active['content_revision']}"
           print(f"RESUME_CARRIED_FORWARD=run{os.environ['RESUME_SOURCE_RUN_ID']} rev{active['content_revision']} tx{active['logical_transaction_id'][:16]}")
           PY
       - name: Validate current admission and public revision before build
@@ -1721,6 +1789,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+      # Keep source-pinned proof modules, while using the current wrapper that reports safe rejection details.
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: diagnostics, persist-credentials: false }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -1741,7 +1812,7 @@ jobs:
         with: { python-version: '3.12' }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: npm ci --prefix code/website/dreary-disk
+      - run: npm ci --prefix diagnostics/website/dreary-disk
       - name: Observe and seal combined pre-promotion proof
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
@@ -1767,7 +1838,7 @@ jobs:
             --evidence-dir runner-evidence/pre-promotion-proof
             --output pre-promotion-proof.json
           )
-          python code/tools/publisher/workflow_stage_cli.py pre-promotion-proof-observe \
+          python diagnostics/tools/publisher/workflow_stage_cli.py pre-promotion-proof-observe \
             "${args[@]}" "${refs[@]}"
       - uses: actions/upload-artifact@v4
         with: { name: 'a6-preproof-${{ github.run_id }}', path: pre-promotion-proof.json, if-no-files-found: error }
@@ -2016,16 +2087,17 @@ jobs:
   production-proof:
     needs: [upload-result-write, upload-create-recovered-result, zero-percent-result-write,
       zero-create-recovered-result, promote-result-write, promote-create-recovered-result,
-      resume-source-carryforward]
-    # ponytail: the upload APPLIED proof may arrive via the direct chain, the recovered
-    # bridge, or the APPLIED carryforward (in-flight resume with an APPLIED source result).
+      resume-source-carryforward, resume-zero-carryforward]
+    # ponytail: the APPLIED upload and zero proofs may arrive via their direct,
+    # recovered, or in-flight carryforward paths.
     if: >-
       ${{ always() &&
           ((needs.upload-result-write.result == 'success' && needs.upload-result-write.outputs.result_state == 'APPLIED') ||
            needs.upload-create-recovered-result.outputs.recovered == 'true' ||
            (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' &&
             needs.resume-source-carryforward.result == 'success' && needs.resume-source-carryforward.outputs.source_result_state == 'APPLIED')) &&
-          (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true') &&
+          (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true' ||
+           (needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true')) &&
           (needs.promote-result-write.outputs.result_state == 'APPLIED' || needs.promote-create-recovered-result.outputs.recovered == 'true') }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -2036,6 +2108,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: diagnostics, persist-credentials: false }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -2080,7 +2154,7 @@ jobs:
         with: { python-version: '3.12' }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: npm ci --prefix code/website/dreary-disk
+      - run: npm ci --prefix diagnostics/website/dreary-disk
       - name: Observe and seal combined production proof
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
@@ -2123,7 +2197,7 @@ jobs:
             --evidence-dir runner-evidence/production-proof
             --output production-proof.json
           )
-          python code/tools/publisher/workflow_stage_cli.py production-proof-observe \
+          python diagnostics/tools/publisher/workflow_stage_cli.py production-proof-observe \
             "${args[@]}" "${refs[@]}" > proof-status.json
       - id: proof-state
         if: ${{ always() && hashFiles('proof-status.json') != '' }}

@@ -260,9 +260,35 @@ class A6WorkflowContractTests(unittest.TestCase):
         self.assertIn("artifact_transport.references(revision)", self.job("resume-admission"))
         self.assertIn("shutil.copyfile(original, \"revision-resolution.json\")", self.job("revision-resolve"))
         self.assertIn("shutil.copyfile(original, \"runner-evidence/a6/admission.json\")", self.job("resume-admission"))
-        self.assertIn("expected_journal_generation=current_generation", self.job("resume-admission"))
+        self.assertIn("expected_journal_generation=None if in_flight else current_generation", self.job("resume-admission"))
         self.assertIn('op["intent_state"]', self.job("journal-resume-verify"))
         self.assertIn('op["result_state"]', self.job("journal-resume-verify"))
+        self.assertIn("resume-zero-carryforward", str(self.jobs["production-proof"].get("needs")))
+        self.assertIn("needs.resume-zero-carryforward.outputs.carried == 'true'", self.job("production-proof"))
+
+    def test_in_flight_build_carryforward_allows_only_non_regressing_public_revision(self):
+        script = _python_heredoc(next(step["run"] for step in self.jobs["build-validate"]["steps"]
+                                      if step.get("name") == "Revalidate the source run's build lineage against the active journal"))
+        self.assertIn("RESUME_MODE", self.job("build-validate"))
+        self.assertIn('if os.environ.get("RESUME_MODE", "false").lower() == "true":', script)
+        self.assertIn('assert current >= active["content_revision"]', script)
+        self.assertIn('assert current == active["content_revision"]', script)
+
+    def test_proof_jobs_use_current_diagnostic_cli_and_keep_source_checkout(self):
+        for name, command in (("pre-promotion-proof", "pre-promotion-proof-observe"),
+                              ("production-proof", "production-proof-observe")):
+            with self.subTest(job=name):
+                job = self.jobs[name]
+                source = next(step for step in job["steps"]
+                              if (step.get("with") or {}).get("path") == "code")
+                diagnostic = next(step for step in job["steps"]
+                                  if (step.get("with") or {}).get("path") == "diagnostics")
+                self.assertEqual("${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}",
+                                 source["with"]["ref"])
+                self.assertEqual("${{ github.sha }}", diagnostic["with"]["ref"])
+                self.assertEqual("false", diagnostic["with"]["persist-credentials"])
+                self.assertIn(f"python diagnostics/tools/publisher/workflow_stage_cli.py {command}", str(job))
+                self.assertIn("npm ci --prefix diagnostics/website/dreary-disk", str(job))
 
     def test_credential_classes_are_separated_by_job_permissions(self):
         for job_name, job in self.jobs.items():
@@ -368,7 +394,7 @@ class A6WorkflowContractTests(unittest.TestCase):
 
     def test_resume_journal_guard_executes_against_journal_v2_and_fails_closed(self):
         job = self.jobs["journal-resume-verify"]
-        script = _python_heredoc(next(step["run"] for step in job["steps"] if step.get("name") == "Verify the exact pristine admitted transaction without writing state"))
+        script = _python_heredoc(next(step["run"] for step in job["steps"] if step.get("name") == "Verify pristine admission or the exact in-flight APPLIED transaction without writing state"))
         journal_path = Path(__file__).resolve().parent / "fixtures/pre-retirement-journal-v2.json"
         baseline = json.loads(journal_path.read_text(encoding="utf-8"))
         self.assertEqual("admitted", baseline["active"]["state"])
@@ -378,7 +404,8 @@ class A6WorkflowContractTests(unittest.TestCase):
             state = cwd / "state/publisher-state/production-transaction-journal.json"
             state.parent.mkdir(parents=True)
             env = {"REQUESTED_TRANSACTION_ID": TX_ID, "REQUESTED_READY": "YES",
-                   "REQUESTED_RESUME_SOURCE_SHA": SOURCE_SHA}
+                   "REQUESTED_RESUME_SOURCE_SHA": SOURCE_SHA, "SOURCE_RUN_ID": "12345678901",
+                   "RESUME_SOURCE_RUN_ID": ""}
 
             def run(candidate, requested_tx=TX_ID):
                 state.write_text(json.dumps(candidate), encoding="utf-8")
@@ -387,7 +414,7 @@ class A6WorkflowContractTests(unittest.TestCase):
 
             result = run(copy.deepcopy(baseline))
             self.assertEqual(0, result.returncode, result.stderr)
-            self.assertIn("RESUME_JOURNAL=PRISTINE_ADMITTED_TRANSACTION_REVISION_109", result.stdout)
+            self.assertIn("RESUME_JOURNAL=PRISTINE_ADMITTED; REVISION=109", result.stdout)
             self.assertIn("GENERATION=1", result.stdout)
             cases = []
             cases.append(("wrong transaction", copy.deepcopy(baseline), "0" * 64))
@@ -410,7 +437,7 @@ class A6WorkflowContractTests(unittest.TestCase):
         revision-109 or generation-1 literal."""
         job = self.jobs["journal-resume-verify"]
         script = _python_heredoc(next(step["run"] for step in job["steps"]
-                                       if step.get("name") == "Verify the exact pristine admitted transaction without writing state"))
+                                       if step.get("name") == "Verify pristine admission or the exact in-flight APPLIED transaction without writing state"))
         fixture = Path(__file__).resolve().parent / "fixtures/generic-resume-admitted-journal-v2.json"
         generic = json.loads(fixture.read_text(encoding="utf-8"))
         self.assertEqual(122, generic["active"]["content_revision"])
@@ -425,10 +452,11 @@ class A6WorkflowContractTests(unittest.TestCase):
             state.parent.mkdir(parents=True)
             state.write_text(json.dumps(generic), encoding="utf-8")
             env = {"REQUESTED_TRANSACTION_ID": requested_tx, "REQUESTED_READY": "YES",
-                   "REQUESTED_RESUME_SOURCE_SHA": "e042a1a4d0a6fd5ae3d24c86d01d86dcc096ddad"}
+                   "REQUESTED_RESUME_SOURCE_SHA": "e042a1a4d0a6fd5ae3d24c86d01d86dcc096ddad",
+                   "SOURCE_RUN_ID": "12345678901", "RESUME_SOURCE_RUN_ID": ""}
             ok = _run_workflow_script(script, cwd, env)
             self.assertEqual(0, ok.returncode, ok.stderr)
-            self.assertIn("RESUME_JOURNAL=PRISTINE_ADMITTED_TRANSACTION_REVISION_122", ok.stdout)
+            self.assertIn("RESUME_JOURNAL=PRISTINE_ADMITTED; REVISION=122", ok.stdout)
             self.assertIn("GENERATION=5", ok.stdout)
             bad = _run_workflow_script(script, cwd, dict(env, REQUESTED_TRANSACTION_ID="0" * 64))
             self.assertNotEqual(0, bad.returncode)
@@ -446,6 +474,48 @@ class A6WorkflowContractTests(unittest.TestCase):
             pending["pending"] = {"content_revision": 123}
             state.write_text(json.dumps(pending), encoding="utf-8")
             self.assertNotEqual(0, _run_workflow_script(script, cwd, env).returncode)
+
+    def test_resume_journal_guard_accepts_only_exact_in_flight_applied_effects(self):
+        job = self.jobs["journal-resume-verify"]
+        script = _python_heredoc(next(step["run"] for step in job["steps"]
+                                       if step.get("name") == "Verify pristine admission or the exact in-flight APPLIED transaction without writing state"))
+        fixture = json.loads((Path(__file__).resolve().parent
+                              / "fixtures/generic-resume-admitted-journal-v2.json").read_text(encoding="utf-8"))
+        fixture["active"]["state"] = "operation_reported"
+        fixture["active"]["build_bundle_sha256"] = "c" * 64
+        for name in ("upload_version", "deploy_zero_percent"):
+            op = fixture["active"]["operations"][name]
+            op["intent_state"] = "RECORDED"
+            op["result_state"] = "APPLIED"
+            op["attempts"] = [{
+                "attempt_number": 1, "intent_state": "RECORDED", "result_state": "APPLIED",
+                "intent_artifact_sha256": "d" * 64, "result_digest": "e" * 64,
+            }]
+        tx = fixture["active"]["logical_transaction_id"]
+        with tempfile.TemporaryDirectory(prefix="mahoon-h2-inflight-journal-") as directory:
+            cwd = Path(directory)
+            state = cwd / "state/publisher-state/production-transaction-journal.json"
+            state.parent.mkdir(parents=True)
+            env = {"REQUESTED_TRANSACTION_ID": tx, "REQUESTED_READY": "YES",
+                   "REQUESTED_RESUME_SOURCE_SHA": "e042a1a4d0a6fd5ae3d24c86d01d86dcc096ddad",
+                   "SOURCE_RUN_ID": "38320622522", "RESUME_SOURCE_RUN_ID": "38320622522"}
+
+            def run(candidate=fixture, **overrides):
+                state.write_text(json.dumps(candidate), encoding="utf-8")
+                return _run_workflow_script(script, cwd, dict(env, **overrides))
+
+            accepted = run()
+            self.assertEqual(0, accepted.returncode, accepted.stderr)
+            self.assertIn("RESUME_JOURNAL=IN_FLIGHT_APPLIED; REVISION=122", accepted.stdout)
+            cases = []
+            changed = copy.deepcopy(fixture); changed["active"]["operations"]["deploy_zero_percent"]["result_state"] = "UNKNOWN"; cases.append(("unknown zero result", changed, {}))
+            changed = copy.deepcopy(fixture); changed["active"]["operations"]["promote"]["attempts"] = [{}]; cases.append(("promotion attempt", changed, {}))
+            changed = copy.deepcopy(fixture); changed["active"]["operations"]["upload_version"]["attempts"][0]["result_digest"] = "invalid"; cases.append(("invalid upload evidence", changed, {}))
+            cases.append(("source IDs differ", copy.deepcopy(fixture), {"SOURCE_RUN_ID": "38320622522", "RESUME_SOURCE_RUN_ID": "38320622523"}))
+            cases.append(("missing source ID", copy.deepcopy(fixture), {"RESUME_SOURCE_RUN_ID": ""}))
+            for label, candidate, overrides in cases:
+                with self.subTest(label=label):
+                    self.assertNotEqual(0, run(candidate, **overrides).returncode, label)
 
     def test_resume_artifact_preflight_is_generic_and_fails_closed(self):
         """The generalized revision-resolve / resume-admission RESUME preflight
@@ -503,14 +573,17 @@ class A6WorkflowContractTests(unittest.TestCase):
             admission_script = _python_heredoc(next(step["run"] for step in self.jobs["resume-admission"]["steps"]
                                                      if step.get("id") == "admit"))
 
-            def execute_revision(source_sha=source, tx=active_tx, public_revision=active_revision):
+            def execute_revision(source_sha=source, tx=active_tx, public_revision=active_revision,
+                                 resume_source_run_id=""):
                 result = _run_workflow_script(revision_script, cwd, {
-                    "RUNNER_TEMP": str(cwd), "REQUESTED_SOURCE_SHA": source_sha,
+                    "RUNNER_TEMP": str(cwd), "REQUESTED_SOURCE_RUN_ID": "12345678901",
+                    "RESUME_SOURCE_RUN_ID": resume_source_run_id, "REQUESTED_SOURCE_SHA": source_sha,
                     "REQUESTED_TRANSACTION_ID": tx,
                 }, offline_revision=public_revision)
                 return result
 
-            def execute_admission(raw=admission_raw, source_sha=source, tx=active_tx):
+            def execute_admission(raw=admission_raw, source_sha=source, tx=active_tx,
+                                  resume_source_run_id=""):
                 (cwd / "runner-temp/resume-admission/admission.json").parent.mkdir(parents=True, exist_ok=True)
                 (cwd / "runner-temp/resume-admission/admission.json").write_bytes(raw)
                 output = cwd / "github-output.txt"
@@ -518,6 +591,7 @@ class A6WorkflowContractTests(unittest.TestCase):
                 result = _run_workflow_script(admission_script, cwd, {
                     "RUNNER_TEMP": str(cwd / "runner-temp"), "GITHUB_OUTPUT": str(output),
                     "REQUESTED_SOURCE_SHA": source_sha, "REQUESTED_TRANSACTION_ID": tx,
+                    "SOURCE_RUN_ID": "12345678901", "RESUME_SOURCE_RUN_ID": resume_source_run_id,
                 })
                 return result, output.read_text(encoding="utf-8")
 
@@ -549,6 +623,49 @@ class A6WorkflowContractTests(unittest.TestCase):
                 with self.subTest(label=label):
                     rejected, _ = execute_admission(raw=raw, source_sha=source_sha, tx=tx)
                     self.assertNotEqual(0, rejected.returncode, label)
+
+            # A source receipt for an in-flight transaction may be older than the
+            # current journal, but it remains exact, sealed lineage for that tx.
+            in_flight = copy.deepcopy(fixture)
+            in_flight["generation"] += 3
+            in_flight["active"]["state"] = "operation_reported"
+            in_flight["active"]["build_bundle_sha256"] = "c" * 64
+            for name in ("upload_version", "deploy_zero_percent"):
+                op = in_flight["active"]["operations"][name]
+                op["intent_state"] = "RECORDED"
+                op["result_state"] = "APPLIED"
+                op["attempts"] = [{"attempt_number": 1, "intent_state": "RECORDED",
+                                   "result_state": "APPLIED", "intent_artifact_sha256": "d" * 64,
+                                   "result_digest": "e" * 64}]
+            journal_path.write_text(json.dumps(in_flight), encoding="utf-8")
+            carried_admission = copy.deepcopy(admission)
+            carried_admission["payload"]["decision"] = "COALESCED"
+            carried_admission["payload"]["journal_generation"] = fixture["generation"]
+            carried_admission = artifact_contract.seal_artifact(carried_admission)
+            admission_path.unlink()
+            artifact_transport.write_artifact(admission_path, carried_admission,
+                                              expected_type="admission_receipt",
+                                              referenced_artifacts=artifact_transport.references(revision))
+            carried_raw = admission_path.read_bytes()
+            advanced = execute_revision(public_revision=active_revision + 3,
+                                        resume_source_run_id="12345678901")
+            self.assertEqual(0, advanced.returncode, advanced.stderr)
+            self.assertIn(f"PUBLIC_REVISION={active_revision + 3}", advanced.stdout)
+            self.assertNotEqual(0, execute_revision(public_revision=active_revision - 1,
+                                                    resume_source_run_id="12345678901").returncode,
+                                "in-flight resume must reject a public revision behind its active transaction")
+            self.assertNotEqual(0, execute_revision(public_revision=active_revision + 3).returncode,
+                                "pristine resume must still reject an advanced public revision")
+            carried, decision = execute_admission(raw=carried_raw,
+                                                  resume_source_run_id="12345678901")
+            self.assertEqual(0, carried.returncode, carried.stderr)
+            self.assertEqual("decision=ADMITTED\n", decision)
+            too_new = copy.deepcopy(carried_admission)
+            too_new["payload"]["journal_generation"] = in_flight["generation"] + 1
+            too_new = artifact_contract.seal_artifact(too_new)
+            too_new_raw = (json.dumps(too_new, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+            rejected, _ = execute_admission(raw=too_new_raw, resume_source_run_id="12345678901")
+            self.assertNotEqual(0, rejected.returncode)
 
     def test_resume_artifact_scripts_validate_original_github_artifacts_offline(self):
         revision_path = os.environ.get("MAHOON_H2_REVISION_ARTIFACT")
@@ -599,7 +716,8 @@ class A6WorkflowContractTests(unittest.TestCase):
                 artifact.write_bytes(raw)
                 result = _run_workflow_script(revision_script, cwd, {
                     "RUNNER_TEMP": str(cwd / "runner-temp"), "REQUESTED_SOURCE_RUN_ID": "37379469235",
-                    "REQUESTED_SOURCE_SHA": requested_source, "REQUESTED_TRANSACTION_ID": requested_tx,
+                    "RESUME_SOURCE_RUN_ID": "", "REQUESTED_SOURCE_SHA": requested_source,
+                    "REQUESTED_TRANSACTION_ID": requested_tx,
                 }, offline_revision=public_revision)
                 return result
 
@@ -633,6 +751,7 @@ class A6WorkflowContractTests(unittest.TestCase):
                 result = _run_workflow_script(admission_script, cwd, {
                     "RUNNER_TEMP": str(cwd / "runner-temp"), "GITHUB_OUTPUT": str(output),
                     "REQUESTED_SOURCE_SHA": source, "REQUESTED_TRANSACTION_ID": tx,
+                    "SOURCE_RUN_ID": "37379469235", "RESUME_SOURCE_RUN_ID": "",
                 })
                 copied = (cwd / "runner-evidence/a6/admission.json").read_bytes() if (cwd / "runner-evidence/a6/admission.json").exists() else None
                 return result, output.read_text(encoding="utf-8"), copied
