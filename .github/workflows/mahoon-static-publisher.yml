@@ -906,15 +906,35 @@ jobs:
         with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
-      - uses: actions/download-artifact@v4
-        if: ${{ always() }}
+      - name: Download the source run's sealed build bundle (in-flight resume)
+        if: ${{ inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' }}
+        uses: actions/download-artifact@v4
         with:
-          name: "a6-build-${{ inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && inputs.resume_source_run_id || github.run_id }}"
+          name: a6-build-${{ inputs.resume_source_run_id }}
           path: handoff
-      - uses: actions/download-artifact@v4
-        if: ${{ always() }}
+          run-id: ${{ inputs.resume_source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download the source run's sealed admission (in-flight resume)
+        if: ${{ inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' }}
+        uses: actions/download-artifact@v4
         with:
-          name: "a6-admission-${{ inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && inputs.resume_source_run_id || github.run_id }}"
+          name: a6-admission-${{ inputs.resume_source_run_id }}
+          path: handoff
+          run-id: ${{ inputs.resume_source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download this run's build bundle and admission (non-resume)
+        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-build-${{ github.run_id }}
+          path: handoff
+      - name: Download this run's admission (non-resume)
+        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-admission-${{ github.run_id }}
           path: handoff
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
