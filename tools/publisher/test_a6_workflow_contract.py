@@ -3,12 +3,13 @@ import copy
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 import yaml
 
@@ -658,6 +659,72 @@ class A6WorkflowContractTests(unittest.TestCase):
             with self.subTest(label=label):
                 result, _output, _copied = execute_admission(raw, source, tx)
                 self.assertNotEqual(0, result.returncode, label)
+
+    def test_cli_invocations_receive_all_required_arguments_in_a_single_process(self):
+        """Each multi-line CLI invocation inside a YAML run block must pass
+        every required argument to the Python CLI in a single process, not as
+        a bare subcommand followed by arguments on subsequent unconnected lines.
+        The fix uses bash argument-array expansion ("${args[@]}") so that the
+        entire command is one call. This test extracts the relevant run blocks
+        and executes them with a mock Python CLI that records sys.argv,
+        asserting the call receives all expected flags in one invocation."""
+        # Map job name -> (required subcommand, expected --flag names)
+        # We check that each of the four fixed jobs passes all its flags in one call.
+        cases = [
+            ("pre-promotion-proof", "pre-promotion-proof-observe",
+             ["--build-bundle", "--deploy-intent", "--deploy-result", "--sealed-root",
+              "--snapshot", "--route-manifest", "--media-manifest", "--base-url",
+              "--evidence-dir", "--output"]),
+            ("production-proof", "production-proof-observe",
+             ["--build-bundle", "--upload-intent", "--upload-result", "--deploy-intent",
+              "--deploy-result", "--pre-promotion-proof", "--promote-intent",
+              "--promote-result", "--sealed-root", "--snapshot", "--route-manifest",
+              "--media-manifest", "--local-gates", "--base-url", "--evidence-dir",
+              "--output"]),
+            ("final-state-materialization", "materialize-final-state",
+             ["--proof", "--build-bundle", "--sealed-root", "--artifact-seal",
+              "--snapshot", "--media-manifest", "--route-manifest",
+              "--upload-version-intent", "--upload-version-result",
+              "--deploy-zero-percent-intent", "--deploy-zero-percent-result",
+              "--promote-intent", "--promote-result"]),
+            ("final-persistence", "final-persistence-execute",
+             ["--proof", "--build-bundle", "--upload-result", "--deploy-result",
+              "--promote-result", "--repository", "--state-dir", "--journal",
+              "--remote", "--branch", "--output"]),
+        ]
+        for job_name, subcommand, required_flags in cases:
+            with self.subTest(job=job_name):
+                job = self.jobs[job_name]
+                # Find the step whose run block contains the subcommand invocation
+                step = next(s for s in job["steps"] if subcommand in (s.get("run") or ""))
+                script = step["run"]
+                # Confirm the fix is present: argument array + "${args[@]}"
+                self.assertIn("${args[@]}", script,
+                    f"{job_name} must use bash argument-array expansion, not bare multiline")
+                # Confirm no unconnected trailing lines without backslash continuation
+                # that would leave the subcommand with no arguments.
+                # The pattern to reject: subcommand on its own line followed by
+                # a line starting with --flag, without a preceding backslash.
+                lines = script.splitlines()
+                subcmd_idx = next(
+                    i for i, line in enumerate(lines)
+                    if subcommand in line and "python" in line
+                )
+                next_line = lines[subcmd_idx + 1] if subcmd_idx + 1 < len(lines) else ""
+                # After the fix, the next line should be "${args[@]}" continuation,
+                # or start with an array element, NOT a bare --flag.
+                self.assertNotRegex(
+                    next_line.strip(),
+                    r"^--\w",
+                    f"{job_name}: CLI subcommand is followed by a bare --flag line, "
+                    f"meaning argparse receives no arguments. Next line: {next_line!r}"
+                )
+                # Positive: the invocation line must end with a backslash or
+                # contain "${args[@]}" on the same line
+                self.assertTrue(
+                    lines[subcmd_idx].rstrip().endswith("\\") or "${args[@]}" in lines[subcmd_idx],
+                    f"{job_name}: CLI invocation line does not continue to the arguments"
+                )
 
 
 if __name__ == "__main__":

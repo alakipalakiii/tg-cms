@@ -1752,15 +1752,21 @@ jobs:
             zero_result=handoff/recovered-zero-result.json
             refs+=(--reference handoff/zero-percent-result.json --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json)
           fi
-          python code/tools/publisher/workflow_stage_cli.py pre-promotion-proof-observe
+          fingerprint="$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')"
+          args=(
             --build-bundle handoff/runner-evidence/v1-build-bundle.json
-            --deploy-intent handoff/zero-percent-intent.json --deploy-result "$zero_result"
-            --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site"
+            --deploy-intent handoff/zero-percent-intent.json
+            --deploy-result "$zero_result"
+            --sealed-root "handoff/runner-evidence/publisher-sealed/${fingerprint}/site"
             --snapshot handoff/runner-evidence/current-v2-snapshot.json
             --route-manifest handoff/runner-build/published-route-manifest.json
             --media-manifest handoff/runner-build/production-media-manifest.json
-            --base-url https://mahoonartmagazine.ir --evidence-dir runner-evidence/pre-promotion-proof
-            --output pre-promotion-proof.json "${refs[@]}"
+            --base-url https://mahoonartmagazine.ir
+            --evidence-dir runner-evidence/pre-promotion-proof
+            --output pre-promotion-proof.json
+          )
+          python code/tools/publisher/workflow_stage_cli.py pre-promotion-proof-observe \
+            "${args[@]}" "${refs[@]}"
       - uses: actions/upload-artifact@v4
         with: { name: 'a6-preproof-${{ github.run_id }}', path: pre-promotion-proof.json, if-no-files-found: error }
 
@@ -2096,19 +2102,27 @@ jobs:
             promote_result=handoff/recovered-promote-result.json
             refs+=(--reference handoff/promote-result.json --reference handoff/promote-recovery-readback.json --reference handoff/promote-recovery-decision.json)
           fi
-          python code/tools/publisher/workflow_stage_cli.py production-proof-observe
+          fingerprint="$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')"
+          args=(
             --build-bundle handoff/runner-evidence/v1-build-bundle.json
-            --upload-intent handoff/upload-intent.json --upload-result "$upload_result"
-            --deploy-intent handoff/zero-percent-intent.json --deploy-result "$zero_result"
+            --upload-intent handoff/upload-intent.json
+            --upload-result "$upload_result"
+            --deploy-intent handoff/zero-percent-intent.json
+            --deploy-result "$zero_result"
             --pre-promotion-proof handoff/pre-promotion-proof.json
-            --promote-intent handoff/promote-intent.json --promote-result "$promote_result"
-            --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site"
+            --promote-intent handoff/promote-intent.json
+            --promote-result "$promote_result"
+            --sealed-root "handoff/runner-evidence/publisher-sealed/${fingerprint}/site"
             --snapshot handoff/runner-evidence/current-v2-snapshot.json
             --route-manifest handoff/runner-build/published-route-manifest.json
             --media-manifest handoff/runner-build/production-media-manifest.json
             --local-gates handoff/runner-evidence/prepromotion-local-gates.json
-            --base-url https://mahoonartmagazine.ir --evidence-dir runner-evidence/production-proof
-            --output production-proof.json "${refs[@]}" > proof-status.json
+            --base-url https://mahoonartmagazine.ir
+            --evidence-dir runner-evidence/production-proof
+            --output production-proof.json
+          )
+          python code/tools/publisher/workflow_stage_cli.py production-proof-observe \
+            "${args[@]}" "${refs[@]}" > proof-status.json
       - id: proof-state
         if: ${{ always() && hashFiles('proof-status.json') != '' }}
         run: python -c "import json,os; d=json.load(open('proof-status.json')); open(os.environ['GITHUB_OUTPUT'],'a').write('proof_state='+d['status']+'\n')"
@@ -2192,17 +2206,24 @@ jobs:
             promote_result=handoff/recovered-promote-result.json
             refs+=(--reference handoff/promote-result.json --reference handoff/promote-recovery-readback.json --reference handoff/promote-recovery-decision.json)
           fi
-          python code/tools/publisher/workflow_stage_cli.py materialize-final-state
-            --proof handoff/production-proof.json --build-bundle handoff/runner-evidence/v1-build-bundle.json
-            --sealed-root "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/site"
-            --artifact-seal "handoff/runner-evidence/publisher-sealed/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')/artifact-seal.json"
+          fingerprint="$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["payload"]["content_fingerprint"])')"
+          args=(
+            --proof handoff/production-proof.json
+            --build-bundle handoff/runner-evidence/v1-build-bundle.json
+            --sealed-root "handoff/runner-evidence/publisher-sealed/${fingerprint}/site"
+            --artifact-seal "handoff/runner-evidence/publisher-sealed/${fingerprint}/artifact-seal.json"
             --snapshot handoff/runner-evidence/current-v2-snapshot.json
             --media-manifest handoff/runner-build/production-media-manifest.json
             --route-manifest handoff/runner-build/published-route-manifest.json
-            --upload-version-intent handoff/upload-intent.json --upload-version-result "$upload_result"
-            --deploy-zero-percent-intent handoff/zero-percent-intent.json --deploy-zero-percent-result "$zero_result"
-            --promote-intent handoff/promote-intent.json --promote-result "$promote_result"
-            "${refs[@]}"
+            --upload-version-intent handoff/upload-intent.json
+            --upload-version-result "$upload_result"
+            --deploy-zero-percent-intent handoff/zero-percent-intent.json
+            --deploy-zero-percent-result "$zero_result"
+            --promote-intent handoff/promote-intent.json
+            --promote-result "$promote_result"
+          )
+          python code/tools/publisher/workflow_stage_cli.py materialize-final-state \
+            "${args[@]}" "${refs[@]}"
       - uses: actions/upload-artifact@v4
         with:
           name: a6-final-state-${{ github.run_id }}
@@ -2289,16 +2310,21 @@ jobs:
             promote_result=handoff/recovered-promote-result.json
             refs+=(--reference handoff/promote-result.json --reference handoff/promote-recovery-readback.json --reference handoff/promote-recovery-decision.json)
           fi
-          python code/tools/publisher/workflow_stage_cli.py final-persistence-execute
-            --proof handoff/production-proof.json --build-bundle handoff/runner-evidence/v1-build-bundle.json
+          tx_id="$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["transaction"]["logical_transaction_id"])')"
+          args=(
+            --proof handoff/production-proof.json
+            --build-bundle handoff/runner-evidence/v1-build-bundle.json
             --upload-result "$upload_result"
             --deploy-result "$zero_result"
             --promote-result "$promote_result"
             --repository state
-            --state-dir "handoff/$(python -c 'import json; print(json.load(open("handoff/runner-evidence/v1-build-bundle.json"))["transaction"]["logical_transaction_id"])')/publisher-state"
+            --state-dir "handoff/${tx_id}/publisher-state"
             --journal state/publisher-state/production-transaction-journal.json
-            --remote origin --branch main --output final-persistence-result.json
-            "${refs[@]}"
+            --remote origin --branch main
+            --output final-persistence-result.json
+          )
+          python code/tools/publisher/workflow_stage_cli.py final-persistence-execute \
+            "${args[@]}" "${refs[@]}"
 
   rollback-intent-write:
     needs: [production-proof, promote-result-write, promote-create-recovered-result]
