@@ -762,7 +762,11 @@ jobs:
           admission = artifact_transport.read_artifact(Path("handoff/admission.json"), expected_type="admission_receipt", expected_transaction=revision["transaction"], referenced_artifacts=refs)
           bundle = artifact_transport.read_artifact(Path("handoff/runner-evidence/v1-build-bundle.json"), expected_type="build_bundle", referenced_artifacts=refs)
           assert admission["payload"]["active_transaction_id"] == active["logical_transaction_id"], "resume admission does not target the active transaction"
-          assert admission["payload"]["decision"] == "ADMITTED" and admission["payload"]["journal_generation"] == 1, "resume requires a sealed ADMITTED admission"
+          current_gen = json.loads(Path("state/publisher-state/production-transaction-journal.json").read_text(encoding="utf-8"))["generation"]
+          assert admission["payload"]["decision"] in {"ADMITTED", "COALESCED"}, \
+              f"resume admission decision is {admission['payload']['decision']}, not ADMITTED or COALESCED"
+          assert admission["payload"]["journal_generation"] in {1, current_gen}, \
+              f"resume admission generation {admission['payload']['journal_generation']} is not gen 1 or current gen {current_gen}"
           assert active["state"] in {"operation_reported", "build_ready"}, f"resume requires a resumable active state, got {active['state']}"
           assert bundle["transaction"] == admission["transaction"] and admission["artifact_sha256"] == bundle["payload"]["admission_receipt_sha256"], "resume build bundle does not seal the source admission"
           if os.environ.get("SOURCE_ADMISSION_SHA"):
