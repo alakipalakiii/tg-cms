@@ -632,7 +632,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: { contents: write }
     outputs:
-      decision: ${{ steps.admit.outputs.decision }}
+      decision: ${{ steps.admit-reuse.outputs.decision || steps.admit.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
         with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
@@ -640,9 +640,41 @@ jobs:
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-revision-${{ github.run_id }}', path: handoff }
+      - name: Download the source run's sealed admission for an in-flight resume
+        if: ${{ inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-admission-${{ inputs.resume_source_run_id }}
+          path: handoff
+          run-id: ${{ inputs.resume_source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
-      - id: admit
+      - name: Reuse the source run's sealed admission (in-flight resume)
+        id: admit-reuse
+        if: ${{ inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' }}
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+        run: |
+          mkdir -p runner-evidence/a6
+          python - <<'PY'
+          import os, json, shutil
+          from pathlib import Path
+          from publisher import artifact_transport
+          revision = artifact_transport.read_artifact(Path("handoff/revision-resolution.json"), expected_type="revision_resolution")
+          raw = Path("handoff/admission.json").read_bytes()
+          admission = json.loads(raw)
+          # Revalidate the source admission envelope against this run's revision.
+          admission = artifact_transport.read_artifact(Path("handoff/admission.json"), expected_type="admission_receipt", expected_transaction=revision["transaction"], referenced_artifacts=artifact_transport.references(revision))
+          Path("runner-evidence/a6/admission.json").write_bytes(raw)
+          print(f"REUSED_SOURCE_ADMISSION=gen{admission['payload']['journal_generation']} decision={admission['payload']['decision']} sha={admission['artifact_sha256'][:16]}")
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+              out.write(f'decision={admission["payload"]["decision"]}\n')
+          PY
+      - name: Mint a fresh admission (non-resume path)
+        id: admit
+        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
         run: |
           mkdir -p runner-evidence/a6
           python code/tools/publisher/workflow_stage_cli.py admit --revision handoff/revision-resolution.json --repository state --source '${{ github.event_name }}' --run-id '${{ github.run_id }}' --trigger-attempt '${{ github.run_attempt }}' --output runner-evidence/a6/admission.json | tee admission-status.json
@@ -734,7 +766,7 @@ jobs:
         with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
-      - name: Download the source run's sealed build and admission for an in-flight resume
+      - name: Download the source run's sealed build for an in-flight resume
         if: ${{ inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' }}
         uses: actions/download-artifact@v4
         with:
