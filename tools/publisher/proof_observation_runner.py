@@ -22,6 +22,20 @@ class ObservationRejected(ValueError):
     """A read-only observation is absent, malformed, or inconsistent."""
 
 
+def _subprocess_failure_diagnostic(process: subprocess.CompletedProcess) -> str:
+    output = process.stderr or process.stdout or b""
+    if isinstance(output, bytes):
+        output = output.decode("utf-8", "replace")
+    lines = output.strip().splitlines()
+    diagnostic = lines[-1] if lines else f"exit code {process.returncode}"
+    diagnostic = re.sub(r"(?i)\bBearer\s+\S+", "Bearer [redacted]", diagnostic)
+    diagnostic = re.sub(
+        r"(?i)\b([\w-]*(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTHORIZATION|API[_-]?KEY)[\w-]*\s*[=:]\s*)\S+",
+        r"\1[redacted]", diagnostic,
+    )
+    return diagnostic[-300:]
+
+
 _SECRET_FIELD = re.compile(r"(?:token|secret|password|authorization|credential|api[_-]?key)", re.I)
 
 
@@ -270,15 +284,9 @@ class RuntimeObservationBackend:
             crawler = subprocess.run([sys.executable, str(crawler_path)], cwd=Path(__file__).parents[2],
                                      env=env, capture_output=True, timeout=3600, check=False)
             if crawler.returncode:
-                lines = (crawler.stderr or b"").decode("utf-8", "replace").strip().splitlines()
-                diagnostic = lines[-1] if lines else f"exit code {crawler.returncode}"
-                diagnostic = re.sub(r"(?i)\bBearer\s+\S+", "Bearer [redacted]", diagnostic)
-                diagnostic = re.sub(
-                    r"(?i)\b([\w-]*(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTHORIZATION|API[_-]?KEY)[\w-]*\s*[=:]\s*)\S+",
-                    r"\1[redacted]", diagnostic,
-                )
                 raise ObservationRejected(
-                    f"read-only crawler did not complete (exit {crawler.returncode}): {diagnostic[-300:]}"
+                    f"read-only crawler did not complete (exit {crawler.returncode}): "
+                    f"{_subprocess_failure_diagnostic(crawler)}"
                 )
             crawl_out = crawl_root / "production-override-crawl"
             summary = json.loads((crawl_out / "production-override-crawl-summary.json").read_text(encoding="utf-8"))
@@ -292,7 +300,10 @@ class RuntimeObservationBackend:
             browser_proc = subprocess.run(command, cwd=Path(__file__).parents[2], env=env,
                                           capture_output=True, timeout=600, check=False)
             if browser_proc.returncode:
-                raise ObservationRejected("read-only browser observation did not complete")
+                raise ObservationRejected(
+                    f"read-only browser observation did not complete (exit {browser_proc.returncode}): "
+                    f"{_subprocess_failure_diagnostic(browser_proc)}"
+                )
             browser = json.loads(browser_path.read_text(encoding="utf-8"))
             return {"crawler": summary, "route_state": state, "browser": browser,
                     "identity_confirmation": identity,

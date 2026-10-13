@@ -517,6 +517,46 @@ class ProofObservationTests(unittest.TestCase):
                 backend.collect(context)
         self.assertNotIn("synthetic-secret-marker", str(error.exception))
 
+    def test_runtime_browser_rejection_surfaces_redacted_stderr_tail(self):
+        from subprocess import CompletedProcess
+        from publisher import cloudflare_wrangler
+
+        backend = runner.RuntimeObservationBackend(
+            stage="pre-promotion", base_url="https://mahoonartmagazine.ir",
+            evidence_root=self.root / "runtime-browser-evidence", sealed_root=self.sealed,
+            snapshot=self.snapshot, routes=self.routes, media=self.media,
+        )
+        context = {
+            "build_bundle": {}, "transaction": {"worker": "mahoon-art-magazine"},
+            "candidate_identity": {
+                "candidate_version_id": "candidate-v1", "baseline_version_id": "baseline-v1",
+                "zero_percent_deployment_id": "dep-zero",
+            },
+        }
+
+        def run(command, **kwargs):
+            if command[0] == "node":
+                return CompletedProcess(command, 1, stdout=b"", stderr=b"RuntimeError: API_TOKEN=synthetic-secret-marker\n")
+            crawl_out = Path(kwargs["env"]["MAHOON_CRAWL_OUTPUT"]) / "production-override-crawl"
+            crawl_out.mkdir(parents=True)
+            (crawl_out / "production-override-crawl-summary.json").write_text("{}", encoding="utf-8")
+            (crawl_out / "production-override-crawl-state.json").write_text("{}", encoding="utf-8")
+            return CompletedProcess(command, 0, stdout=b"", stderr=b"")
+
+        with patch.object(runner, "_input_files_match"), \
+             patch.object(cloudflare_wrangler, "active_deployment", return_value={
+                 "id": "dep-zero", "versions": [
+                     {"version_id": "candidate-v1", "percentage": 0},
+                     {"version_id": "baseline-v1", "percentage": 100},
+                 ],
+             }), patch.object(runner.subprocess, "run", side_effect=run):
+            with self.assertRaisesRegex(
+                runner.ObservationRejected,
+                "read-only browser observation did not complete.*RuntimeError: API_TOKEN=\\[redacted\\]",
+            ) as error:
+                backend.collect(context)
+        self.assertNotIn("synthetic-secret-marker", str(error.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
