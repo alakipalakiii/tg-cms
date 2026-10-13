@@ -1124,12 +1124,13 @@ jobs:
     permissions: { contents: read, actions: read }
     outputs:
       carried: ${{ steps.bridge.outputs.carried }}
+      source_result_state: ${{ steps.bridge.outputs.source_result_state }}
     steps:
       - uses: actions/checkout@v4
         with: { ref: '${{ github.sha }}', path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
-      - name: Download the source run's sealed upload intent and UNKNOWN result
+      - name: Download the source run's sealed upload intent and result
         uses: actions/download-artifact@v4
         with:
           name: a6-upload-intent-${{ inputs.resume_source_run_id }}
@@ -1137,7 +1138,7 @@ jobs:
           run-id: ${{ inputs.resume_source_run_id }}
           repository: ${{ github.repository }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Download the source run's sealed UNKNOWN upload result
+      - name: Download the source run's sealed upload result
         uses: actions/download-artifact@v4
         with:
           name: a6-upload-result-${{ inputs.resume_source_run_id }}
@@ -1161,10 +1162,15 @@ jobs:
           upload_op = active["operations"]["upload_version"]
           assert upload_op["result_state"] == "APPLIED", f"resume-carryforward requires upload already APPLIED on the active transaction, got {upload_op['result_state']}"
           original = json.loads(Path("handoff/upload-result.json").read_text(encoding="utf-8"))
-          assert original["payload"]["result_state"] == "UNKNOWN", "resume-carryforward requires the source UNKNOWN result"
-          print(f"RESUME_CARRY_FORWARD=run{source_run}; journal already APPLIED; re-exposing source intent/result for in-run recovery re-derivation")
+          state = original["payload"]["result_state"]
+          # ponytail: APPLIED source result is already reconciled in the journal;
+          # re-expose it for direct downstream use. UNKNOWN source result needs
+          # the in-run recovery re-derivation chain.
+          assert state in {"UNKNOWN", "APPLIED"}, f"resume-carryforward requires the source result to be UNKNOWN or APPLIED, got {state}"
+          print(f"RESUME_CARRY_FORWARD=run{source_run}; journal already APPLIED; source result state={state}; re-exposing source intent/result")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write("carried=true\n")
+              output.write(f"source_result_state={state}\n")
           PY
       - name: Re-expose the source upload intent under this run's handoff name
         uses: actions/upload-artifact@v4
@@ -1173,7 +1179,7 @@ jobs:
           path: handoff/upload-intent.json
           if-no-files-found: error
           overwrite: true
-      - name: Re-expose the source UNKNOWN upload result under this run's handoff name
+      - name: Re-expose the source upload result under this run's handoff name
         uses: actions/upload-artifact@v4
         with:
           name: a6-upload-direct-result-${{ github.run_id }}
@@ -1242,7 +1248,9 @@ jobs:
 
   upload-recovery-readback-observe:
     needs: [upload-result-write, resume-source-carryforward]
-    if: ${{ always() && ((needs.upload-result-write.outputs.result_state == 'UNKNOWN') || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.resume-source-carryforward.result == 'success')) }}
+    # ponytail: an APPLIED source result is already reconciled in the journal and is
+    # re-exposed directly by carryforward; the UNKNOWN-only recovery chain must not run.
+    if: ${{ always() && ((needs.upload-result-write.outputs.result_state == 'UNKNOWN') || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.resume-source-carryforward.result == 'success' && needs.resume-source-carryforward.outputs.source_result_state == 'UNKNOWN')) }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     env:
@@ -1357,11 +1365,10 @@ jobs:
         with: { name: 'a6-upload-recovered-result-${{ github.run_id }}', path: recovered-upload-result.json, if-no-files-found: error }
 
   zero-percent-intent-write:
-    needs: [upload-result-write, upload-create-recovered-result]
-    # ponytail: on resume the direct upload chain is skipped and the upload APPLIED proof
-    # arrives as the recovered result, so proceed when the direct job succeeded-or-skipped
-    # and either its result is APPLIED or the recovered bridge produced one.
-    if: ${{ always() && (needs.upload-result-write.result == 'success' || needs.upload-create-recovered-result.outputs.recovered == 'true') && (needs.upload-result-write.outputs.result_state == 'APPLIED' || needs.upload-create-recovered-result.outputs.recovered == 'true') }}
+    needs: [upload-result-write, upload-create-recovered-result, resume-source-carryforward]
+    # ponytail: the upload APPLIED proof arrives from the direct chain, the recovered
+    # bridge (UNKNOWN source result), or the direct carryforward (APPLIED source result).
+    if: ${{ always() && ((needs.upload-result-write.result == 'success' && needs.upload-result-write.outputs.result_state == 'APPLIED') || needs.upload-create-recovered-result.outputs.recovered == 'true' || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.resume-source-carryforward.result == 'success' && needs.resume-source-carryforward.outputs.source_result_state == 'APPLIED')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
@@ -1886,10 +1893,16 @@ jobs:
 
   production-proof:
     needs: [upload-result-write, upload-create-recovered-result, zero-percent-result-write,
-      zero-create-recovered-result, promote-result-write, promote-create-recovered-result]
+      zero-create-recovered-result, promote-result-write, promote-create-recovered-result,
+      resume-source-carryforward]
+    # ponytail: the upload APPLIED proof may arrive via the direct chain, the recovered
+    # bridge, or the APPLIED carryforward (in-flight resume with an APPLIED source result).
     if: >-
       ${{ always() &&
-          (needs.upload-result-write.outputs.result_state == 'APPLIED' || needs.upload-create-recovered-result.outputs.recovered == 'true') &&
+          ((needs.upload-result-write.result == 'success' && needs.upload-result-write.outputs.result_state == 'APPLIED') ||
+           needs.upload-create-recovered-result.outputs.recovered == 'true' ||
+           (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' &&
+            needs.resume-source-carryforward.result == 'success' && needs.resume-source-carryforward.outputs.source_result_state == 'APPLIED')) &&
           (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true') &&
           (needs.promote-result-write.outputs.result_state == 'APPLIED' || needs.promote-create-recovered-result.outputs.recovered == 'true') }}
     runs-on: ubuntu-latest
