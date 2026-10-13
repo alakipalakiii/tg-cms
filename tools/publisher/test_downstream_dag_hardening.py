@@ -237,6 +237,10 @@ class DownstreamDagHardeningTests(unittest.TestCase):
             "handoff/runner-build/published-route-manifest.json",
         ):
             self.assertIn(path, gate, f"build re-expose must preserve {path}")
+        self.assertIn("Restore and verify the source route manifest", gate)
+        self.assertIn('bundle["payload"]["snapshot_sha256"]', gate)
+        self.assertIn('bundle["payload"]["route_manifest_sha256"]', gate)
+        self.assertIn("RESUME_ROUTE_MANIFEST_SHA256_MISMATCH", gate)
 
     def test_zero_carryforward_bypasses_zero_intent_write(self):
         gate = self.gate("zero-percent-intent-write")

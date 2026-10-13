@@ -992,6 +992,44 @@ jobs:
           run-id: ${{ inputs.resume_source_run_id }}
           repository: ${{ github.repository }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Restore and verify the source route manifest if artifact transport omitted it
+        if: ${{ inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' }}
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          RESUME_SOURCE_SHA: ${{ inputs.resume_source_sha }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          from publisher.artifact_transport import read_artifact
+          from publisher.candidate_route_manifest import build_candidate_route_manifest
+
+          bundle = read_artifact(
+              "handoff/runner-evidence/v1-build-bundle.json",
+              expected_type="build_bundle",
+              expected_source_sha=os.environ["RESUME_SOURCE_SHA"],
+          )
+          route_path = Path("handoff/runner-build/published-route-manifest.json")
+          expected_route_sha = bundle["payload"]["route_manifest_sha256"]
+          if not route_path.is_file():
+              snapshot_path = Path("handoff/runner-evidence/current-v2-snapshot.json")
+              snapshot_bytes = snapshot_path.read_bytes()
+              assert hashlib.sha256(snapshot_bytes).hexdigest() == bundle["payload"]["snapshot_sha256"]
+              snapshot = json.loads(snapshot_bytes)
+              assert snapshot.get("contract") == "POSTS_FULL_PUBLIC_SNAPSHOT_V2"
+              assert isinstance(snapshot.get("payload", {}).get("posts"), list)
+              build_candidate_route_manifest(
+                  snapshot["payload"]["posts"],
+                  Path("code/publisher-state/current-accepted-route-manifest.json"),
+                  route_path,
+              )
+          actual_route_sha = hashlib.sha256(route_path.read_bytes()).hexdigest()
+          if actual_route_sha != expected_route_sha:
+              raise SystemExit("RESUME_ROUTE_MANIFEST_SHA256_MISMATCH")
+          print("RESUME_ROUTE_MANIFEST_VERIFIED=" + actual_route_sha)
+          PY
       - name: Download this run's build bundle and admission (non-resume)
         if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
         uses: actions/download-artifact@v4
