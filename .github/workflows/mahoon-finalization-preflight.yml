@@ -1,0 +1,68 @@
+name: MAHOON read-only sealed finalization preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Original sealed build artifact run"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  sealed-metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/download-artifact@v4
+        with:
+          name: a6-build-${{ inputs.source_run_id }}
+          path: handoff
+          run-id: ${{ inputs.source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+      - name: Compare snapshot and sealed media identity metadata read-only
+        env:
+          PYTHONPATH: tools
+        run: |
+          python - <<'PY'
+          import json, base64
+          from pathlib import Path
+          from publisher import artifact_transport, final_state_materializer, media_bootstrap
+          root = Path('handoff')
+          bundle = artifact_transport.read_artifact(root / 'runner-evidence/v1-build-bundle.json', expected_type='build_bundle')
+          snapshot = json.loads((root / 'runner-evidence/current-v2-snapshot.json').read_text())
+          media = json.loads((root / 'runner-build/production-media-manifest.json').read_text())
+          required = {identity for post in snapshot['payload']['posts'] for identity, _ in media_bootstrap.source_identifiers(post)}
+          identities = [record['source_identifier'] for record in media['records']]
+          report = {'snapshot_posts': len(snapshot['payload']['posts']), 'required_identities': len(required),
+                    'manifest_records': len(identities), 'order_equal': identities == sorted(required),
+                    'sets_equal': set(identities) == required, 'missing_count': len(required-set(identities)),
+                    'extra_count': len(set(identities)-required)}
+          try:
+              final_state_materializer._merge_media_index(base64.b64decode(bundle['payload']['prior_immutable_media_index']['transport_base64']),
+                  bundle['payload']['prior_immutable_media_index'], snapshot['payload']['posts'], media)
+              report['merge'] = 'PASS'
+          except final_state_materializer.MaterializationRejected as error:
+              report['merge'] = 'BLOCKED'; report['reason'] = str(error)
+          Path('metadata-status.json').write_text(json.dumps(report, sort_keys=True)+'\n')
+          print(json.dumps(report, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mahoon-sealed-metadata-${{ github.run_id }}
+          path: |
+            metadata-status.json
+            handoff/runner-evidence/v1-build-bundle.json
+            handoff/runner-evidence/current-v2-snapshot.json
+            handoff/runner-build/production-media-manifest.json
+            handoff/runner-build/published-route-manifest.json
+            handoff/runner-evidence/publisher-sealed/*/artifact-seal.json
+          if-no-files-found: warn
