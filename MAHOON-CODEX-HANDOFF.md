@@ -1,40 +1,34 @@
-# MAHOON Codex Handoff
+# MAHOON Codex handoff
 
-**Status: BLOCKED. Do not call the project live or dispatch another resume until the browser/response failure is diagnosed and corrected.**
+**Status: `MAHOON_PROJECT_FINALIZED_AND_LIVE: BLOCKED`**
 
-## Verified state
+## Current durable state
 
-- Canonical journal on `origin/main`: generation 112, active revision 163, transaction `a180efc687b8bac3039d9ee055735c72ad77163192bf93a2680d5f188344dfac`, state `operation_reported`, recovery `NONE`.
-- The transaction already has one `APPLIED` `upload_version` attempt and one `APPLIED` `deploy_zero_percent` attempt. `promote` and `rollback` have no attempts. Do not recreate either successful mutation.
-- Current Cloudflare deployment `33ce4d96-1054-48c6-ae21-02690633d7e5` routes 100% to baseline `cefbdeec-a3a7-4963-a4e9-19937f7829f9` and 0% to candidate `b3aa78ef-7b15-4d36-a87e-90dec308eb00`.
-- The read-only content-revision endpoint reports revision 166. The last check-only run, `38485373151`, reported persisted published revision 81 and exited 3 because it detected a change; it made no publication mutation.
-- Latest code commit on `origin/main`: `dcbe460b312936b6b89fcb30c0431e7e081a0ec2`.
+Read the canonical journal from `origin/main`, not a stale checkout:
 
-## Last proof attempt
+- Generation 117, active revision 163, transaction `a180efc687b8bac3039d9ee055735c72ad77163192bf93a2680d5f188344dfac`.
+- State `operation_reported`; upload, zero-percent deployment, and promotion are `APPLIED`; rollback is `NOT_REPORTED`.
+- Proof evidence SHA and state commit SHA are null; pending is null.
+- Promotion result points to deployment `54325ccc-494e-448f-bfcd-c07e74564928`. Current traffic percentages were not freshly read during the last proof attempt.
+- Latest content check-only run 38585147355 reported revision 175 versus published revision 81. Finish or safely reconcile revision 163 before considering revision 175.
 
-Run `38485698374` used the canonical `RESUME_ADMITTED` flow with the original source run and admission. Journal verification, artifact carry-forward, build-lineage validation, and admission passed. It failed after 34m38s in `pre-promotion-proof` with:
+## Recent hosted runs
 
-`ObservationRejected — read-only browser observation did not complete (exit 1): Node.js v22.23.3`
+- `38485698374`: pre-promotion browser observation failed. The artifact did not retain `browser.json`.
+- `38578178875`: isolated browser runtime diagnostic passed after the pinned Chromium install. The browser self-test passed; both baseline and candidate `/posts/` responses transferred completely with HTTP 200.
+- `38580846067`: production proof stopped on the local-gate evidence schema mismatch, before a sealed production proof.
+- `38582922041`: local-gate fix passed setup and self-test; proof stopped with `ProductionProofRejected`. No proof hash or page-level evidence artifact was retained. Upload, zero-percent, and promotion jobs were skipped.
+- `38585147355`: read-only check-only reported current revision 175 and published revision 81; journal bootstrap was already initialized.
 
-All promotion, production-proof, final-persistence, and rollback stages were skipped. Earlier proof run `38480089851` failed at the same stage. The final failure did not preserve the underlying JavaScript exception.
+## Pushed fixes
 
-A local read-only reproduction checked 8 representative pages: zero-origin checks passed, but visual proof failed on font-wait screenshots, navigation timeouts, and connection resets. A local `/posts/` transfer probe returned HTTP 200 but did not complete its chunked response for either the baseline or candidate; the captured candidate body ended mid-script at 62,809 bytes. Treat this as a local diagnostic only: the cause is not established, and it does not replace hosted proof.
+- `5017811` normalizes the build's measured local-gate records while requiring the overall and all six individual gates to be measured and passing.
+- `e1b979b` carries sanitized `ObservationRejected` reasons through the proof wrapper and surfaces safe `ProductionProofRejected` messages. This latest diagnostic change has local tests but has not been run in GitHub Actions.
 
-## Next safe sequence
+## Next safe action
 
-1. Freshly inspect `origin/main`, `publisher-state/production-transaction-journal.json`, the public revision endpoint, and Cloudflare deployment percentages. The state may change after this handoff.
-2. Diagnose the incomplete browser/HTTP response using the existing proof contract. Keep version attribution, full route proof, zero-origin checks, and all promotion gates intact.
-3. The code at `dcbe460` improves captured Node.js errors by selecting the exception line rather than the trailing runtime-version line. Focused proof-observation tests passed (57 tests).
-4. Only after the cause is fixed and the proof is expected to complete, resume the exact transaction with its original admitted source. Current verified identifiers were source run `38320622522`, source SHA `6a1e76a0ec3a710d77e8e9a26e8b60a9501e5585`, admission digest `3da108417499930d24a7fb72e34e44ce2dbb273ab8b5d3b88505123e171bf8c9`, and transaction ID above. Revalidate all of them first.
-5. If revision 163 completes, confirm durable journal and 100% traffic. Then publish revision 166 through a separate normal transaction if it remains the current revision.
-6. Run full production acceptance for the main domain, routes, images, media/audio, navigation, SEO metadata, canonical URLs, and pipeline lifecycle before declaring success.
+The exact production-proof rejection from run `38582922041` is unknown because the run used the older wrapper. If the owner continues, use the existing transaction and the already authorized source references in one bounded `POST_PROMOTION_FINALIZE` run on `main` after commit `e1b979b`. Confirm the APPLIED mutation jobs stay skipped. Inspect the newly surfaced safe reason and uploaded page evidence before deciding any further action. Do not replay upload, zero-percent, promotion, or rollback. Do not publish revision 175 until revision 163 has a durable proof and consistent journal state.
 
-## Validation and known risks
+## Acceptance still needed
 
-- `python -m unittest discover -s tools/publisher -p test_proof_observation_runner.py`: 57 passed.
-- A previous full publisher suite passed 870 tests, 3 skipped. A later repeated full-suite run was stopped after more than 9 minutes without completion.
-- Website build passed after the SEO endpoint change. The final diagnostic changes did not modify website or Worker source.
-- A prior dependency audit reported 16 advisories, including 1 critical. GitHub Actions also reported Node.js 20 deprecation and the upcoming `ubuntu-latest` migration.
-- No D1, Worker source, Cloudflare secret, or environment-variable changes were made.
-
-See [`MAHOON-FINAL-REPORT.txt`](MAHOON-FINAL-REPORT.txt) for the complete evidence-backed status.
+Require a passing production proof and retained sanitized route/browser evidence, fresh live candidate/baseline traffic readback, durable final persistence and revision reconciliation, and full website checks for routes, media/audio, navigation, SEO metadata, and canonical URLs. Until those exist, keep the project blocked.
