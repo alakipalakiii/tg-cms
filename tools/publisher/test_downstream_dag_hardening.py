@@ -366,6 +366,7 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         diagnostic = self.job("browser-runtime-diagnostic")
         self.assertIn("inputs.mode == 'BROWSER_DIAGNOSTIC'", str(diagnostic.get("if", "")))
         self.assertFalse(diagnostic.get("needs"))
+        self.assertIn("inputs.mode == 'BROWSER_DIAGNOSTIC'", self.gate("journal-bootstrap"))
         commands = "\n".join(str(step.get("run", "")) for step in diagnostic.get("steps", []))
         self.assertIn("npm ci --prefix diagnostics/website/dreary-disk", commands)
         self.assertIn("--runtime-probe", commands)

@@ -592,7 +592,7 @@ jobs:
 
   # A6 source-pinned, artifact-carried transaction stages.
   journal-bootstrap:
-    if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && !(github.event_name == 'workflow_dispatch' && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'RETIRE_STALE_ADMITTED')) }}
+    if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && !(github.event_name == 'workflow_dispatch' && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'RETIRE_STALE_ADMITTED' || inputs.mode == 'BROWSER_DIAGNOSTIC')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
