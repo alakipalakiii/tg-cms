@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 
 const require = createRequire(new URL('../../website/dreary-disk/package.json', import.meta.url));
-const { chromium } = require('playwright');
+const { chromium, request } = require('playwright');
 const base = 'https://mahoonartmagazine.ir';
 const expected = process.env.MAHOON_EXPECTED_VERSION;
 assert.match(expected || '', /^[0-9a-f-]{36}$/);
@@ -18,8 +18,9 @@ await mkdir(output, { recursive: true });
 const checks = [];
 const publicDependencies = [];
 const pageErrors = [];
+const candidateExternalRequests = [];
 let newPosts = [];
-let browser, page;
+let browser, page, boundary;
 let failureStage = null;
 let mediaResponses = [];
 
@@ -27,6 +28,7 @@ async function saveProgress(activeCheck) {
   await writeFile(`${output}/result.json`, JSON.stringify({ status: 'RUNNING', measured: Boolean(browser),
     expected_version: expected, candidate_pinned: candidatePinned, active_check: activeCheck, checks, new_post_ids: newPosts.map((post) => post.id),
     public_dependencies: publicDependencies, page_errors: pageErrors, PASS: false,
+    candidate_external_requests: candidateExternalRequests,
   }, null, 2) + '\n');
 }
 
@@ -90,11 +92,9 @@ async function playback(kind) {
 
 try {
   browser = await chromium.launch({ headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
-  page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-  if (candidatePinned) await page.route('**/*', (route) => route.continue({
-    headers: new URL(route.request().url()).origin === base
-      ? { ...route.request().headers(), ...versionHeaders } : route.request().headers(),
-  }));
+  // Routing disables the browser cache and changes OGG range/metadata behavior.
+  page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, extraHTTPHeaders: versionHeaders });
+  boundary = await request.newContext();
   page.on('pageerror', (error) => pageErrors.push(error.name));
   page.on('response', (response) => {
     if (response.request().resourceType() === 'media') {
@@ -106,6 +106,8 @@ try {
   });
   page.on('request', (request) => {
     const url = new URL(request.url());
+    if (candidatePinned && /^https?:$/.test(url.protocol) && url.origin !== base)
+      candidateExternalRequests.push(url.hostname + url.pathname);
     if (url.hostname === 'api.mahoonartmagazine.ir' || url.hostname.endsWith('.workers.dev')
         || /(^|\.)telegram\.org$/.test(url.hostname)) publicDependencies.push(url.hostname + url.pathname);
   });
@@ -187,7 +189,7 @@ try {
     await navigate('/admin');
     assert.ok(await page.locator('#loginView #tokenInput[type="password"]').isVisible());
     assert.ok(await page.locator('#loginView #loginBtn').isVisible());
-    const response = await page.request.get('https://api.mahoonartmagazine.ir/admin/health');
+    const response = await boundary.get('https://api.mahoonartmagazine.ir/admin/health');
     assert.equal(response.status(), 401);
     const body = await response.json();
     assert.equal(body.ok, false);
@@ -216,10 +218,12 @@ try {
   checks.push({ name: 'preflight', PASS: false, error_type: error.name });
 } finally {
   await browser?.close();
+  await boundary?.dispose();
   const result = { measured: Boolean(browser), expected_version: expected, candidate_pinned: candidatePinned, checks, public_dependencies: publicDependencies,
     new_post_ids: newPosts.map((post) => post.id), baseline_run_id: process.env.MAHOON_BASELINE_RUN_ID || null,
     page_errors: pageErrors, PASS: checks.length === 8 + newPosts.length && checks.every((item) => item.PASS)
-      && publicDependencies.length === 0 && pageErrors.length === 0 };
+      && publicDependencies.length === 0 && pageErrors.length === 0 && candidateExternalRequests.length === 0,
+    candidate_external_requests: candidateExternalRequests };
   await writeFile(`${output}/result.json`, JSON.stringify(result, null, 2) + '\n');
   console.log(JSON.stringify(result));
   process.exitCode = result.PASS ? 0 : 1;
