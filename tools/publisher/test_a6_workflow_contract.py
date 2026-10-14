@@ -143,7 +143,8 @@ class A6WorkflowContractTests(unittest.TestCase):
         """Every executable code checkout in the RESUME transaction chain must
         resolve to resume_source_sha when mode is RESUME_ADMITTED, so the
         actual build/validate/mutate/proof code runs from the admitted source.
-        Fresh PUBLISH paths keep github.sha; state checkouts stay on main.
+        The promote-intent writer uses the current lineage-fix CLI; state
+        checkouts stay on main.
 
         The ref expression is double-quoted in the raw YAML so the flow
         mapping remains parseable (a single-quoted ${{ }} scalar containing
@@ -187,8 +188,9 @@ class A6WorkflowContractTests(unittest.TestCase):
 
         for name in resume_chain:
             r = code_ref(name)
-            self.assertEqual(ref_expr, r,
-                f"{name} must pin executable code to the admitted source SHA, got {r!r}")
+            expected = "${{ github.sha }}" if name == "promote-intent-write" else ref_expr
+            self.assertEqual(expected, r,
+                f"{name} has an unexpected executable source ref: {r!r}")
         # State checkouts must stay on main (authoritative mutable state).
         for name in ("journal-resume-verify", "revision-resolve", "resume-admission"):
             for step in self.jobs[name]["steps"]:
@@ -518,9 +520,26 @@ class A6WorkflowContractTests(unittest.TestCase):
             accepted = run()
             self.assertEqual(0, accepted.returncode, accepted.stderr)
             self.assertIn("RESUME_JOURNAL=IN_FLIGHT_APPLIED; REVISION=122", accepted.stdout)
+
+            reconciled_retry = copy.deepcopy(fixture)
+            reconciled_retry["active"]["recovery_status"] = "RECONCILED_NOT_APPLIED"
+            promote = reconciled_retry["active"]["operations"]["promote"]
+            promote["intent_state"] = "RECORDED"
+            promote["result_state"] = "NOT_APPLIED"
+            promote["attempts"] = [{
+                "attempt_number": 1, "intent_state": "RECORDED", "result_state": "NOT_APPLIED",
+                "intent_artifact_sha256": "f" * 64, "result_digest": "a" * 64,
+            }]
+            accepted_retry = run(reconciled_retry)
+            self.assertEqual(0, accepted_retry.returncode, accepted_retry.stderr)
+            self.assertIn("RESUME_JOURNAL=IN_FLIGHT_RECONCILED_PROMOTE_RETRY; REVISION=122", accepted_retry.stdout)
+
             cases = []
             changed = copy.deepcopy(fixture); changed["active"]["operations"]["deploy_zero_percent"]["result_state"] = "UNKNOWN"; cases.append(("unknown zero result", changed, {}))
             changed = copy.deepcopy(fixture); changed["active"]["operations"]["promote"]["attempts"] = [{}]; cases.append(("promotion attempt", changed, {}))
+            changed = copy.deepcopy(reconciled_retry); changed["active"]["recovery_status"] = "NONE"; cases.append(("unreconciled promotion attempt", changed, {}))
+            changed = copy.deepcopy(reconciled_retry); changed["active"]["operations"]["promote"]["attempts"].append(copy.deepcopy(changed["active"]["operations"]["promote"]["attempts"][0])); cases.append(("multiple reconciled promotion attempts", changed, {}))
+            changed = copy.deepcopy(reconciled_retry); changed["active"]["operations"]["promote"]["attempts"][0]["result_digest"] = "invalid"; cases.append(("invalid promotion reconciliation evidence", changed, {}))
             changed = copy.deepcopy(fixture); changed["active"]["operations"]["upload_version"]["attempts"][0]["result_digest"] = "invalid"; cases.append(("invalid upload evidence", changed, {}))
             cases.append(("source IDs differ", copy.deepcopy(fixture), {"SOURCE_RUN_ID": "38320622522", "RESUME_SOURCE_RUN_ID": "38320622523"}))
             cases.append(("missing source ID", copy.deepcopy(fixture), {"RESUME_SOURCE_RUN_ID": ""}))

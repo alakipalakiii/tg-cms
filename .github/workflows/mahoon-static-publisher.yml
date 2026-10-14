@@ -661,12 +661,27 @@ jobs:
               "active transaction ID does not match worker/revision"
           assert active["proof_evidence_sha256"] is None, "proof evidence already set"
           assert active["state_commit_sha"] is None, "state commit already set"
-          assert active["recovery_status"] == "NONE", "recovery already in progress"
           operations = active["operations"]
           assert set(operations) == {"upload_version", "deploy_zero_percent", "promote", "rollback"}, \
               "active operation set is not the accepted publisher transaction"
           def valid_sha(value):
               return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+          promote = operations["promote"]
+          promote_attempts = promote["attempts"]
+          reconciled_promote_retry = (
+              in_flight and active["state"] == "operation_reported"
+              and active["recovery_status"] == "RECONCILED_NOT_APPLIED"
+              and promote["intent_state"] == "RECORDED"
+              and promote["result_state"] == "NOT_APPLIED"
+              and len(promote_attempts) == 1
+              and promote_attempts[0].get("attempt_number") == 1
+              and promote_attempts[0].get("intent_state") == "RECORDED"
+              and promote_attempts[0].get("result_state") == "NOT_APPLIED"
+              and valid_sha(promote_attempts[0].get("intent_artifact_sha256"))
+              and valid_sha(promote_attempts[0].get("result_digest"))
+          )
+          assert active["recovery_status"] == "NONE" or reconciled_promote_retry, \
+              "recovery is not a single reconciled-not-applied promotion"
           if in_flight:
               assert active["state"] == "operation_reported", \
                   f"active state is {active['state']}, not operation_reported"
@@ -683,9 +698,11 @@ jobs:
                       f"operation {name} attempt evidence is incomplete"
               for name in ("promote", "rollback"):
                   op = operations[name]
+                  if name == "promote" and reconciled_promote_retry:
+                      continue
                   assert op["attempts"] == [] and op["intent_state"] == "NOT_STARTED" \
                       and op["result_state"] == "NOT_REPORTED", f"operation {name} has progress"
-              resume_kind = "IN_FLIGHT_APPLIED"
+              resume_kind = "IN_FLIGHT_RECONCILED_PROMOTE_RETRY" if reconciled_promote_retry else "IN_FLIGHT_APPLIED"
           else:
               assert active["state"] == "admitted", f"active state is {active['state']}, not admitted"
               assert active["build_bundle_sha256"] is None, "build bundle already set"
