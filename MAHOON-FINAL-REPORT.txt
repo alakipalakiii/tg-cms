@@ -1,16 +1,20 @@
 MAHOON_PROJECT_FINALIZED_AND_LIVE: BLOCKED
-Updated:2026-10-14T20:53:15Z (2026-10-15 Tehran)
+Updated:2026-10-14T22:03:30Z (2026-10-15 Tehran)
 
-Revision163 is now durably COMPLETED; latest content and final functionality acceptance remain.
-Completion run38634275983:SUCCESS. Independent reconciliation38635735894:SUCCESS.
-Journal generation119; active:null; pending:null.
-Production proof5eabba732b07a9a1594f72127c3855cd13a432b507ccee7bccc7ab7c2aa39194 was really measured in38599823193;4221/4221 routes,557 bound media objects,8/8 browser pages, all production gates PASS. Sanitized observations and screenshots retained.
-Exact six-file state commit7c0be71556f041ec940e6f7d3264cd2dca766675; journal closing commit349998b. All six Git blobs independently match accepted staged evidence. Final persistence artifact2b80a4c860e397cdf1049f57f19ff5abaa2eaad1d4a2c6f519d8c825d8c25d3f.
-Fresh Cloudflare readback:deployment54325ccc-494e-448f-bfcd-c07e74564928; candidateb3aa78ef-7b15-4d36-a87e-90dec308eb00:100%; baselinecefbdeec-a3a7-4963-a4e9-19937f7829f9:0%.
-No APPLIED upload, zero-percent or promotion was repeated. No manual journal edit or force push occurred.
+Revision181 is LIVE and independent browser functionality PASSED. Full production proof and durable final persistence remain active in run38636125070. Do not dispatch another publication or replay mutations.
 
-CHECK_ONLY38635779560 measured current revision181 against persisted163. Its exit3 is the expected CHANGED signal. Normal guarded publication is the next step, followed by complete proof/persistence/reconciliation, independent new-post/media/functionality acceptance, final revision recheck and a documented cutoff.
+Current authoritative Cloudflare:deployment2ccec940-ee65-4d39-89f4-3fb1f894175a; intendedbc11bf72-e914-498d-8665-b7d98c57ff90:100%; baselineb3aa78ef-7b15-4d36-a87e-90dec308eb00:0%.
+Canonical generation127, active181/operation_reported, pending:null; upload/zero/promote each APPLIED once; rollback not reported; new production proof/state commit not persisted yet.
 
-Required code repairs are pushed throughd5413ab:runtime/browser setup and evidence preservation; complete finalization references; exact inventory ordering; bound legacy media normalization and fresh current media records; static archive/home search/load-more; correct persistence journal path; small sealed content metadata. Focused tests, static browser fixtures and website build passed. Final diagnostic also requires loaded MahoonFont and401 admin authentication boundary.
+Normal publication38636125070 source018f896:sealed bundle92a7c1b289d55cf0f82f704a995754273d03c529b5c6c1f2fad370eec8f5d850; fingerprint634c02d6868b4b52199e9ab56d24e172c4dae9e4e1231b204dce206f0d59087b. Raw1849 posts,940 unique listed posts, new DB IDs1914–1920 only; no old post removed/changed. All seven new JPEG media passed bootstrap integrity. All628 required source identities represented;609 immutable successes and19 established historical fallbacks, zero unresolved/hash mismatches. Full expected route count4238.
+Pre-promotion proofdf17fd78118c76fe35ba60a09aeb7b3df82d703f902c4b4ac38efe1f10df7da6:PASS, all route/content/category/media/SEO/visual/zero-origin gates. Actual runtimeNode22.23.3/Playwright1.63.0/Chromium153.0.8010.12. Promotion APPLIED artifact0208512d4da8e1dca089f6d5e2ab30dbc45c9a63e21991f264e742e5a867cb77 matches current deployment.
 
-This is a progress checkpoint, not a final PASS. See MAHOON-CODEX-HANDOFF.md for verified source/evidence references and the remaining acceptance steps.
+Candidate functionality38643029168:15/15 PASS before Promotion.
+Actual unpinned production functionality38644334256:SUCCESS/PASS,15/15, no version override. Archive pagination20→40; database-ID search/home/category navigation; all7 new articles with6 decoded images each; loaded fonts; visible native audio782 playing60.584479s and video292 playing7.105215s; admin login visible and unauthenticated API401; no JavaScript errors or forbidden runtime dependencies.
+Sanitized live result rawSHA c7b53bdd0c763207a8daf1ff2a5a3fd0bf4daa73510c0d4a0545edb37665553a; observations/screenshots retained in GitHub artifacts and Temp/mahoon-live-acceptance-38644334256.
+
+Earlier revision163 durably COMPLETED in38634275983; independent reconciliation38635735894 SUCCESS; generation119 active/pending null then. Real proof5eabba732b07a9a1594f72127c3855cd13a432b507ccee7bccc7ab7c2aa39194 measured38599823193. Exact six-file state commit7c0be71556f041ec940e6f7d3264cd2dca766675 and closing journal349998b; all six remote Git blobs independently matched evidence. No163 APPLIED mutation repeated.
+
+Engineering fixes committed/pushed:browser runtime/backend context; sanitized retained failures; full artifact authority chain; POSIX inventory sorting; strict sealed legacy media recovery and refreshed current records; static archive/home search and load-more; correct persistence journal path; small sealed content metadata. Diagnostic observer corrections exclude empty auxiliary audio, follow transplanted native player, preserve font/media/HTTP failure context, and avoid cache-disabling request interception. Read-only audio matrix38641990258 proves complete identical audio SHA/bytes on baseline and candidate, finite duration/playback with normal browser cache, and explains interception-induced Infinity. Existing public dependency classifier is reused; accepted guards unchanged.97 focused workflow/observer tests, real positive/negative browser self-test, archive/media selector fixtures and website build pass. Production code source018f896; latest diagnostic implementation1593816.
+
+Required final steps:real production proof/persistence/completed journal, independent exact six-file/live-state verification, reconciliation, fresh authoritative CHECK_ONLY revision read and bounded catch-up if needed, clear final cutoff and final report commit. This progress report is not a final PASS.
