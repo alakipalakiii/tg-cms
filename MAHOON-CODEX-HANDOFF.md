@@ -44,3 +44,13 @@ No mutation or journal edit was performed in this review. Pre-dispatch authorita
 ## Remaining acceptance
 
 Final proof/persistence/reconciliation, publication of the latest posts, and complete route/media/navigation/SEO/sitemap/RSS/admin acceptance have not passed. Keep the release blocked.
+
+## Live functionality repair during the active proof
+
+Read-only hosted diagnostic run 38602783467 from e6e512d251b432af3d7bcc0bfd770e540265d219 confirmed archive load-more and database-ID search timeouts, while latest article navigation (ID 1910) and native video playback (ID 292) passed, with zero forbidden dependencies and JS errors. Audio navigation timed out waiting for networkidle, so the diagnostic now waits for DOMContentLoaded and still requires decoded duration and advancing playback.
+
+Proven root cause: astro_static_materializer._strip_runtime_api_scripts removed the archive config/API inline script together with its search/load-more bindings. The repair retains only public archive configuration and injects public/mahoon-static-archive.js. That client uses the existing static index and copies rendered cards from static pagination pages (preserving original media); it never calls the API. It handles database IDs, exact-tag category memberships (including audio books), query reset, pagination, errors/retry and homepage Enter-to-search navigation. Category cards come from the corresponding static category pages. Changes are intended for the later normal latest-content transaction, not the already-promoted revision 163.
+
+Validation: Node browser fixtures passed (pagination/media cards/Persian IDs/no-match/reset/category/home navigation/invalid index and retry); 61 focused Python tests passed (two existing Windows/Linux skips); npm run build passed. The read-only diagnostic now also saves live index post identities and checks home/category search. It should be rerun against the final verified version. Current continuation 38599823193 remains active; no duplicate mutation or new content transaction was started.
+
+Final repair validation: static browser fixtures passed again including audio-book overlap and category card presentation; 50 materializer/promotion/DAG tests passed (two existing platform skips); the final npm run build and git diff --check passed. Production proof is still active (started 16:48:50Z).

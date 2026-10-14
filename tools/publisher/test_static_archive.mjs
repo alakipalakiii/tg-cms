@@ -1,0 +1,95 @@
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+
+const require = createRequire(new URL('../../website/dreary-disk/package.json', import.meta.url));
+const { chromium } = require('playwright');
+const client = await readFile(new URL('../../website/dreary-disk/public/mahoon-static-archive.js', import.meta.url));
+const records = Array.from({ length: 22 }, (_, position) => ({ id: position + 1,
+  url: '/post/fixture-' + (position + 1), category: position === 0 || position % 2 ? 'book' : 'text',
+  tags: [position === 0 ? 'audiobook' : position % 2 ? 'book' : 'text'],
+  normalized_search_text: 'fixture title ' + (position + 1) }));
+let invalidIndex = false;
+const server = createServer((request, response) => {
+  const url = new URL(request.url, 'http://localhost');
+  if (url.pathname === '/mahoon-static-archive.js') {
+    response.setHeader('Content-Type', 'application/javascript'); response.end(client); return;
+  }
+  if (url.pathname === '/search/search-index.json') {
+    response.setHeader('Content-Type', 'application/json');
+    response.end(JSON.stringify({ contract: invalidIndex ? 'INVALID' : 'STATIC_SEARCH_CONTRACT_V2', records })); return;
+  }
+  if (url.pathname === '/fixture.svg') {
+    response.setHeader('Content-Type', 'image/svg+xml');
+    response.end('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>'); return;
+  }
+  response.setHeader('Content-Type', 'text/html; charset=utf-8');
+  if (url.pathname === '/') {
+    response.end('<input id="mSearch"><script src="/mahoon-static-archive.js" defer></script>'); return;
+  }
+  const category = url.pathname.startsWith('/category/');
+  const categoryName = category ? url.pathname.split('/')[2] : '';
+  const categoryTags = categoryName === 'audio' ? ['audio', 'audiobook'] : ['book', 'audiobook'];
+  const pageNumber = Number(url.pathname.split('/page/')[1] || 1);
+  const filtered = category ? records.filter((record) => record.tags.some((tag) => categoryTags.includes(tag))) : records;
+  const slice = filtered.slice((pageNumber - 1) * 20, pageNumber * 20);
+  const cards = slice.map((record) => `<article data-kind="${categoryName || 'posts'}"><a href="${record.url}"><img src="/fixture.svg" alt="fixture ${record.id}"></a><h2>Fixture ${record.id}</h2></article>`).join('');
+  response.end(`<main><input id="archiveSearch"><div id="archiveGrid">${cards}</div>
+    <button id="archiveMore" ${filtered.length <= pageNumber * 20 ? 'hidden' : ''}>More</button>
+    <span id="archiveCount"></span><span id="archiveTotal"></span><div id="archiveEmpty" hidden></div>
+    <script id="archiveConfig" type="application/json">${JSON.stringify({ mode: category ? 'category' : 'posts',
+      category: categoryName, category_tags: categoryTags, pageSize: 20, initialNextOffset: pageNumber * 20 })}</script>
+    <script src="/mahoon-static-archive.js" defer></script></main>`);
+});
+await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+const origin = `http://127.0.0.1:${server.address().port}`;
+const browser = await chromium.launch({ headless: true });
+try {
+  const page = await browser.newPage();
+  const errors = [], remoteRequests = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('request', (request) => { if (!request.url().startsWith(origin)) remoteRequests.push(request.url()); });
+  await page.goto(origin + '/posts/');
+  assert.equal(await page.locator('#archiveGrid article').count(), 20);
+  await page.locator('#archiveMore').click();
+  await page.waitForFunction(() => document.querySelectorAll('#archiveGrid article').length === 22);
+  assert.equal(await page.locator('#archiveGrid a').last().getAttribute('href'), '/post/fixture-22');
+  assert.equal(await page.locator('#archiveGrid img').last().getAttribute('src'), '/fixture.svg');
+  await page.locator('#archiveSearch').fill('۲۲');
+  await page.waitForFunction(() => document.querySelectorAll('#archiveGrid article').length === 1);
+  assert.equal(await page.locator('#archiveGrid a').getAttribute('href'), '/post/fixture-22');
+  await page.locator('#archiveSearch').fill('not present');
+  await page.waitForFunction(() => document.querySelectorAll('#archiveGrid article').length === 0);
+  assert.equal(await page.locator('#archiveEmpty').isVisible(), true);
+  await page.locator('#archiveSearch').fill('');
+  await page.waitForFunction(() => document.querySelectorAll('#archiveGrid article').length === 20);
+  await page.goto(origin + '/category/book?q=3');
+  await page.waitForFunction(() => document.querySelectorAll('#archiveGrid article').length === 0);
+  await page.locator('#archiveSearch').fill('2');
+  await page.waitForFunction(() => document.querySelectorAll('#archiveGrid article').length === 1);
+  assert.equal(await page.locator('#archiveGrid a').getAttribute('href'), '/post/fixture-2');
+  await page.goto(origin + '/category/audio?q=1');
+  await page.waitForFunction(() => document.getElementById('archiveCount').textContent.startsWith('نمایش'));
+  assert.equal(await page.locator('#archiveGrid a').getAttribute('href'), '/post/fixture-1');
+  assert.equal(await page.locator('#archiveGrid article').getAttribute('data-kind'), 'audio');
+  await page.goto(origin + '/');
+  await page.locator('#mSearch').fill('22');
+  await page.locator('#mSearch').press('Enter');
+  await page.waitForURL(origin + '/search?q=22');
+  await page.waitForFunction(() => document.querySelectorAll('#archiveGrid article').length === 1);
+  invalidIndex = true;
+  await page.goto(origin + '/posts?q=22');
+  await page.waitForFunction(() => document.getElementById('archiveEmpty').hidden === false);
+  assert.equal(await page.locator('#archiveGrid article').count(), 20);
+  invalidIndex = false;
+  await page.locator('#archiveSearch').fill('21');
+  await page.waitForFunction(() => document.querySelectorAll('#archiveGrid article').length === 1);
+  assert.equal(await page.locator('#archiveGrid a').getAttribute('href'), '/post/fixture-21');
+  assert.deepEqual(errors, []);
+  assert.deepEqual(remoteRequests, []);
+  console.log('Static archive browser fixtures passed: pagination, media cards, database IDs, no-match/reset, category, home navigation, invalid index.');
+} finally {
+  await browser.close();
+  await new Promise((resolve) => server.close(resolve));
+}

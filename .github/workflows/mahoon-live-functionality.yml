@@ -32,6 +32,8 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run existing browser self-test
         run: node tools/publisher/prepromotion_browser_gate.mjs --self-test > browser-self-test.json
+      - name: Run static archive regression fixtures
+        run: node tools/publisher/test_static_archive.mjs
       - name: Check live interactions without mutation or version override
         env:
           MAHOON_EXPECTED_VERSION: ${{ inputs.expected_version }}

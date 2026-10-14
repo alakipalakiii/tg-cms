@@ -15,6 +15,34 @@ from publisher import astro_static_materializer as materializer
 
 
 class AstroStaticMaterializerTests(unittest.TestCase):
+    def test_static_archive_preserves_public_config_and_replaces_api_runtime(self):
+        html = ('<script id="archiveConfig" type="application/json">'
+                '{"apiBase":"https://api.mahoonartmagazine.ir","mode":"category","category":"book",'
+                '"pageSize":20,"initialNextOffset":40,"initialHasMore":true}</script>'
+                '<script>fetch("https://api.mahoonartmagazine.ir/public/posts-v1")</script>')
+        result = materializer._strip_runtime_api_scripts(html, "/category/book/page/2")
+        self.assertIn('"initialNextOffset": 40', result)
+        self.assertIn('"category": "book"', result)
+        self.assertIn('src="/mahoon-static-archive.js"', result)
+        self.assertNotIn("apiBase", result)
+        self.assertNotIn("api.mahoonartmagazine.ir", result)
+        self.assertEqual(html, materializer._strip_runtime_api_scripts(html, "/admin"))
+
+    def test_static_home_search_gets_client_without_api_runtime(self):
+        html = '<body><input id="mSearch"><script>fetch("https://api.mahoonartmagazine.ir")</script></body>'
+        result = materializer._strip_runtime_api_scripts(html, "/")
+        self.assertIn('src="/mahoon-static-archive.js"', result)
+        self.assertNotIn("api.mahoonartmagazine.ir", result)
+
+    def test_static_category_reuses_exact_tags_including_audio_books(self):
+        config = json.dumps({"apiBase": "https://api.mahoonartmagazine.ir", "mode": "category", "category": "صوتی"})
+        html = '<script id="archiveConfig" type="application/json">' + config + '</script>'
+        result = materializer._strip_runtime_api_scripts(html, "/category/audio")
+        public = json.loads(result.split(">", 1)[1].split("</script>", 1)[0])
+        self.assertIn("کتاب گویا", public["category_tags"])
+        self.assertIn("کتابگویا", public["category_tags"])
+        self.assertIn("صوتی", public["category_tags"])
+
     def test_full_materializer_uses_direct_dispatch_not_preview_fetch(self):
         source = __import__("inspect").getsource(materializer.build)
         self.assertIn("_DirectWorkerRenderer", source)

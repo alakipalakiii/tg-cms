@@ -26,7 +26,7 @@ async function check(name, action) {
 }
 
 async function navigate(path) {
-  const response = await page.goto(base + path, { waitUntil: 'networkidle', timeout: 60000 });
+  const response = await page.goto(base + path, { waitUntil: 'domcontentloaded', timeout: 60000 });
   assert.equal(response.status(), 200);
   assert.equal(response.headers()['x-mahoon-worker-version'], expected);
   return path;
@@ -48,6 +48,9 @@ try {
   assert.equal(index.contract, 'STATIC_SEARCH_CONTRACT_V2');
   const records = index.records;
   assert.ok(records.length > 0);
+  await writeFile(`${output}/index-post-identities.json`, JSON.stringify(records.map((record) => ({
+    id: record.id, path: new URL(record.url).pathname, category: record.category,
+  })), null, 2) + '\n');
   const latest = records.reduce((a, b) => Number(a.id) > Number(b.id) ? a : b);
   await check('archive_load_more', async () => {
     await navigate('/posts/');
@@ -71,6 +74,27 @@ try {
     await navigate(path);
     assert.ok((await page.locator('main').innerText()).trim().length > 80);
     return { database_id: latest.id, path };
+  });
+  await check('home_search_navigation', async () => {
+    await navigate('/');
+    await page.locator('#mSearch').fill(String(latest.id));
+    await page.locator('#mSearch').press('Enter');
+    await page.waitForURL((url) => url.pathname.replace(/\/$/, '') === '/search'
+      && url.searchParams.get('q') === String(latest.id), { timeout: 10000 });
+    await page.waitForFunction(() => document.querySelectorAll('#archiveGrid article').length === 1,
+      null, { timeout: 10000 });
+    return { database_id: latest.id, path: new URL(page.url()).pathname };
+  });
+  await check('category_search_by_database_id', async () => {
+    const post = records.find((record) => record.category);
+    const path = '/category/' + encodeURIComponent(post.category);
+    await navigate(path);
+    await page.locator('#archiveSearch').fill(String(post.id));
+    await page.waitForFunction(() => document.querySelectorAll('#archiveGrid article').length === 1,
+      null, { timeout: 10000 });
+    assert.equal(new URL(await page.locator('#archiveGrid article a').first().getAttribute('href'), base).pathname,
+      new URL(post.url).pathname);
+    return { database_id: post.id, path };
   });
   const manifest = JSON.parse(await readFile('publisher-state/production-media-manifest.json', 'utf8'));
   for (const kind of ['audio', 'video']) {
@@ -100,7 +124,7 @@ try {
 } finally {
   await browser?.close();
   const result = { measured: Boolean(browser), expected_version: expected, checks, public_dependencies: publicDependencies,
-    page_errors: pageErrors, PASS: checks.length === 5 && checks.every((item) => item.PASS)
+    page_errors: pageErrors, PASS: checks.length === 7 && checks.every((item) => item.PASS)
       && publicDependencies.length === 0 && pageErrors.length === 0 };
   await writeFile(`${output}/result.json`, JSON.stringify(result, null, 2) + '\n');
   console.log(JSON.stringify(result));

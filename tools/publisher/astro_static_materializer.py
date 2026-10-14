@@ -16,9 +16,9 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit
 
 try:
-    from .content_taxonomy import canonical_category, exact_hashtags
+    from .content_taxonomy import CATEGORY_DEFINITIONS, canonical_category, exact_hashtags, normalize_tag
 except ImportError:
-    from publisher.content_taxonomy import canonical_category, exact_hashtags
+    from publisher.content_taxonomy import CATEGORY_DEFINITIONS, canonical_category, exact_hashtags, normalize_tag
 try:
     from .public_listing_dedupe import dedupe_public_listing_posts
 except ImportError:
@@ -202,11 +202,25 @@ def _strip_runtime_api_scripts(html: str, route: str = "/") -> str:
 
     def replace(match: re.Match[str]) -> str:
         block = match.group(0)
+        if re.search(r'\bid=["\']archiveConfig["\']', block, re.I):
+            config = json.loads(block.split(">", 1)[1].rsplit("</script", 1)[0])
+            public = {key: config[key] for key in (
+                "mode", "category", "pageSize", "initialTotal", "initialNextOffset", "initialHasMore",
+            ) if key in config}
+            if public.get("mode") == "category":
+                public["category_tags"] = next((sorted({normalize_tag(tag) for tag in tags})
+                    for label, tags in CATEGORY_DEFINITIONS if label == public.get("category")), [])
+            payload = json.dumps(public, ensure_ascii=False).replace("<", "\\u003c")
+            return ('<script id="archiveConfig" type="application/json">' + payload
+                    + '</script><script src="/mahoon-static-archive.js" defer></script>')
         if re.search(r'type=["\']application/ld\+json["\']', block, re.I):
             return block
         return "" if "api.mahoonartmagazine.ir" in block.lower() else block
 
-    return SCRIPT.sub(replace, html)
+    result = SCRIPT.sub(replace, html)
+    if route.rstrip("/") == "" and re.search(r'\bid=["\']mSearch["\']', result):
+        result = result.replace("</body>", '<script src="/mahoon-static-archive.js" defer></script></body>')
+    return result
 
 
 def _rewrite_canonical(html: str, route: str) -> str:
