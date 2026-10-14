@@ -1,26 +1,57 @@
 MAHOON_PROJECT_FINALIZED_AND_LIVE: BLOCKED
-Updated:2026-10-14T23:13:11Z (2026-10-15 Tehran)
+Updated: 2026-10-15T03:18:58.165865+03:30 Asia/Tehran; 2026-10-14T23:48:58.165865+00:00 UTC
 
-Revision181 is LIVE and durably COMPLETED. One bounded catch-up to revision185 is active in38649977839. Publication cutoff:2026-10-14T22:35:02Z/revision185. Do not dispatch another publication or replay mutations.
+CURRENT TRANSACTION
+One bounded catch-up publication is active: revision185, run38649977839.
+Source:4b9889cd8213016e0337fe7b81d76f6bb2aec702
+Transaction:9c9b7b78759bb8dcc6fe4a08b2e3da94e5f6b1155f28bb2bd21b18178de94ba7
+Publication cutoff:2026-10-15 02:05:02 Asia/Tehran (2026-10-14 22:35:02 UTC), revision185.
+Do not dispatch another publication or replay Upload, Zero-percent or Promotion.
 
-181 completed with real proof54f79ea6926baf7ac7653df1ba643d46b80627d8f35d0377ba642649d1c2f4a8, all4238 routes/603 media/8 browser pages and every production gate PASS. Final persistence96e16fe8fc9a5f2cd7e16e87724f99cae5d2443fc39de416f7f27511e29d5083, state commit1f2c7637010b0ce56be551f1fcbc9b9182396b77, journal2da135bde449fdb131589ae6339ae25e26a33a29/generation129/active-null/pending-null. All6 remote Git blobs and3 saved observation hashes independently matched. Reconciliation38648593677 SUCCESS/NO_ACTIVE. Final unpinned browser38645978140 PASS16/16 including mobile menu and/about.
+SAFE LIVE STATE
+Authoritative Cloudflare deployment:cf817382-242d-4d2e-9b40-969c7a9c1332.
+Intended1c92b5b0-0426-4f8f-8328-ee741569149b:100%.
+Baselinebc11bf72-e914-498d-8665-b7d98c57ff90:0%.
+Promotion result:adb3f783685b4e8e0f189d7ec4b3d0c5064e5fa34439af7d63bf1037378c740c, APPLIED, matching fresh Cloudflare readback.
+Canonical journal generation137: active185/operation_reported; pending:null.
+Upload, Zero-percent and Promotion each have one APPLIED attempt; rollback has no attempt.
+Production proof/final persistence for185 do not yet exist. Main run is observing the real production crawl after pinned Chromium installation and self-test.
+Persisted completed publication remains181 until185 final persistence closes the transaction.
 
-CHECK_ONLY38648599058 detected185 vs181, changed_at22:33:38Z. Catch-up38649977839 source4b9889cd8213016e0337fe7b81d76f6bb2aec702, transaction9c9b7b78759bb8dcc6fe4a08b2e3da94e5f6b1155f28bb2bd21b18178de94ba7. Build/handoff185 passed; bundle212e816b8da6d6d1d942316ac60f5cd6d80330d25e31bbaa328444e87c01ffce/fingerprint04d55b6ccd2e636452d0fe31a9fd79dae33cdac5aba4a5e7fe5436c59f185335.1849 posts, no additions/removals since181;1920 ASCII?→Persian؟ and updated_at1918/1919/1920.628 required media,609 immutable successes/603 unique objects/19 established fallbacks, no new/error media. Upload+zero APPLIED once; new candidate1c92b5b0-0426-4f8f-8328-ee741569149b at0%, bc11bf72 baseline100% on deployment2dbfc3e3-c1e7-42e7-abf7-fb7cdbc4563e. Candidate browser38652304292 PASS16/16, no JS errors/forbidden dependencies. Main is in full pre-promotion proof;185 production proof/persistence do not yet exist. Remaining:complete the same transaction, verify unpinned live/6-file state/journal, reconcile and recheck revision against declared cutoff.
+VERIFIED185 EVIDENCE
+Sealed build bundle:212e816b8da6d6d1d942316ac60f5cd6d80330d25e31bbaa328444e87c01ffce.
+Content fingerprint:04d55b6ccd2e636452d0fe31a9fd79dae33cdac5aba4a5e7fe5436c59f185335.
+1849 raw published posts;940 deduped listing entries. Seven additions since163: DB IDs1914-1920.
+No added/removed IDs since181.185 updates timestamps1918/1919/1920 and changes1920's ASCII question mark to Persian punctuation.
+628 source media identities:609 successful immutable records/603 unique objects and19 established historical404/410 fallbacks. No new, unresolved, hash or MIME errors.
+All small source/operation/admission/preproof envelopes independently passed the strict artifact validator with the complete reference chain.
+Pre-promotion proof:98673bd1c0eaa49b2de0230ad18519e6b2d69eb75a86867d335670e72ae87772, PASS.
+All4238 routes/4235 HTML routes,603 media objects,8 browser pages PASS; every accepted route/content/category/listing/latest/media/SEO/visual/zero-origin gate true.
+Runtime:Node22.23.3, Playwright1.63.0, Chromium153.0.8010.12; executable exists and launches.
+Preproof browser rawSHA:96298cb42adef40a7da1d4eaf8860a6f3c369878c18a7563c96c7ea3ebbcc003.
+Preproof crawler rawSHA:6e644f32b541c779c474dccf4e3aee7f3976d2b0d7eca973642a5124b1511052.
 
-Historical181 evidence below remains valid; earlier active/pending descriptions are superseded by the completed181 state above.
+INDEPENDENT ACTUAL PRODUCTION ACCEPTANCE
+Read-only run38655954274 SUCCESS/PASS,16/16 checks, candidate_pinned:false.
+Saved result rawSHA:fb33696192776cdbf9a327a633e871cf1a9dfcad6cbfafb379a1ba754875eee6.
+Archive load-more20->40; archive/home/category DB1920 search/navigation; seven new articles each with6 decoded images; loaded MahoonFont.
+Audio782:duration60.584479s/current_time0.117936; video292:duration7.105215s/current_time0.110103; visible native controls actually play.
+Admin login visible and unauthenticated API401.390px mobile menu opens and navigates to/about.
+JavaScript errors0; forbidden public dependencies0. Screenshots of all seven candidate articles and actual production1920/search visually reviewed.
+Earlier pinned candidate185 run38652304292 also passed16/16.
 
-Current authoritative Cloudflare:deployment2ccec940-ee65-4d39-89f4-3fb1f894175a; intendedbc11bf72-e914-498d-8665-b7d98c57ff90:100%; baselineb3aa78ef-7b15-4d36-a87e-90dec308eb00:0%.
-Canonical generation127, active181/operation_reported, pending:null; upload/zero/promote each APPLIED once; rollback not reported; new production proof/state commit not persisted yet.
+COMPLETED HISTORY
+Rev163:38634275983 SUCCESS; real production proof5eabba732b07a9a1594f72127c3855cd13a432b507ccee7bccc7ab7c2aa39194 measured38599823193; state7c0be71556f041ec940e6f7d3264cd2dca766675; generation119/COMPLETED. Reconciliation38635735894 SUCCESS. No APPLIED mutation replayed.
+Rev181:38636125070 SUCCESS; real production proof54f79ea6926baf7ac7653df1ba643d46b80627d8f35d0377ba642649d1c2f4a8; final persistence96e16fe8fc9a5f2cd7e16e87724f99cae5d2443fc39de416f7f27511e29d5083; state1f2c7637010b0ce56be551f1fcbc9b9182396b77; closing journal2da135bde449fdb131589ae6339ae25e26a33a29/generation129/COMPLETED. All six remote Git blob hashes and three observation hashes independently matched. Reconciliation38648593677 SUCCESS.
+CHECK_ONLY38648599058 detected185 vs181, motivating this single bounded catch-up.
 
-Normal publication38636125070 source018f896:sealed bundle92a7c1b289d55cf0f82f704a995754273d03c529b5c6c1f2fad370eec8f5d850; fingerprint634c02d6868b4b52199e9ab56d24e172c4dae9e4e1231b204dce206f0d59087b. Raw1849 posts,940 unique listed posts, new DB IDs1914–1920 only; no old post removed/changed. All seven new JPEG media passed bootstrap integrity. All628 required source identities represented;609 immutable successes and19 established historical fallbacks, zero unresolved/hash mismatches. Full expected route count4238.
-Pre-promotion proofdf17fd78118c76fe35ba60a09aeb7b3df82d703f902c4b4ac38efe1f10df7da6:PASS, all route/content/category/media/SEO/visual/zero-origin gates. Actual runtimeNode22.23.3/Playwright1.63.0/Chromium153.0.8010.12. Promotion APPLIED artifact0208512d4da8e1dca089f6d5e2ab30dbc45c9a63e21991f264e742e5a867cb77 matches current deployment.
+PROVEN REPAIRS AND LIMITS
+Hosted diagnostic38578178875 proved Chromium absent before installation. Complete hosted/posts/ baseline99201bytes/0.694014s and candidate97543bytes/0.115289s both HTTP200, curl0, correctly attributed; no confirmed production corruption from local transfer failures.
+Missing backend build_bundle context caused the early production rejection. Structured sanitized browser/crawl rejection evidence, authority references/staging root, POSIX inventory order, strictly bound legacy media lineage/current bootstrap records and persistence journal path were repaired and tested.
+Static archive/home search and pagination restored; public SSR metadata uses the read-only SEO endpoint.
+Real-data regression/preflight fixtures, focused unit tests, positive/negative browser self-test and website build passed. Audio observer follows the transplanted native player and preserves normal browser cache; accepted visual/version/dependency guards are unchanged.
+Scheduled PUBLISHER_MODE_SCHEDULED=CHECK_ONLY, read directly. Future changes are detected; accepted normal publication behavior has been exercised.
+No destructive admin CRUD, token rotation or D1 mutation was exercised.19 historical unavailable-source fallbacks remain accepted; none affects the seven new posts.
 
-Candidate functionality38643029168:15/15 PASS before Promotion.
-Actual unpinned production functionality38644334256:SUCCESS/PASS,15/15, no version override. Archive pagination20→40; database-ID search/home/category navigation; all7 new articles with6 decoded images each; loaded fonts; visible native audio782 playing60.584479s and video292 playing7.105215s; admin login visible and unauthenticated API401; no JavaScript errors or forbidden runtime dependencies.
-Sanitized live result rawSHA c7b53bdd0c763207a8daf1ff2a5a3fd0bf4daa73510c0d4a0545edb37665553a; observations/screenshots retained in GitHub artifacts and Temp/mahoon-live-acceptance-38644334256.
-
-Earlier revision163 durably COMPLETED in38634275983; independent reconciliation38635735894 SUCCESS; generation119 active/pending null then. Real proof5eabba732b07a9a1594f72127c3855cd13a432b507ccee7bccc7ab7c2aa39194 measured38599823193. Exact six-file state commit7c0be71556f041ec940e6f7d3264cd2dca766675 and closing journal349998b; all six remote Git blobs independently matched evidence. No163 APPLIED mutation repeated.
-
-Engineering fixes committed/pushed:browser runtime/backend context; sanitized retained failures; full artifact authority chain; POSIX inventory sorting; strict sealed legacy media recovery and refreshed current records; static archive/home search and load-more; correct persistence journal path; small sealed content metadata. Diagnostic observer corrections exclude empty auxiliary audio, follow transplanted native player, preserve font/media/HTTP failure context, and avoid cache-disabling request interception. Read-only audio matrix38641990258 proves complete identical audio SHA/bytes on baseline and candidate, finite duration/playback with normal browser cache, and explains interception-induced Infinity. Existing public dependency classifier is reused; accepted guards unchanged.97 focused workflow/observer tests, real positive/negative browser self-test, archive/media selector fixtures and website build pass. Production code source018f896; latest diagnostic implementation1593816.
-
-Required final steps:real production proof/persistence/completed journal, independent exact six-file/live-state verification, reconciliation, fresh authoritative CHECK_ONLY revision read and bounded catch-up if needed, clear final cutoff and final report commit. This progress report is not a final PASS.
+REMAINING
+Finish this same real production proof, final-state materialization and final persistence. Independently verify proof hashes, all six remote state Git blobs, completed journal and fresh live100/0. Run canonical reconciliation and final CHECK_ONLY; compare with the declared cutoff, without indefinite chasing later arrivals. Then replace this BLOCKED checkpoint with the actual final report and safely push it.
