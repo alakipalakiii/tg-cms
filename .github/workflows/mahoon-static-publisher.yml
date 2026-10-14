@@ -1147,6 +1147,18 @@ jobs:
             code/runner-build/production-media-manifest.json
             code/runner-build/published-route-manifest.json
           if-no-files-found: error
+      - name: Retain small sealed build metadata for independent content acceptance
+        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: a6-build-metadata-${{ github.run_id }}
+          path: |
+            code/runner-evidence/v1-build-bundle.json
+            code/runner-evidence/current-v2-snapshot.json
+            code/runner-evidence/prepromotion-local-gates.json
+            code/runner-build/production-media-manifest.json
+            code/runner-build/published-route-manifest.json
+          if-no-files-found: error
 
   build-ready-write:
     needs: build-validate

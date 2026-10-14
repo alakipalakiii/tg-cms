@@ -496,6 +496,15 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         ):
             self.assertIn(f'--reference "$workspace/handoff/{path}"', observer["run"])
 
+    def test_build_metadata_retains_bound_snapshot_without_large_site_transfer(self):
+        step = next(s for s in self.job("build-validate")["steps"]
+                    if s.get("name") == "Retain small sealed build metadata for independent content acceptance")
+        self.assertEqual("actions/upload-artifact@v4", step["uses"])
+        self.assertEqual("error", step["with"]["if-no-files-found"])
+        for name in ("v1-build-bundle.json", "current-v2-snapshot.json", "production-media-manifest.json", "published-route-manifest.json"):
+            self.assertIn(name, step["with"]["path"])
+        self.assertNotIn("publisher-sealed/", step["with"]["path"])
+
     def test_finalization_references_authorities_and_uses_transaction_staging_root(self):
         for name in ("final-state-materialization", "final-persistence"):
             job = self.job(name)
