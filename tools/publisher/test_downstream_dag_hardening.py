@@ -454,6 +454,17 @@ class DownstreamDagHardeningTests(unittest.TestCase):
             self.assertIn("browser-diagnostic.json", str(evidence_upload.get("with", {})))
             self.assertIn("browser-self-test.json", str(evidence_upload.get("with", {})))
 
+    def test_production_proof_references_the_full_promotion_authority_chain(self):
+        proof = self.job("production-proof")
+        observer = next(step for step in proof["steps"]
+                        if step.get("name") == "Observe and seal combined production proof")
+        for path in (
+            "runner-evidence/v1-build-bundle.json",
+            "pre-promotion-proof.json",
+            "admission.json",
+        ):
+            self.assertIn(f'--reference "$workspace/handoff/{path}"', observer["run"])
+
     def test_passing_preproof_can_be_carried_forward_with_complete_lineage(self):
         inputs = self.WORKFLOW["on"]["workflow_dispatch"]["inputs"]
         self.assertIn("preproof_source_run_id", inputs)

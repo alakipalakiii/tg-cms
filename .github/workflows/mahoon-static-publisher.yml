@@ -2649,7 +2649,8 @@ jobs:
           upload_result="$workspace/handoff/upload-result.json"
           zero_result="$workspace/handoff/zero-percent-result.json"
           promote_result="$workspace/handoff/promote-result.json"
-          refs=(--reference "$workspace/handoff/admission.json" --reference "$workspace/handoff/upload-intent.json" --reference "$workspace/handoff/zero-percent-intent.json" --reference "$workspace/handoff/promote-intent.json"
+          refs=(--reference "$workspace/handoff/runner-evidence/v1-build-bundle.json" --reference "$workspace/handoff/pre-promotion-proof.json"
+                --reference "$workspace/handoff/admission.json" --reference "$workspace/handoff/upload-intent.json" --reference "$workspace/handoff/zero-percent-intent.json" --reference "$workspace/handoff/promote-intent.json"
                 --reference "$workspace/handoff/upload-result.json" --reference "$workspace/handoff/zero-percent-result.json" --reference "$workspace/handoff/promote-result.json")
           if [ '${{ needs.upload-create-recovered-result.outputs.recovered }}' = 'true' ]; then
             upload_result="$workspace/handoff/recovered-upload-result.json"
