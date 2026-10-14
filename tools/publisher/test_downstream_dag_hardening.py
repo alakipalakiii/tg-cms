@@ -482,6 +482,8 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         self.assertIn("page.request.get('https://api.mahoonartmagazine.ir/admin/health')", script)
         self.assertIn("assert.equal(response.status(), 401)", script)
         self.assertIn("checks.length === 8 + newPosts.length", script)
+        self.assertIn("document.fonts.status === 'loaded'", script)
+        self.assertIn("document.fonts.check('12px MahoonFont')", script)
 
     def test_production_proof_references_the_full_promotion_authority_chain(self):
         proof = self.job("production-proof")

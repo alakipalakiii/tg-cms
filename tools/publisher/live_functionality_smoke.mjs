@@ -39,6 +39,9 @@ async function navigate(path) {
   const response = await page.goto(base + path, { waitUntil: 'domcontentloaded', timeout: 60000 });
   assert.equal(response.status(), 200);
   assert.equal(response.headers()['x-mahoon-worker-version'], expected);
+  await page.waitForFunction(() => document.fonts.status === 'loaded'
+    && document.fonts.check('12px MahoonFont')
+    && getComputedStyle(document.body).fontFamily.includes('MahoonFont'), null, { timeout: 30000 });
   return path;
 }
 
