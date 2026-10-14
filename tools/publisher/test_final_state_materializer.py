@@ -139,6 +139,19 @@ class FinalStateMaterializerTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.f = _fixture(Path(self.temp.name))
 
+    def test_inventory_matches_builder_relative_path_order_for_prefix_routes(self):
+        for name in ("post/50/index.html", "post/50-title/index.html"):
+            path = self.f.site / name
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b"prefix-route fixture")
+        expected = ["index.html", "post/50-title/index.html", "post/50/index.html"]
+        inventory = materializer._site_inventory(self.f.site)
+        self.assertEqual(expected, [entry["path"] for entry in inventory])
+        for entry in inventory:
+            raw = (self.f.site / entry["path"]).read_bytes()
+            self.assertEqual(len(raw), entry["size_bytes"])
+            self.assertEqual(contracts.sha256_bytes(raw), entry["sha256"])
+
     def materialize(self, **changes):
         args = {
             "proof": self.f.proof, "build_bundle": self.f.bundle,

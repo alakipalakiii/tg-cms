@@ -49,7 +49,7 @@ def _site_inventory(root: Path) -> list[dict]:
     if not root.is_dir():
         raise MaterializationRejected("sealed site root is not a directory")
     result = []
-    for path in sorted(root.rglob("*")):
+    for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
         if path.is_symlink():
             raise MaterializationRejected("sealed site contains a symlink")
         if path.is_file():
