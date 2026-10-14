@@ -97,6 +97,9 @@ try {
   assert.equal(await page.locator(selectors.audio).count(), 1);
   assert.equal(await page.locator(selectors.audio).getAttribute('data-fixture'), 'native');
   assert.equal(await page.locator(selectors.video).getAttribute('data-fixture'), 'post');
+  await page.locator('[data-mahoon-native-player]').evaluate((node) => document.body.append(node));
+  assert.equal(await page.locator('#postArticle audio').count(), 0);
+  assert.equal(await page.locator(selectors.audio).getAttribute('data-fixture'), 'native');
   console.log('Static archive browser fixtures passed: pagination, media cards, database IDs, no-match/reset, category, home navigation, invalid index.');
 } finally {
   await browser.close();

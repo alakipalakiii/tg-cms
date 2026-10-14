@@ -10,7 +10,7 @@ assert.match(expected || '', /^[0-9a-f-]{36}$/);
 const candidatePinned = process.env.MAHOON_PIN_CANDIDATE === 'YES';
 const versionHeaders = candidatePinned ? { 'cloudflare-workers-version-overrides': `mahoon-art-magazine="${expected}"` } : {};
 const articleMediaSelectors = {
-  "audio": "#postArticle [data-mahoon-native-player] audio.mahoon-native-player__audio",
+  "audio": "[data-mahoon-native-player] audio.mahoon-native-player__audio",
   "video": "#postArticle video"
 };
 const output = 'runner-evidence/live-functionality';
@@ -21,6 +21,7 @@ const pageErrors = [];
 let newPosts = [];
 let browser, page;
 let failureStage = null;
+let mediaResponses = [];
 
 async function saveProgress(activeCheck) {
   await writeFile(`${output}/result.json`, JSON.stringify({ status: 'RUNNING', measured: Boolean(browser),
@@ -31,18 +32,21 @@ async function saveProgress(activeCheck) {
 
 async function check(name, action) {
   failureStage = null;
+  mediaResponses = [];
   await saveProgress(name);
   try {
     checks.push({ name, PASS: true, evidence: await action() });
   } catch (error) {
-    checks.push({ name, PASS: false, error_type: error.name, failure_stage: failureStage,
+    checks.push({ name, PASS: false, error_type: error.name, failure_stage: failureStage, media_responses: [...mediaResponses],
       page_state: await page.evaluate(() => ({
         path: location.pathname, font_status: document.fonts.status,
         font_available: document.fonts.check('12px MahoonFont'),
         media: [...document.querySelectorAll('audio,video')].map((node) => ({
           tag: node.tagName, native_article: Boolean(node.closest('#postArticle')),
+          native_player: Boolean(node.closest('[data-mahoon-native-player]')),
           source_path: node.currentSrc ? new URL(node.currentSrc).pathname : null,
           ready_state: node.readyState, duration: Number.isFinite(node.duration) ? node.duration : null,
+          duration_state: String(node.duration),
           current_time: node.currentTime, error_code: node.error?.code || null,
         })),
       })).catch(() => null),
@@ -75,7 +79,7 @@ async function playback(kind) {
     return node && node.readyState >= 2 && Number.isFinite(node.duration) && node.duration > 0;
   }, selector, { timeout: 30000 });
   failureStage = `${kind}_play_control`;
-  if (kind === 'audio') await page.locator('#postArticle [data-mahoon-native-player] .js-play:visible').first().click();
+  if (kind === 'audio') await page.locator('[data-mahoon-native-player] .js-play:visible').first().click();
   else await element.evaluate((node) => node.play());
   failureStage = `${kind}_play_progress`;
   await page.waitForFunction((tag) => document.querySelector(tag).currentTime > 0.1, selector, { timeout: 10000 });
@@ -92,6 +96,14 @@ try {
       ? { ...route.request().headers(), ...versionHeaders } : route.request().headers(),
   }));
   page.on('pageerror', (error) => pageErrors.push(error.name));
+  page.on('response', (response) => {
+    if (response.request().resourceType() === 'media') {
+      const headers = response.headers();
+      mediaResponses.push({ path: new URL(response.url()).pathname, status: response.status(),
+        content_type: headers['content-type'] || null, content_length: headers['content-length'] || null,
+        content_range: headers['content-range'] || null, actual_version: headers['x-mahoon-worker-version'] || null });
+    }
+  });
   page.on('request', (request) => {
     const url = new URL(request.url());
     if (url.hostname === 'api.mahoonartmagazine.ir' || url.hostname.endsWith('.workers.dev')
