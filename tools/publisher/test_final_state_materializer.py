@@ -152,6 +152,45 @@ class FinalStateMaterializerTests(unittest.TestCase):
             self.assertEqual(len(raw), entry["size_bytes"])
             self.assertEqual(contracts.sha256_bytes(raw), entry["sha256"])
 
+    def test_legacy_media_requires_bound_rendered_paths_and_photo_alias_pages(self):
+        root = Path(self.temp.name) / "legacy-site"
+        path = "/media/aa/photo.jpg"
+        blob = root / path.lstrip("/"); blob.parent.mkdir(parents=True); blob.write_bytes(b"sealed photo fixture")
+        page = root / "post/2/index.html"; page.parent.mkdir(parents=True)
+        page.write_text('<article id="postArticle"><img src="' + path + '"></article>', encoding="utf-8")
+        posts = [{"id": 1, "media_file_id": "direct", "photo_file_id": "direct", "media_type": "photo",
+                  "media_unique_id": "same-photo", "photo_unique_id": "same-photo"},
+                 {"id": 2, "media_file_id": "alias", "photo_file_id": "alias", "media_type": "photo",
+                  "media_unique_id": "same-photo", "photo_unique_id": "same-photo"}]
+        media = {"contract": "CURRENT_MEDIA_RESOLUTION_V1", "records": [], path: {
+            "source": "https://api.mahoonartmagazine.ir/media/direct", "readiness": "PASS",
+            "mime": "image/jpeg", "mahoon_sha256": contracts.sha256_bytes(blob.read_bytes()), "size": blob.stat().st_size}}
+        inventory = materializer._site_inventory(root)
+        def merge(value=media, rows=posts, files=inventory):
+            return materializer._merge_media_index(OLD_INDEX, {"exists": True}, rows, value,
+                sealed_root=root, inventory=files)
+        result = media_bootstrap.load_index_bytes(merge())
+        self.assertEqual(path, result["direct"]["immutable_path"])
+        self.assertEqual(result["direct"]["sha256"], result["alias"]["sha256"])
+        self.assertEqual("/media/cc/canonical.jpg", result["old-media"]["immutable_path"])
+        self.assertIn("retired-media", result)
+        bad = copy.deepcopy(media); bad[path]["mahoon_sha256"] = "0" * 64
+        with self.assertRaisesRegex(materializer.MaterializationRejected, "sealed inventory"):
+            merge(bad)
+        bad_posts = copy.deepcopy(posts); bad_posts[1]["media_unique_id"] = bad_posts[1]["photo_unique_id"] = "different"
+        with self.assertRaisesRegex(materializer.MaterializationRejected, "recorded peer"):
+            merge(rows=bad_posts)
+        page.write_text('<article id="postArticle"><img src="/media/other.jpg"></article>', encoding="utf-8")
+        with self.assertRaisesRegex(materializer.MaterializationRejected, "page differs"):
+            merge()
+        with self.assertRaisesRegex(materializer.MaterializationRejected, "rendered image differs"):
+            merge(files=materializer._site_inventory(root))
+
+    def test_partial_media_manifest_without_sealed_authority_stays_rejected(self):
+        with self.assertRaisesRegex(materializer.MaterializationRejected, "sealed inventory authority"):
+            materializer._merge_media_index(OLD_INDEX, {"exists": True}, self.f.posts,
+                dict(self.f.media_manifest, records=[]))
+
     def materialize(self, **changes):
         args = {
             "proof": self.f.proof, "build_bundle": self.f.bundle,

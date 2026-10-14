@@ -47,6 +47,7 @@ class AstroStaticMaterializerTests(unittest.TestCase):
         source = __import__("inspect").getsource(materializer.build)
         self.assertIn("_DirectWorkerRenderer", source)
         self.assertNotIn("_fetch_preview_html", source)
+        self.assertIn('media_manifest.update(json.loads(resolver.manifest.read_text', source)
 
     @unittest.skipIf(os.name == "nt", "Cloudflare preview fixture runs in the Linux CI runtime")
     def test_materializes_a_fixture_snapshot_without_snapshot_api(self) -> None:

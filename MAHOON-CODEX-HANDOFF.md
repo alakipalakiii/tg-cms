@@ -1,5 +1,13 @@
 # MAHOON finalization handoff
 
+## Current checkpoint: sealed media lineage repair
+
+Continuation 38614748331 retained the real PASS proof 5eabba732b07a9a1594f72127c3855cd13a432b507ccee7bccc7ab7c2aa39194 and passed physical seal/inventory validation, then rejected the stale media record list. No final persistence or repeated mutation occurred. Read-only metadata diagnostics 38617333828 and 38620206582 prove the original manifest mixed 580 prior records with 596 current rendered-path entries; the snapshot requires 621 identities. Forty missing identities have exact bound rendered-path/hash/size evidence. The remaining photo alias (DB ID1874) shares the unique media identity with1873, and its hash-verified sealed article renders the identical immutable image.
+
+The producer now refreshes current bootstrap records before writing the media manifest. Legacy finalization reads only bound rendered metadata and hash-verified alias HTML; incomplete, conflicting, changed or ambiguous evidence remains rejected. Original sealed manifest/proof bytes remain unchanged. Real remaining-data-contract preflight produced the exact six files and602 immutable index entries, preserving historical entries and adding41 successes. This local preflight does not claim physical seal validation; the hosted continuation must repeat it. Focused168 tests passed (one existing Linux-only skip), including negative lineage/hash/page tests. Current authoritative readback remains generation117, active163, candidate100% on deployment54325ccc, with no proof/state commit yet.
+
+Next: push this evidence-backed repair; run the same eight-input POST_PROMOTION_FINALIZE continuation including source_proof_run_id38599823193. It must finish persistence/reconciliation before any new content transaction. Then re-read and normally publish the latest authorized snapshot, including the static archive repair, and execute final functionality acceptance using baseline_run_id38605324686.
+
 **Status: `MAHOON_PROJECT_FINALIZED_AND_LIVE: BLOCKED`**
 
 ## Current production state
@@ -80,3 +88,5 @@ Continuation 38612179372 from c5c449c succeeded in proof carryforward: original 
 Exact producer/consumer discrepancy proved from retained real route-state data: 4,218 HTML artifact paths; exactly two list positions differ under relative-path lexical sorting vs Path-component sorting: post/50/index.html and post/50-روش-سالم-1783487267747/index.html. Producer _sealed_file_entries sorts relative POSIX strings, while materializer _site_inventory used Path ordering. New golden prefix-route test failed before the fix and passed afterward. One-line fix makes inventory sorting match the producer, preserving all exact size/hash checks and existing artifact seal verification. All16 final-state materializer tests passed.
 
 Current extra read-only diagnostic38613088632 (c5c449c) checks actual visible audio play controls; it is active/awaiting result and should be inspected. Latest content transaction has NOT started. Next: commit/ff-push one-line ordering fix+regression and checkpoint; reverify live/journal; use the same eight continuation inputs including source_proof_run_id38599823193. Do not recrawl or repeat mutations.
+
+One-line sorting repair pushed: b8551b25d64870afc209bb2069e8a35508d90470. Fresh preflight still generation117/active163/operation_reported/no pending/no proof-or-state SHA, unchanged APPLIED counts, same deployment54325ccc and candidate100/baseline0, no competing runs. A new eight-input POST_PROMOTION_FINALIZE continuation was just dispatched; obtain run ID from GitHub before dispatching anything else. 38613088632 finished: visible audio UI playback PASS, video PASS, latest article PASS, no forbidden dependencies/JS errors; all old archive/home/category controls still fail as expected before the new static client is published. Do not rerun the old-version functionality diagnostic again.

@@ -377,6 +377,8 @@ def build(out: Path) -> dict:
     smoke = _preview_smoke(routes)
     _write_search_index(out, snapshot_path)
     media_path = out.parent / "production-media-manifest.json"
+    if resolver.manifest.is_file():
+        media_manifest.update(json.loads(resolver.manifest.read_text(encoding="utf-8")))
     media_path.write_text(json.dumps(media_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     resolution_path = out.parent / "p0-media-resolution.json"
     resolution_path.write_text(json.dumps(resolver.stats, ensure_ascii=False, indent=2), encoding="utf-8")

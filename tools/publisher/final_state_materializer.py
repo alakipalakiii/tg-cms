@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Mapping
 
@@ -81,8 +82,77 @@ def _snapshot_posts(raw: bytes, bundle: Mapping) -> tuple[list[dict], int]:
     return posts, count
 
 
+def _legacy_rendered_records(media: Mapping, posts: list[dict], required: Mapping,
+                             root: Path, inventory: list[dict]) -> list[dict]:
+    from publisher.static_media_resolver import PublishedMediaResolver
+
+    records = {record["source_identifier"]: dict(record) for record in media["records"]}
+    files = {entry["path"]: entry for entry in inventory}
+    rendered = False
+    for path, value in media.items():
+        if not isinstance(path, str) or not path.startswith("/media/"):
+            continue
+        rendered = True
+        source = value.get("source", "")
+        if not isinstance(source, str) or not source.startswith("https://api.mahoonartmagazine.ir/media/"):
+            raise MaterializationRejected("legacy rendered media source is invalid")
+        identity = PublishedMediaResolver.source_identifier(value["source"])
+        file = files.get(path.lstrip("/"))
+        if (identity not in required or file is None or value.get("readiness") != "PASS"
+                or file["sha256"] != value.get("mahoon_sha256") or file["size_bytes"] != value.get("size")
+                or not isinstance(value.get("mime"), str)):
+            raise MaterializationRejected("legacy rendered media does not match sealed inventory")
+        record = {"source_identifier": identity, "immutable_path": path, "sha256": file["sha256"],
+                  "mime": value["mime"], "media_type": required[identity]["media_type"], "fallback": False,
+                  "post_ids": required[identity]["post_ids"]}
+        if identity in records:
+            if any(records[identity].get(key) != record[key] for key in ("immutable_path", "sha256", "mime", "fallback")):
+                raise MaterializationRejected("legacy rendered media conflicts with its recorded identity")
+        else:
+            records[identity] = record
+    if not rendered:
+        raise MaterializationRejected("current media manifest does not match snapshot identities")
+
+    # shortcut: only photo aliases are supported in the legacy mixed manifest; other aliases require new sealed evidence.
+    for identity in set(required) - set(records):
+        aliases = [post for post in posts if (identity, "photo") in media_bootstrap.source_identifiers(post)]
+        if not aliases or required[identity]["media_type"] != "photo":
+            raise MaterializationRejected("legacy media identity has no sealed recovery evidence")
+        recovered = None
+        for post in aliases:
+            if (len(media_bootstrap.source_identifiers(post)) != 1 or not post.get("media_unique_id")
+                    or post.get("media_unique_id") != post.get("photo_unique_id")):
+                raise MaterializationRejected("legacy photo alias identity is ambiguous")
+            peers = {record["immutable_path"]: record for peer in posts
+                     if peer.get("media_unique_id") == post["media_unique_id"]
+                     and peer.get("photo_unique_id") == post["photo_unique_id"]
+                     for source_id, kind in media_bootstrap.source_identifiers(peer)
+                     if kind == "photo" and source_id in records
+                     for record in [records[source_id]] if record.get("fallback") is False}
+            if len(peers) != 1:
+                raise MaterializationRejected("legacy photo alias has no unique recorded peer")
+            relative = f'post/{post["id"]}/index.html'
+            page = root / relative
+            if page.is_symlink() or relative not in files:
+                raise MaterializationRejected("legacy photo alias page is missing or unsafe")
+            data = page.read_bytes()
+            if contracts.sha256_bytes(data) != files[relative]["sha256"] or len(data) != files[relative]["size_bytes"]:
+                raise MaterializationRejected("legacy photo alias page differs from sealed inventory")
+            image = re.search(r'<article\b[^>]*\bid=["\']postArticle["\'][^>]*>.*?<img\b[^>]*\bsrc=["\']([^"\']+)',
+                              data.decode("utf-8"), re.S)
+            peer = next(iter(peers.values()))
+            if image is None or image.group(1) != peer["immutable_path"]:
+                raise MaterializationRejected("legacy photo alias rendered image differs from peer")
+            if recovered is not None and recovered["sha256"] != peer["sha256"]:
+                raise MaterializationRejected("legacy photo alias pages disagree")
+            recovered = dict(peer, source_identifier=identity, post_ids=required[identity]["post_ids"])
+        records[identity] = recovered
+    return [records[identity] for identity in sorted(records)]
+
+
 def _merge_media_index(prior_raw: bytes, binding: Mapping, posts: list[dict],
-                       media: Mapping) -> bytes:
+                       media: Mapping, *, sealed_root: Path | None = None,
+                       inventory: list[dict] | None = None) -> bytes:
     exists = binding["exists"]
     previous = json.loads(prior_raw.decode("utf-8")) if exists else None
     if previous is not None:
@@ -103,8 +173,14 @@ def _merge_media_index(prior_raw: bytes, binding: Mapping, posts: list[dict],
         raise MaterializationRejected("current media records are invalid")
     identities = [item.get("source_identifier") if isinstance(item, dict) else None
                   for item in records]
-    if identities != sorted(required) or len(set(identities)) != len(identities):
+    if len(set(identities)) != len(identities) or identities != sorted(identities) or not set(identities) <= set(required):
         raise MaterializationRejected("current media manifest does not match snapshot identities")
+    if identities != sorted(required):
+        if sealed_root is None or inventory is None:
+            raise MaterializationRejected("legacy media manifest requires sealed inventory authority")
+        records = _legacy_rendered_records(media, posts, required, sealed_root, inventory)
+        if [record["source_identifier"] for record in records] != sorted(required):
+            raise MaterializationRejected("current media manifest does not match snapshot identities")
     for record in records:
         identity = record["source_identifier"]
         if record.get("post_ids") != required[identity]["post_ids"]:
@@ -226,7 +302,7 @@ def materialize_final_state(*, proof: object, build_bundle: object,
             }),
             "publisher-state/production-media-manifest.json": media_manifest_bytes,
             "publisher-state/immutable-media-index.json": _merge_media_index(
-                prior_raw, binding, posts, media,
+                prior_raw, binding, posts, media, sealed_root=Path(sealed_root), inventory=inventory,
             ),
             "publisher-state/published-route-manifest.json": route_manifest_bytes,
             "publisher-state/current-accepted-route-manifest.json": route_manifest_bytes,

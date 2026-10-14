@@ -34,26 +34,31 @@ jobs:
           python - <<'PY'
           import json, base64
           from pathlib import Path
-          from publisher import artifact_contract, artifact_transport, final_state_materializer, media_bootstrap
+          from publisher import artifact_contract, artifact_transport, final_state_materializer, media_bootstrap, seal_artifact
           root = Path('handoff')
           bundle = artifact_transport.read_artifact(root / 'runner-evidence/v1-build-bundle.json', expected_type='build_bundle')
           snapshot = json.loads((root / 'runner-evidence/current-v2-snapshot.json').read_text())
           media = json.loads((root / 'runner-build/production-media-manifest.json').read_text())
           required = {identity for post in snapshot['payload']['posts'] for identity, _ in media_bootstrap.source_identifiers(post)}
           identities = [record['source_identifier'] for record in media['records']]
+          sealed = root / 'runner-evidence/publisher-sealed' / bundle['payload']['content_fingerprint']
+          site = sealed / 'site'
+          assert seal_artifact.verify_seal(site, json.loads((sealed / 'artifact-seal.json').read_text()))
+          inventory = final_state_materializer._site_inventory(site)
+          assert inventory == bundle['payload']['files']
           report = {'snapshot_posts': len(snapshot['payload']['posts']), 'required_identities': len(required),
                     'manifest_records': len(identities), 'order_equal': identities == sorted(required),
                     'sets_equal': set(identities) == required, 'missing_count': len(required-set(identities)),
                     'extra_count': len(set(identities)-required)}
           try:
               final_state_materializer._merge_media_index(base64.b64decode(bundle['payload']['prior_immutable_media_index']['transport_base64']),
-                  bundle['payload']['prior_immutable_media_index'], snapshot['payload']['posts'], media)
+                  bundle['payload']['prior_immutable_media_index'], snapshot['payload']['posts'], media,
+                  sealed_root=site, inventory=inventory)
               report['merge'] = 'PASS'
           except final_state_materializer.MaterializationRejected as error:
               report['merge'] = 'BLOCKED'; report['reason'] = str(error)
           Path('metadata-status.json').write_text(json.dumps(report, sort_keys=True)+'\n')
           pages = Path('media-lineage-pages'); pages.mkdir()
-          site = root / 'runner-evidence/publisher-sealed' / bundle['payload']['content_fingerprint'] / 'site'
           files = {entry['path']: entry for entry in bundle['payload']['files']}
           for post_id in (1873, 1874):
               relative = f'post/{post_id}/index.html'
