@@ -1413,7 +1413,7 @@ jobs:
       - name: Download the source run's sealed upload result
         uses: actions/download-artifact@v4
         with:
-          name: a6-upload-result-${{ inputs.resume_source_run_id }}
+          name: a6-upload-direct-result-${{ inputs.resume_source_run_id }}
           path: handoff
           run-id: ${{ inputs.resume_source_run_id }}
           repository: ${{ github.repository }}

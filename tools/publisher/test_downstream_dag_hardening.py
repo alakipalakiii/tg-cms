@@ -362,6 +362,11 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         # Must output carried=true on success.
         self.assertIn("carried=true", job_str)
 
+    def test_resume_upload_carryforward_downloads_the_canonical_direct_result(self):
+        job = self.job("resume-source-carryforward")
+        self.assertIn("a6-upload-direct-result-${{ inputs.resume_source_run_id }}", str(job))
+        self.assertNotIn("a6-upload-result-${{ inputs.resume_source_run_id }}", str(job))
+
     # Missing or mismatched evidence must fail closed: if the carryforward job
     # did NOT run (resume not APPLIED), the zero-percent-intent-write gate
     # falls back to the normal direct/recovered path, and the pre-promotion-proof
