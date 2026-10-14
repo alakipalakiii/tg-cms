@@ -8,7 +8,7 @@ on:
         required: true
         default: CHECK_ONLY
         type: choice
-        options: [CHECK_ONLY, AUTO_TICK, PUBLISH, BUILD_AND_ZERO_PERCENT, REMOTE_PROOF, PROMOTE_AND_VALIDATE, CONTENT_DIAGNOSTIC, SAFETY_TESTS_ONLY, BROWSER_DIAGNOSTIC, RESUME_ADMITTED, RETIRE_STALE_ADMITTED]
+        options: [CHECK_ONLY, AUTO_TICK, PUBLISH, BUILD_AND_ZERO_PERCENT, REMOTE_PROOF, PROMOTE_AND_VALIDATE, CONTENT_DIAGNOSTIC, SAFETY_TESTS_ONLY, BROWSER_DIAGNOSTIC, RESUME_ADMITTED, POST_PROMOTION_FINALIZE, RETIRE_STALE_ADMITTED]
       expected_fingerprint:
         description: "Optional reviewed pending-candidate fingerprint for a no-change proof"
         required: false
@@ -597,7 +597,7 @@ jobs:
 
   # A6 source-pinned, artifact-carried transaction stages.
   journal-bootstrap:
-    if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && !(github.event_name == 'workflow_dispatch' && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'RETIRE_STALE_ADMITTED' || inputs.mode == 'BROWSER_DIAGNOSTIC')) }}
+    if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && !(github.event_name == 'workflow_dispatch' && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE' || inputs.mode == 'RETIRE_STALE_ADMITTED' || inputs.mode == 'BROWSER_DIAGNOSTIC')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
@@ -611,16 +611,17 @@ jobs:
         run: python code/tools/publisher/workflow_stage_cli.py bootstrap-journal --repository state --worker mahoon-art-magazine --remote origin --branch main
 
   journal-resume-verify:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'RESUME_ADMITTED' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state, persist-credentials: false }
       - name: Verify pristine admission or the exact in-flight APPLIED transaction without writing state
         env:
+          REQUESTED_MODE: ${{ inputs.mode }}
           REQUESTED_TRANSACTION_ID: ${{ inputs.transaction_id }}
           REQUESTED_READY: ${{ inputs.ready }}
           REQUESTED_RESUME_SOURCE_SHA: ${{ inputs.resume_source_sha }}
@@ -630,6 +631,9 @@ jobs:
           python - <<'PY'
           import json, os, hashlib
           from pathlib import Path
+          mode = os.environ.get("REQUESTED_MODE", "RESUME_ADMITTED")
+          assert mode in {"RESUME_ADMITTED", "POST_PROMOTION_FINALIZE"}, "unsupported resume mode"
+          post_finalize = mode == "POST_PROMOTION_FINALIZE"
           tx_id = os.environ["REQUESTED_TRANSACTION_ID"]
           ready = os.environ["REQUESTED_READY"]
           resume_sha = os.environ["REQUESTED_RESUME_SOURCE_SHA"]
@@ -642,6 +646,7 @@ jobs:
               "resume_source_sha must be a 40-hex-digit executable source SHA-1"
           assert source_run_id.isdecimal() and int(source_run_id) > 0, "source_run_id must be a positive run ID"
           in_flight = resume_source_run_id not in ("", "0")
+          assert not post_finalize or in_flight, "post-promotion finalization requires an in-flight source run"
           if in_flight:
               assert resume_source_run_id.isdecimal() and int(resume_source_run_id) > 0, \
                   "resume_source_run_id must be a positive run ID"
@@ -668,6 +673,23 @@ jobs:
               return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
           promote = operations["promote"]
           promote_attempts = promote["attempts"]
+          post_promotion_pending = (
+              post_finalize and in_flight and active["state"] == "intent_recorded"
+              and active["recovery_status"] == "NONE"
+              and promote["intent_state"] == "RECORDED"
+              and promote["result_state"] == "NOT_REPORTED"
+              and len(promote_attempts) == 2
+              and promote_attempts[0].get("attempt_number") == 1
+              and promote_attempts[0].get("intent_state") == "RECORDED"
+              and promote_attempts[0].get("result_state") == "NOT_APPLIED"
+              and valid_sha(promote_attempts[0].get("intent_artifact_sha256"))
+              and valid_sha(promote_attempts[0].get("result_digest"))
+              and promote_attempts[1].get("attempt_number") == 2
+              and promote_attempts[1].get("intent_state") == "RECORDED"
+              and promote_attempts[1].get("result_state") == "NOT_REPORTED"
+              and valid_sha(promote_attempts[1].get("intent_artifact_sha256"))
+              and promote_attempts[1].get("result_digest") is None
+          )
           reconciled_promote_retry = (
               in_flight and active["state"] == "operation_reported"
               and active["recovery_status"] == "RECONCILED_NOT_APPLIED"
@@ -683,8 +705,11 @@ jobs:
           assert active["recovery_status"] == "NONE" or reconciled_promote_retry, \
               "recovery is not a single reconciled-not-applied promotion"
           if in_flight:
-              assert active["state"] == "operation_reported", \
-                  f"active state is {active['state']}, not operation_reported"
+              if post_finalize:
+                  assert post_promotion_pending, "journal is not the exact pending APPLIED-promotion finalization state"
+              else:
+                  assert active["state"] == "operation_reported", \
+                      f"active state is {active['state']}, not operation_reported"
               assert valid_sha(active["build_bundle_sha256"]), "in-flight build bundle digest is missing or invalid"
               for name in ("upload_version", "deploy_zero_percent"):
                   op = operations[name]
@@ -698,11 +723,13 @@ jobs:
                       f"operation {name} attempt evidence is incomplete"
               for name in ("promote", "rollback"):
                   op = operations[name]
-                  if name == "promote" and reconciled_promote_retry:
+                  if name == "promote" and (reconciled_promote_retry or post_promotion_pending):
                       continue
                   assert op["attempts"] == [] and op["intent_state"] == "NOT_STARTED" \
                       and op["result_state"] == "NOT_REPORTED", f"operation {name} has progress"
-              resume_kind = "IN_FLIGHT_RECONCILED_PROMOTE_RETRY" if reconciled_promote_retry else "IN_FLIGHT_APPLIED"
+              resume_kind = ("POST_PROMOTION_FINALIZATION_PENDING" if post_promotion_pending else
+                             "IN_FLIGHT_RECONCILED_PROMOTE_RETRY" if reconciled_promote_retry else
+                             "IN_FLIGHT_APPLIED")
           else:
               assert active["state"] == "admitted", f"active state is {active['state']}, not admitted"
               assert active["build_bundle_sha256"] is None, "build bundle already set"
@@ -717,18 +744,18 @@ jobs:
 
   revision-resolve:
     needs: [journal-bootstrap, journal-resume-verify]
-    if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.mode == 'RESUME_ADMITTED' && needs.journal-resume-verify.result == 'success') || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && !(github.event_name == 'workflow_dispatch' && inputs.mode == 'RESUME_ADMITTED') && needs.journal-bootstrap.result == 'success')) }}
+    if: ${{ always() && ((github.event_name == 'workflow_dispatch' && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && needs.journal-resume-verify.result == 'success') || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && !(github.event_name == 'workflow_dispatch' && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE')) && needs.journal-bootstrap.result == 'success')) }}
     runs-on: ubuntu-latest
     permissions: { contents: read, actions: read }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state, persist-credentials: false }
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - name: Download the immutable revision artifact from the admitted run
-        if: ${{ inputs.mode == 'RESUME_ADMITTED' }}
+        if: ${{ inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE' }}
         uses: actions/download-artifact@v4
         with:
           name: a6-revision-${{ inputs.source_run_id }}
@@ -737,7 +764,7 @@ jobs:
           repository: ${{ github.repository }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Revalidate and carry forward the original revision artifact unchanged
-        if: ${{ inputs.mode == 'RESUME_ADMITTED' }}
+        if: ${{ inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE' }}
         env:
           REQUESTED_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           RESUME_SOURCE_RUN_ID: ${{ inputs.resume_source_run_id }}
@@ -786,7 +813,7 @@ jobs:
           print(f"RESUME_REVISION_ARTIFACT=UNCHANGED; PUBLIC_REVISION={public_revision}; ACTIVE_REVISION={active_revision}; IN_FLIGHT={in_flight}; GENERATION={journal['generation']}")
           PY
       - name: Resolve revision for a new transaction
-        if: ${{ inputs.mode != 'RESUME_ADMITTED' }}
+        if: ${{ inputs.mode != 'RESUME_ADMITTED' && inputs.mode != 'POST_PROMOTION_FINALIZE' }}
         run: python code/tools/publisher/workflow_stage_cli.py resolve-revision --published-state state/publisher-state/production-content-fingerprint.json --output revision-resolution.json
       - uses: actions/upload-artifact@v4
         with:
@@ -803,7 +830,7 @@ jobs:
       decision: ${{ steps.admit-reuse.outputs.decision || steps.admit.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -855,14 +882,14 @@ jobs:
 
   resume-admission:
     needs: [journal-resume-verify, revision-resolve]
-    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.mode == 'RESUME_ADMITTED' && needs.journal-resume-verify.result == 'success' && needs.revision-resolve.result == 'success' }}
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && needs.journal-resume-verify.result == 'success' && needs.revision-resolve.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: read, actions: read }
     outputs:
       decision: ${{ steps.admit.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state, persist-credentials: false }
       - uses: actions/download-artifact@v4
@@ -935,12 +962,12 @@ jobs:
 
   build-validate:
     needs: [admission, resume-admission]
-    if: ${{ always() && ((inputs.mode == 'RESUME_ADMITTED' && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED' && (inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0')) || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED')) }}
+    if: ${{ always() && (((inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED' && (inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0')) || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED')) }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -964,7 +991,8 @@ jobs:
           PYTHONPATH: code/tools/publisher:code/tools:code
           RESUME_SOURCE_RUN_ID: ${{ inputs.resume_source_run_id }}
           SOURCE_ADMISSION_SHA: ${{ inputs.resume_source_admission_sha }}
-          RESUME_MODE: ${{ inputs.mode == 'RESUME_ADMITTED' }}
+          RESUME_MODE: ${{ inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE' }}
+          POST_PROMOTION_FINALIZE: ${{ inputs.mode == 'POST_PROMOTION_FINALIZE' }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python - <<'PY'
@@ -983,7 +1011,10 @@ jobs:
               f"resume admission decision is {admission['payload']['decision']}, not ADMITTED or COALESCED"
           assert admission["payload"]["journal_generation"] >= 1, \
               f"resume admission generation {admission['payload']['journal_generation']} is invalid"
-          assert active["state"] in {"operation_reported", "build_ready"}, f"resume requires a resumable active state, got {active['state']}"
+          allowed_states = {"operation_reported", "build_ready"}
+          if os.environ.get("POST_PROMOTION_FINALIZE", "false").lower() == "true":
+              allowed_states.add("intent_recorded")
+          assert active["state"] in allowed_states, f"resume requires a resumable active state, got {active['state']}"
           assert bundle["transaction"] == admission["transaction"] and admission["artifact_sha256"] == bundle["payload"]["admission_receipt_sha256"], "resume build bundle does not seal the source admission"
           if os.environ.get("SOURCE_ADMISSION_SHA"):
               assert admission["artifact_sha256"] == os.environ["SOURCE_ADMISSION_SHA"], "resume admission seal drifted"
@@ -1000,8 +1031,8 @@ jobs:
         if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
-          EXECUTION_SHA: ${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}
-          RESUME_MODE: ${{ inputs.mode == 'RESUME_ADMITTED' }}
+          EXECUTION_SHA: ${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}
+          RESUME_MODE: ${{ inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE' }}
         run: |
           python - <<'PY'
           import json, os
@@ -1044,7 +1075,7 @@ jobs:
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
           PUBLISHER_MODE: BUILD_VALIDATE
-          MAHOON_EXECUTION_SHA: ${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}
+          MAHOON_EXECUTION_SHA: ${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}
           MAHOON_REVISION_RESOLUTION_ARTIFACT: ../handoff/revision-resolution.json
           MAHOON_ADMISSION_RECEIPT_ARTIFACT: ../handoff/admission.json
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -1053,8 +1084,8 @@ jobs:
         if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
-          EXECUTION_SHA: ${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}
-          RESUME_MODE: ${{ inputs.mode == 'RESUME_ADMITTED' }}
+          EXECUTION_SHA: ${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}
+          RESUME_MODE: ${{ inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE' }}
           MAHOON_PUBLIC_CONTENT_REVISION_API: https://mahoon-content-revision.morentoofficial.workers.dev/public/content-revision-v1
         run: |
           python - <<'PY'
@@ -1086,12 +1117,12 @@ jobs:
 
   build-ready-write:
     needs: build-validate
-    if: ${{ !cancelled() && ((inputs.mode == 'PUBLISH' || inputs.mode == 'PROMOTE_AND_VALIDATE') && needs.build-validate.result == 'success' && needs.admission.result == 'success') || (inputs.mode == 'RESUME_ADMITTED' && needs.build-validate.result == 'success' && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED') }}
+    if: ${{ !cancelled() && ((inputs.mode == 'PUBLISH' || inputs.mode == 'PROMOTE_AND_VALIDATE') && needs.build-validate.result == 'success' && needs.admission.result == 'success') || ((inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && needs.build-validate.result == 'success' && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED') }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - name: Download the source run's sealed build bundle (in-flight resume)
@@ -1272,7 +1303,7 @@ jobs:
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1297,7 +1328,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1338,7 +1369,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -1595,7 +1626,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -1630,7 +1661,7 @@ jobs:
       decision: ${{ steps.decision.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1659,7 +1690,7 @@ jobs:
       reconciliation: ${{ steps.reconcile.outputs.reconciliation }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1680,7 +1711,7 @@ jobs:
       recovered: ${{ steps.bridge.outputs.recovered }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1714,7 +1745,7 @@ jobs:
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1749,7 +1780,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1807,7 +1838,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -1834,7 +1865,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -1867,7 +1898,7 @@ jobs:
       decision: ${{ steps.decision.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1896,7 +1927,7 @@ jobs:
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1914,7 +1945,7 @@ jobs:
       recovered: ${{ steps.bridge.outputs.recovered }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1950,7 +1981,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       # Keep the published build source-pinned; use current read-only proof tooling for bounded diagnostics.
       - uses: actions/checkout@v4
         with: { ref: '${{ github.sha }}', path: diagnostics, persist-credentials: false }
@@ -2022,7 +2053,7 @@ jobs:
 
   resume-preproof-carryforward:
     needs: [build-ready-write, resume-zero-carryforward]
-    if: ${{ always() && inputs.mode == 'RESUME_ADMITTED' && inputs.preproof_source_run_id != '' && inputs.preproof_source_run_id != null && inputs.preproof_source_run_id != '0' && needs.build-ready-write.result == 'success' && needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true' }}
+    if: ${{ always() && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.preproof_source_run_id != '' && inputs.preproof_source_run_id != null && inputs.preproof_source_run_id != '0' && needs.build-ready-write.result == 'success' && needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true' }}
     runs-on: ubuntu-latest
     permissions: { contents: read, actions: read }
     outputs:
@@ -2095,7 +2126,7 @@ jobs:
     needs: [pre-promotion-proof, resume-preproof-carryforward, zero-percent-result-write, zero-create-recovered-result, resume-zero-carryforward]
     # ponytail: requires a passing pre-promotion proof and a zero-percent proof from
     # the direct result, the recovered bridge, or the carryforward path.
-    if: ${{ always() && (needs.pre-promotion-proof.result == 'success' || needs.resume-preproof-carryforward.outputs.carried == 'true') && (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true' || (needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true')) }}
+    if: ${{ always() && inputs.mode != 'POST_PROMOTION_FINALIZE' && (needs.pre-promotion-proof.result == 'success' || needs.resume-preproof-carryforward.outputs.carried == 'true') && (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true' || (needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     outputs:
@@ -2151,7 +2182,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2210,7 +2241,23 @@ jobs:
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-direct-result-${{ github.run_id }}', path: handoff }
+        if: always()
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-recovered-result-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-readback-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-decision-${{ github.run_id }}', path: handoff }
+        continue-on-error: true
       - uses: actions/download-artifact@v4
         with: { name: 'a6-promote-intent-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -2221,8 +2268,132 @@ jobs:
         with: { python-version: '3.12' }
       - id: record
         run: |
-          python code/tools/publisher/workflow_stage_cli.py record-result --intent handoff/promote-intent.json --result handoff/promote-result.json --journal state/publisher-state/production-transaction-journal.json --repository state --branch main --reference handoff/pre-promotion-proof.json | tee record.json
-          python -c "import json,os; open(os.environ['GITHUB_OUTPUT'],'a').write('result_state='+json.load(open('record.json'))['status']+'\n')"
+          zero_result=handoff/zero-percent-result.json
+          refs=(--reference handoff/runner-evidence/v1-build-bundle.json --reference handoff/pre-promotion-proof.json --reference handoff/zero-percent-intent.json)
+          if [ '${{ needs.zero-create-recovered-result.outputs.recovered }}' = 'true' ]; then
+            zero_result=handoff/recovered-zero-result.json
+            refs+=(--reference handoff/zero-percent-result.json --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json)
+          fi
+          python code/tools/publisher/workflow_stage_cli.py record-result \
+            --intent handoff/promote-intent.json --result handoff/promote-result.json \
+            --journal state/publisher-state/production-transaction-journal.json --repository state --branch main \
+            "${refs[@]}" --reference "$zero_result" > record.json
+          python -c "import json,os; d=json.load(open('record.json')); assert d['status'] in ('APPLIED','NOT_APPLIED','UNKNOWN'); open(os.environ['GITHUB_OUTPUT'],'a').write('result_state='+d['status']+'\\n')"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-promote-direct-result-${{ github.run_id }}', path: handoff/promote-result.json, if-no-files-found: error }
+
+  resume-promote-carryforward:
+    needs: [build-ready-write, resume-zero-carryforward, resume-preproof-carryforward]
+    if: >-
+      ${{ always() && inputs.mode == 'POST_PROMOTION_FINALIZE' &&
+          inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' &&
+          needs.build-ready-write.result == 'success' &&
+          needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true' &&
+          needs.resume-preproof-carryforward.result == 'success' && needs.resume-preproof-carryforward.outputs.carried == 'true' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: write, actions: read }
+    outputs:
+      carried: ${{ steps.carry.outputs.carried }}
+      result_state: ${{ steps.carry.outputs.result_state }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: code }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-preproof-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-direct-result-${{ github.run_id }}', path: handoff }
+      - name: Download the already-applied promotion artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-promote-intent-${{ inputs.resume_source_run_id }}
+          path: handoff
+          run-id: ${{ inputs.resume_source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download the already-applied promotion result
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-promote-result-${{ inputs.resume_source_run_id }}
+          path: handoff
+          run-id: ${{ inputs.resume_source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: carry
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+          EXPECTED_SOURCE_SHA: ${{ inputs.resume_source_sha }}
+          EXPECTED_SOURCE_RUN_ID: ${{ inputs.resume_source_run_id }}
+          EXPECTED_TRANSACTION_ID: ${{ inputs.transaction_id }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from publisher import artifact_transport as transport
+          from publisher.effective_mutation_result import validate_effective_applied_result
+
+          root = Path("handoff")
+          journal = json.loads(Path("state/publisher-state/production-transaction-journal.json").read_text(encoding="utf-8"))
+          active = journal["active"]
+          assert active is not None and active["logical_transaction_id"] == os.environ["EXPECTED_TRANSACTION_ID"]
+          assert active["state"] == "intent_recorded" and active["recovery_status"] == "NONE"
+          bundle = transport.read_artifact(root / "runner-evidence/v1-build-bundle.json", expected_type="build_bundle",
+                                           expected_source_sha=os.environ["EXPECTED_SOURCE_SHA"])
+          tx = bundle["transaction"]
+          assert tx["logical_transaction_id"] == active["logical_transaction_id"]
+          assert bundle["artifact_sha256"] == active["build_bundle_sha256"]
+          zero_intent = transport.read_artifact(root / "zero-percent-intent.json", expected_type="mutation_intent",
+                                                expected_transaction=tx, expected_source_sha=os.environ["EXPECTED_SOURCE_SHA"],
+                                                referenced_artifacts=transport.references(bundle))
+          zero_result = transport.read_artifact(root / "zero-percent-result.json", expected_type="mutation_result",
+                                                expected_transaction=tx, expected_source_sha=os.environ["EXPECTED_SOURCE_SHA"],
+                                                referenced_artifacts=transport.references(bundle, zero_intent))
+          proof = transport.read_artifact(root / "pre-promotion-proof.json", expected_type="pre_promotion_proof_evidence",
+                                          expected_transaction=tx, expected_source_sha=os.environ["EXPECTED_SOURCE_SHA"],
+                                          referenced_artifacts=transport.references(bundle, zero_intent, zero_result))
+          refs = transport.references(bundle, zero_intent, zero_result, proof)
+          intent = transport.read_artifact(root / "promote-intent.json", expected_type="mutation_intent",
+                                           expected_transaction=tx, expected_source_sha=os.environ["EXPECTED_SOURCE_SHA"],
+                                           referenced_artifacts=refs)
+          refs = transport.references(bundle, zero_intent, zero_result, proof, intent)
+          result = transport.read_artifact(root / "promote-result.json", expected_type="mutation_result",
+                                           expected_transaction=tx, expected_source_sha=os.environ["EXPECTED_SOURCE_SHA"],
+                                           referenced_artifacts=refs)
+          promotion = active["operations"]["promote"]
+          attempt = promotion["attempts"][-1]
+          assert len(promotion["attempts"]) == 2 and attempt["attempt_number"] == 2
+          assert promotion["intent_state"] == "RECORDED" and promotion["result_state"] == "NOT_REPORTED"
+          assert attempt["intent_state"] == "RECORDED" and attempt["result_state"] == "NOT_REPORTED"
+          assert attempt["result_digest"] is None
+          assert intent["producer"]["workflow_run_id"] == os.environ["EXPECTED_SOURCE_RUN_ID"]
+          assert result["producer"]["workflow_run_id"] == os.environ["EXPECTED_SOURCE_RUN_ID"]
+          assert intent["payload"]["operation_id"] == promotion["operation_id"]
+          assert intent["payload"]["attempt_id"] == attempt["attempt_id"]
+          assert intent["artifact_sha256"] == attempt["intent_artifact_sha256"]
+          assert result["payload"]["result_state"] == "APPLIED"
+          assert result["payload"]["intent_artifact_sha256"] == intent["artifact_sha256"]
+          assert proof["payload"]["PASS"] is True
+          assert zero_result["payload"]["result_state"] == "APPLIED"
+          validate_effective_applied_result(result, intent, referenced_artifacts=refs)
+          print("PROMOTION_CARRY_FORWARD=APPLIED; JOURNAL_LATEST_ATTEMPT=MATCH; SOURCE_ARTIFACTS=SEALED")
+          PY
+          python code/tools/publisher/workflow_stage_cli.py record-result \
+            --intent handoff/promote-intent.json --result handoff/promote-result.json \
+            --journal state/publisher-state/production-transaction-journal.json --repository state --branch main \
+            --reference handoff/runner-evidence/v1-build-bundle.json \
+            --reference handoff/pre-promotion-proof.json \
+            --reference handoff/zero-percent-intent.json \
+            --reference handoff/zero-percent-result.json > record.json
+          python -c "import json,os; d=json.load(open('record.json')); assert d['status']=='APPLIED'; open(os.environ['GITHUB_OUTPUT'],'a').write('carried=true\\nresult_state=APPLIED\\n')"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-promote-intent-${{ github.run_id }}', path: handoff/promote-intent.json, if-no-files-found: error }
       - uses: actions/upload-artifact@v4
         with: { name: 'a6-promote-direct-result-${{ github.run_id }}', path: handoff/promote-result.json, if-no-files-found: error }
 
@@ -2235,7 +2406,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-promote-intent-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -2266,7 +2437,7 @@ jobs:
       decision: ${{ steps.decision.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2293,7 +2464,7 @@ jobs:
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2311,7 +2482,7 @@ jobs:
       recovered: ${{ steps.bridge.outputs.recovered }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2336,7 +2507,7 @@ jobs:
   production-proof:
     needs: [upload-result-write, upload-create-recovered-result, zero-percent-result-write,
       zero-create-recovered-result, promote-result-write, promote-create-recovered-result,
-      resume-source-carryforward, resume-zero-carryforward]
+      resume-source-carryforward, resume-zero-carryforward, resume-promote-carryforward]
     # ponytail: the APPLIED upload and zero proofs may arrive via their direct,
     # recovered, or in-flight carryforward paths.
     if: >-
@@ -2347,7 +2518,8 @@ jobs:
             needs.resume-source-carryforward.result == 'success' && needs.resume-source-carryforward.outputs.source_result_state == 'APPLIED')) &&
           (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true' ||
            (needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true')) &&
-          (needs.promote-result-write.outputs.result_state == 'APPLIED' || needs.promote-create-recovered-result.outputs.recovered == 'true') }}
+           (needs.promote-result-write.outputs.result_state == 'APPLIED' || needs.promote-create-recovered-result.outputs.recovered == 'true' ||
+            (needs.resume-promote-carryforward.result == 'success' && needs.resume-promote-carryforward.outputs.result_state == 'APPLIED')) }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     outputs:
@@ -2356,7 +2528,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: '${{ github.sha }}', path: diagnostics, persist-credentials: false }
       - uses: actions/download-artifact@v4
@@ -2477,7 +2649,7 @@ jobs:
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -2577,7 +2749,7 @@ jobs:
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2666,13 +2838,13 @@ jobs:
             "${args[@]}" "${refs[@]}"
 
   rollback-intent-write:
-    needs: [production-proof, promote-result-write, promote-create-recovered-result]
-    if: ${{ always() && needs.production-proof.outputs.proof_state == 'FAIL' && (needs.promote-result-write.outputs.result_state == 'APPLIED' || needs.promote-create-recovered-result.outputs.recovered == 'true') }}
+    needs: [production-proof, promote-result-write, promote-create-recovered-result, resume-promote-carryforward]
+    if: ${{ always() && needs.production-proof.outputs.proof_state == 'FAIL' && (needs.promote-result-write.outputs.result_state == 'APPLIED' || needs.promote-create-recovered-result.outputs.recovered == 'true' || (needs.resume-promote-carryforward.result == 'success' && needs.resume-promote-carryforward.outputs.result_state == 'APPLIED')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2718,7 +2890,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2777,7 +2949,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-rollback-intent-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -2800,7 +2972,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-rollback-intent-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -2822,7 +2994,7 @@ jobs:
       decision: ${{ steps.decision.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2849,7 +3021,7 @@ jobs:
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2867,7 +3039,7 @@ jobs:
       recovered: ${{ steps.bridge.outputs.recovered }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4

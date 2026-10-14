@@ -73,6 +73,7 @@ class A6WorkflowContractTests(unittest.TestCase):
         self.assertIn("workflow_dispatch", self.workflow["on"])
         inputs = self.workflow["on"]["workflow_dispatch"]["inputs"]
         self.assertIn("RESUME_ADMITTED", inputs["mode"]["options"])
+        self.assertIn("POST_PROMOTION_FINALIZE", inputs["mode"]["options"])
         self.assertIn("resume_source_sha", inputs)
         self.assertIn("RETIRE_STALE_ADMITTED", inputs["mode"]["options"])
         self.assertEqual([{"cron": "17,47 * * * *"}], self.workflow["on"]["schedule"])
@@ -137,7 +138,7 @@ class A6WorkflowContractTests(unittest.TestCase):
         self.assertIn("path: state", self.source)
         self.assertIn("--published-state state/publisher-state/production-content-fingerprint.json", self.source)
         self.assertNotIn("--published-state state/publisher-state/published-static-state.json", self.source)
-        self.assertIn("MAHOON_EXECUTION_SHA: ${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", self.source)
+        self.assertIn("MAHOON_EXECUTION_SHA: ${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", self.source)
 
     def test_resume_executable_code_checkouts_resolve_to_admitted_source_sha(self):
         """Every executable code checkout in the RESUME transaction chain must
@@ -151,7 +152,7 @@ class A6WorkflowContractTests(unittest.TestCase):
         an inner single-quoted string is not valid flow-mapping YAML)."""
         # The YAML scalar is double-quoted so the flow mapping stays parseable;
         # inside the GitHub Actions expression the mode literal MUST be single-quoted.
-        ref_expr = "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}"
+        ref_expr = "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}"
         resume_chain = [
             "journal-resume-verify", "revision-resolve", "admission", "resume-admission",
             "build-validate", "build-ready-write",
@@ -188,7 +189,7 @@ class A6WorkflowContractTests(unittest.TestCase):
 
         for name in resume_chain:
             r = code_ref(name)
-            expected = "${{ github.sha }}" if name == "promote-intent-write" else ref_expr
+            expected = "${{ github.sha }}" if name in {"promote-intent-write", "promote-result-write"} else ref_expr
             self.assertEqual(expected, r,
                 f"{name} has an unexpected executable source ref: {r!r}")
         # State checkouts must stay on main (authoritative mutable state).
@@ -202,6 +203,7 @@ class A6WorkflowContractTests(unittest.TestCase):
         for name in ("retire-stale-admitted", "journal-bootstrap"):
             self.assertEqual("${{ github.sha }}", code_ref(name),
                 f"{name} is not part of the RESUME chain; keep github.sha")
+        self.assertEqual("${{ github.sha }}", code_ref("resume-promote-carryforward"))
 
     def test_resume_source_sha_required_for_resume_checkouts(self):
         """The fail-closed ref expression must reject empty resume_source_sha.
@@ -269,12 +271,16 @@ class A6WorkflowContractTests(unittest.TestCase):
         self.assertIn("needs.resume-zero-carryforward.outputs.carried == 'true'", self.job("production-proof"))
 
     def test_in_flight_build_carryforward_allows_only_non_regressing_public_revision(self):
-        script = _python_heredoc(next(step["run"] for step in self.jobs["build-validate"]["steps"]
-                                      if step.get("name") == "Revalidate the source run's build lineage against the active journal"))
+        step = next(step for step in self.jobs["build-validate"]["steps"]
+                    if step.get("name") == "Revalidate the source run's build lineage against the active journal")
+        script = _python_heredoc(step["run"])
         self.assertIn("RESUME_MODE", self.job("build-validate"))
         self.assertIn('if os.environ.get("RESUME_MODE", "false").lower() == "true":', script)
         self.assertIn('assert current >= active["content_revision"]', script)
         self.assertIn('assert current == active["content_revision"]', script)
+        self.assertEqual("${{ inputs.mode == 'POST_PROMOTION_FINALIZE' }}",
+                         step["env"]["POST_PROMOTION_FINALIZE"])
+        self.assertIn('allowed_states.add("intent_recorded")', script)
 
     def test_proof_jobs_use_current_diagnostic_cli_and_keep_source_checkout(self):
         for name, command in (("pre-promotion-proof", "pre-promotion-proof-observe"),
@@ -285,7 +291,7 @@ class A6WorkflowContractTests(unittest.TestCase):
                               if (step.get("with") or {}).get("path") == "code")
                 diagnostic = next(step for step in job["steps"]
                                   if (step.get("with") or {}).get("path") == "diagnostics")
-                self.assertEqual("${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}",
+                self.assertEqual("${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}",
                                  source["with"]["ref"])
                 self.assertEqual("${{ github.sha }}", diagnostic["with"]["ref"])
                 self.assertEqual("false", diagnostic["with"]["persist-credentials"])
@@ -511,6 +517,7 @@ class A6WorkflowContractTests(unittest.TestCase):
             state.parent.mkdir(parents=True)
             env = {"REQUESTED_TRANSACTION_ID": tx, "REQUESTED_READY": "YES",
                    "REQUESTED_RESUME_SOURCE_SHA": "e042a1a4d0a6fd5ae3d24c86d01d86dcc096ddad",
+                   "REQUESTED_MODE": "RESUME_ADMITTED",
                    "SOURCE_RUN_ID": "38320622522", "RESUME_SOURCE_RUN_ID": "38320622522"}
 
             def run(candidate=fixture, **overrides):
@@ -534,12 +541,31 @@ class A6WorkflowContractTests(unittest.TestCase):
             self.assertEqual(0, accepted_retry.returncode, accepted_retry.stderr)
             self.assertIn("RESUME_JOURNAL=IN_FLIGHT_RECONCILED_PROMOTE_RETRY; REVISION=122", accepted_retry.stdout)
 
+            post_finalize = copy.deepcopy(fixture)
+            post_finalize["active"]["state"] = "intent_recorded"
+            promo = post_finalize["active"]["operations"]["promote"]
+            promo["intent_state"] = "RECORDED"
+            promo["result_state"] = "NOT_REPORTED"
+            promo["attempts"] = [
+                {"attempt_number": 1, "intent_state": "RECORDED", "result_state": "NOT_APPLIED",
+                 "intent_artifact_sha256": "f" * 64, "result_digest": "a" * 64},
+                {"attempt_number": 2, "intent_state": "RECORDED", "result_state": "NOT_REPORTED",
+                 "intent_artifact_sha256": "b" * 64, "result_digest": None},
+            ]
+            accepted_finalization = run(post_finalize, REQUESTED_MODE="POST_PROMOTION_FINALIZE")
+            self.assertEqual(0, accepted_finalization.returncode, accepted_finalization.stderr)
+            self.assertIn("RESUME_JOURNAL=POST_PROMOTION_FINALIZATION_PENDING; REVISION=122",
+                          accepted_finalization.stdout)
+
             cases = []
             changed = copy.deepcopy(fixture); changed["active"]["operations"]["deploy_zero_percent"]["result_state"] = "UNKNOWN"; cases.append(("unknown zero result", changed, {}))
             changed = copy.deepcopy(fixture); changed["active"]["operations"]["promote"]["attempts"] = [{}]; cases.append(("promotion attempt", changed, {}))
             changed = copy.deepcopy(reconciled_retry); changed["active"]["recovery_status"] = "NONE"; cases.append(("unreconciled promotion attempt", changed, {}))
             changed = copy.deepcopy(reconciled_retry); changed["active"]["operations"]["promote"]["attempts"].append(copy.deepcopy(changed["active"]["operations"]["promote"]["attempts"][0])); cases.append(("multiple reconciled promotion attempts", changed, {}))
             changed = copy.deepcopy(reconciled_retry); changed["active"]["operations"]["promote"]["attempts"][0]["result_digest"] = "invalid"; cases.append(("invalid promotion reconciliation evidence", changed, {}))
+            changed = copy.deepcopy(post_finalize); changed["active"]["operations"]["promote"]["attempts"][1]["result_digest"] = "c" * 64; cases.append(("post-finalization attempt already has a result", changed, {"REQUESTED_MODE": "POST_PROMOTION_FINALIZE"}))
+            changed = copy.deepcopy(post_finalize); changed["active"]["operations"]["promote"]["attempts"].append(copy.deepcopy(changed["active"]["operations"]["promote"]["attempts"][-1])); cases.append(("post-finalization has extra attempt", changed, {"REQUESTED_MODE": "POST_PROMOTION_FINALIZE"}))
+            changed = copy.deepcopy(post_finalize); changed["active"]["state"] = "operation_reported"; cases.append(("post-finalization wrong state", changed, {"REQUESTED_MODE": "POST_PROMOTION_FINALIZE"}))
             changed = copy.deepcopy(fixture); changed["active"]["operations"]["upload_version"]["attempts"][0]["result_digest"] = "invalid"; cases.append(("invalid upload evidence", changed, {}))
             cases.append(("source IDs differ", copy.deepcopy(fixture), {"SOURCE_RUN_ID": "38320622522", "RESUME_SOURCE_RUN_ID": "38320622523"}))
             cases.append(("missing source ID", copy.deepcopy(fixture), {"RESUME_SOURCE_RUN_ID": ""}))

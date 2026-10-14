@@ -306,6 +306,43 @@ class DownstreamDagHardeningTests(unittest.TestCase):
             "production-proof must list resume-zero-carryforward in needs",
         )
 
+    def test_post_promotion_finalization_carries_applied_result_without_mutating(self):
+        carry = self.job("resume-promote-carryforward")
+        gate = str(carry.get("if", ""))
+        self.assertIn("inputs.mode == 'POST_PROMOTION_FINALIZE'", gate)
+        self.assertIn("resume-preproof-carryforward.outputs.carried == 'true'", gate)
+        self.assertIn("resume-zero-carryforward.outputs.carried == 'true'", gate)
+        commands = "\n".join(str(step.get("run", "")) for step in carry["steps"])
+        self.assertIn("validate_effective_applied_result", commands)
+        self.assertIn("EXPECTED_SOURCE_RUN_ID", str(carry))
+        self.assertIn('promotion["result_state"] == "NOT_REPORTED"', commands)
+        self.assertIn('attempt["result_digest"] is None', commands)
+        self.assertIn("record-result", commands)
+        self.assertIn("carried=true", commands)
+        self.assertNotIn("execute-operation", commands)
+        self.assertNotIn("CLOUDFLARE_API_TOKEN", str(carry))
+        self.assertIn("a6-promote-result-${{ inputs.resume_source_run_id }}", str(carry))
+
+        promote_intent = self.job("promote-intent-write")
+        self.assertIn("inputs.mode != 'POST_PROMOTION_FINALIZE'", str(promote_intent.get("if", "")))
+        self.assertIn("resume-promote-carryforward", self.needs("production-proof"))
+        self.assertIn("resume-promote-carryforward.outputs.result_state == 'APPLIED'",
+                      self.gate("production-proof"))
+        self.assertIn("resume-promote-carryforward", self.needs("rollback-intent-write"))
+
+    def test_promotion_result_writer_passes_full_sealed_lineage(self):
+        job = self.job("promote-result-write")
+        run = "\n".join(str(step.get("run", "")) for step in job["steps"])
+        for reference in (
+            "handoff/runner-evidence/v1-build-bundle.json",
+            "handoff/pre-promotion-proof.json",
+            "handoff/zero-percent-intent.json",
+            "handoff/zero-percent-result.json",
+        ):
+            self.assertIn(reference, str(job))
+        self.assertIn('"${refs[@]}"', run)
+        self.assertIn("zero-create-recovered-result.outputs.recovered", run)
+
     def test_resume_zero_carryforward_job_exists_and_gates_correctly(self):
         job = self.job("resume-zero-carryforward")
         gate = str(job.get("if", ""))
