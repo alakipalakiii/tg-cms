@@ -196,6 +196,21 @@ try {
     assert.equal(body.error, 'Unauthorized');
     return { login_visible: true, unauthenticated_api_status: response.status() };
   });
+  await check('mobile_navigation', async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    try {
+      await navigate('/');
+      failureStage = 'mobile_menu';
+      await page.locator('.site-menu-toggle').click();
+      assert.equal(await page.locator('.site-menu-toggle').getAttribute('aria-expanded'), 'true');
+      assert.ok(await page.locator('#mainNav.is-open').isVisible());
+      await page.screenshot({ path: `${output}/mobile-menu.png`, fullPage: true });
+      await page.locator('#mainNav a[href="/about"]').click();
+      await page.waitForURL((url) => url.pathname.replace(/\/$/, '') === '/about', { timeout: 10000 });
+      assert.ok((await page.locator('main').innerText()).trim().length > 80);
+      return { viewport_width: 390, menu_opened: true, destination: '/about' };
+    } finally { await page.setViewportSize({ width: 1440, height: 1000 }); }
+  });
   for (const post of newPosts) {
     await check(`new_article_${post.id}`, async () => {
       const path = new URL(post.url).pathname;
@@ -221,7 +236,7 @@ try {
   await boundary?.dispose();
   const result = { measured: Boolean(browser), expected_version: expected, candidate_pinned: candidatePinned, checks, public_dependencies: publicDependencies,
     new_post_ids: newPosts.map((post) => post.id), baseline_run_id: process.env.MAHOON_BASELINE_RUN_ID || null,
-    page_errors: pageErrors, PASS: checks.length === 8 + newPosts.length && checks.every((item) => item.PASS)
+    page_errors: pageErrors, PASS: checks.length === 9 + newPosts.length && checks.every((item) => item.PASS)
       && publicDependencies.length === 0 && pageErrors.length === 0,
     candidate_external_requests: candidateExternalRequests };
   await writeFile(`${output}/result.json`, JSON.stringify(result, null, 2) + '\n');
