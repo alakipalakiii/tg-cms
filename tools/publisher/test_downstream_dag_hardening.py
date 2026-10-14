@@ -484,6 +484,10 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         self.assertIn("checks.length === 8 + newPosts.length", script)
         self.assertIn("document.fonts.status === 'loaded'", script)
         self.assertIn("document.fonts.check('12px MahoonFont')", script)
+        self.assertIn("candidate_pinned: candidatePinned", script)
+        self.assertIn("new URL(route.request().url()).origin === base", script)
+        self.assertIn("inputs.pin_candidate", text)
+        self.assertEqual("NO", workflow["on"]["workflow_dispatch"]["inputs"]["pin_candidate"]["default"])
 
     def test_production_proof_references_the_full_promotion_authority_chain(self):
         proof = self.job("production-proof")

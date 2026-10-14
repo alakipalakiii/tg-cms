@@ -7,6 +7,8 @@ const { chromium } = require('playwright');
 const base = 'https://mahoonartmagazine.ir';
 const expected = process.env.MAHOON_EXPECTED_VERSION;
 assert.match(expected || '', /^[0-9a-f-]{36}$/);
+const candidatePinned = process.env.MAHOON_PIN_CANDIDATE === 'YES';
+const versionHeaders = candidatePinned ? { 'cloudflare-workers-version-overrides': `mahoon-art-magazine="${expected}"` } : {};
 const output = 'runner-evidence/live-functionality';
 await mkdir(output, { recursive: true });
 const checks = [];
@@ -17,7 +19,7 @@ let browser, page;
 
 async function saveProgress(activeCheck) {
   await writeFile(`${output}/result.json`, JSON.stringify({ status: 'RUNNING', measured: Boolean(browser),
-    expected_version: expected, active_check: activeCheck, checks, new_post_ids: newPosts.map((post) => post.id),
+    expected_version: expected, candidate_pinned: candidatePinned, active_check: activeCheck, checks, new_post_ids: newPosts.map((post) => post.id),
     public_dependencies: publicDependencies, page_errors: pageErrors, PASS: false,
   }, null, 2) + '\n');
 }
@@ -63,13 +65,17 @@ async function playback(kind) {
 try {
   browser = await chromium.launch({ headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  if (candidatePinned) await page.route('**/*', (route) => route.continue({
+    headers: new URL(route.request().url()).origin === base
+      ? { ...route.request().headers(), ...versionHeaders } : route.request().headers(),
+  }));
   page.on('pageerror', (error) => pageErrors.push(error.name));
   page.on('request', (request) => {
     const url = new URL(request.url());
     if (url.hostname === 'api.mahoonartmagazine.ir' || url.hostname.endsWith('.workers.dev')
         || /(^|\.)telegram\.org$/.test(url.hostname)) publicDependencies.push(url.hostname + url.pathname);
   });
-  const indexResponse = await page.request.get(base + '/search/search-index.json');
+  const indexResponse = await page.request.get(base + '/search/search-index.json', { headers: versionHeaders });
   assert.equal(indexResponse.status(), 200);
   assert.equal(indexResponse.headers()['x-mahoon-worker-version'], expected);
   const index = await indexResponse.json();
@@ -175,7 +181,7 @@ try {
   checks.push({ name: 'preflight', PASS: false, error_type: error.name });
 } finally {
   await browser?.close();
-  const result = { measured: Boolean(browser), expected_version: expected, checks, public_dependencies: publicDependencies,
+  const result = { measured: Boolean(browser), expected_version: expected, candidate_pinned: candidatePinned, checks, public_dependencies: publicDependencies,
     new_post_ids: newPosts.map((post) => post.id), baseline_run_id: process.env.MAHOON_BASELINE_RUN_ID || null,
     page_errors: pageErrors, PASS: checks.length === 8 + newPosts.length && checks.every((item) => item.PASS)
       && publicDependencies.length === 0 && pageErrors.length === 0 };

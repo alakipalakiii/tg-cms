@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       expected_version:
-        description: "Authoritatively verified production version"
+        description: "Authoritatively verified version"
         type: string
         required: true
       baseline_run_id:
@@ -12,6 +12,12 @@ on:
         type: string
         required: false
         default: ""
+      pin_candidate:
+        description: "Read a verified zero-percent candidate with same-origin version override"
+        type: choice
+        required: false
+        default: "NO"
+        options: ["NO", "YES"]
 
 permissions:
   contents: read
@@ -49,10 +55,11 @@ jobs:
           run-id: ${{ inputs.baseline_run_id }}
           repository: ${{ github.repository }}
           github-token: ${{ github.token }}
-      - name: Check live interactions without mutation or version override
+      - name: Check browser interactions read-only
         env:
           MAHOON_EXPECTED_VERSION: ${{ inputs.expected_version }}
           MAHOON_BASELINE_RUN_ID: ${{ inputs.baseline_run_id }}
+          MAHOON_PIN_CANDIDATE: ${{ inputs.pin_candidate }}
         run: node tools/publisher/live_functionality_smoke.mjs
       - uses: actions/upload-artifact@v4
         if: always()
