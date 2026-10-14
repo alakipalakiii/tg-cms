@@ -34,7 +34,7 @@ jobs:
           python - <<'PY'
           import json, base64
           from pathlib import Path
-          from publisher import artifact_transport, final_state_materializer, media_bootstrap
+          from publisher import artifact_contract, artifact_transport, final_state_materializer, media_bootstrap
           root = Path('handoff')
           bundle = artifact_transport.read_artifact(root / 'runner-evidence/v1-build-bundle.json', expected_type='build_bundle')
           snapshot = json.loads((root / 'runner-evidence/current-v2-snapshot.json').read_text())
@@ -52,6 +52,15 @@ jobs:
           except final_state_materializer.MaterializationRejected as error:
               report['merge'] = 'BLOCKED'; report['reason'] = str(error)
           Path('metadata-status.json').write_text(json.dumps(report, sort_keys=True)+'\n')
+          pages = Path('media-lineage-pages'); pages.mkdir()
+          site = root / 'runner-evidence/publisher-sealed' / bundle['payload']['content_fingerprint'] / 'site'
+          files = {entry['path']: entry for entry in bundle['payload']['files']}
+          for post_id in (1873, 1874):
+              relative = f'post/{post_id}/index.html'
+              data = (site / relative).read_bytes()
+              assert artifact_contract.sha256_bytes(data) == files[relative]['sha256']
+              assert len(data) == files[relative]['size_bytes']
+              (pages / f'{post_id}.html').write_bytes(data)
           print(json.dumps(report, sort_keys=True))
           PY
       - uses: actions/upload-artifact@v4
@@ -60,6 +69,7 @@ jobs:
           name: mahoon-sealed-metadata-${{ github.run_id }}
           path: |
             metadata-status.json
+            media-lineage-pages/
             handoff/runner-evidence/v1-build-bundle.json
             handoff/runner-evidence/current-v2-snapshot.json
             handoff/runner-build/production-media-manifest.json
