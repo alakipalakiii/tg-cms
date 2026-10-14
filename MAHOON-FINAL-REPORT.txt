@@ -1,7 +1,13 @@
 MAHOON_PROJECT_FINALIZED_AND_LIVE: BLOCKED
-Updated:2026-10-14T22:03:30Z (2026-10-15 Tehran)
+Updated:2026-10-14T23:13:11Z (2026-10-15 Tehran)
 
-Revision181 is LIVE and independent browser functionality PASSED. Full production proof and durable final persistence remain active in run38636125070. Do not dispatch another publication or replay mutations.
+Revision181 is LIVE and durably COMPLETED. One bounded catch-up to revision185 is active in38649977839. Publication cutoff:2026-10-14T22:35:02Z/revision185. Do not dispatch another publication or replay mutations.
+
+181 completed with real proof54f79ea6926baf7ac7653df1ba643d46b80627d8f35d0377ba642649d1c2f4a8, all4238 routes/603 media/8 browser pages and every production gate PASS. Final persistence96e16fe8fc9a5f2cd7e16e87724f99cae5d2443fc39de416f7f27511e29d5083, state commit1f2c7637010b0ce56be551f1fcbc9b9182396b77, journal2da135bde449fdb131589ae6339ae25e26a33a29/generation129/active-null/pending-null. All6 remote Git blobs and3 saved observation hashes independently matched. Reconciliation38648593677 SUCCESS/NO_ACTIVE. Final unpinned browser38645978140 PASS16/16 including mobile menu and/about.
+
+CHECK_ONLY38648599058 detected185 vs181, changed_at22:33:38Z. Catch-up38649977839 source4b9889cd8213016e0337fe7b81d76f6bb2aec702, transaction9c9b7b78759bb8dcc6fe4a08b2e3da94e5f6b1155f28bb2bd21b18178de94ba7. Build/handoff185 passed; bundle212e816b8da6d6d1d942316ac60f5cd6d80330d25e31bbaa328444e87c01ffce/fingerprint04d55b6ccd2e636452d0fe31a9fd79dae33cdac5aba4a5e7fe5436c59f185335.1849 posts, no additions/removals since181;1920 ASCII?→Persian؟ and updated_at1918/1919/1920.628 required media,609 immutable successes/603 unique objects/19 established fallbacks, no new/error media. Upload+zero APPLIED once; new candidate1c92b5b0-0426-4f8f-8328-ee741569149b at0%, bc11bf72 baseline100% on deployment2dbfc3e3-c1e7-42e7-abf7-fb7cdbc4563e. Candidate browser38652304292 PASS16/16, no JS errors/forbidden dependencies. Main is in full pre-promotion proof;185 production proof/persistence do not yet exist. Remaining:complete the same transaction, verify unpinned live/6-file state/journal, reconcile and recheck revision against declared cutoff.
+
+Historical181 evidence below remains valid; earlier active/pending descriptions are superseded by the completed181 state above.
 
 Current authoritative Cloudflare:deployment2ccec940-ee65-4d39-89f4-3fb1f894175a; intendedbc11bf72-e914-498d-8665-b7d98c57ff90:100%; baselineb3aa78ef-7b15-4d36-a87e-90dec308eb00:0%.
 Canonical generation127, active181/operation_reported, pending:null; upload/zero/promote each APPLIED once; rollback not reported; new production proof/state commit not persisted yet.
