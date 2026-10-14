@@ -2084,8 +2084,9 @@ jobs:
     outputs:
       zero_recovered: ${{ steps.intent.outputs.zero_recovered }}
     steps:
+      # The intent stays bound to the source build SHA; use the current CLI to preserve its verified references.
       - uses: actions/checkout@v4
-        with: { ref: "${{ inputs.mode == 'RESUME_ADMITTED' && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ github.sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4

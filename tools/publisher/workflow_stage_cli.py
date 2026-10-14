@@ -1562,7 +1562,13 @@ def main(argv: list[str] | None = None) -> int:
                 reference_paths=args.reference, promotion_intent_path=args.promotion_intent,
                 promotion_result_path=args.promotion_result,
             )
-            transport.write_artifact(args.output, value, expected_type="mutation_intent")
+            reference_paths = [args.build_bundle, args.prerequisite, *args.reference]
+            reference_paths.extend(path for path in (
+                args.prerequisite_intent, args.promotion_intent, args.promotion_result,
+            ) if path)
+            references = _refs(*_many(reference_paths))
+            transport.write_artifact(args.output, value, expected_type="mutation_intent",
+                                     referenced_artifacts=references)
             output = {"status": "SEALED_INTENT", "operation_id": value["payload"]["operation_id"],
                       "attempt_id": value["payload"]["attempt_id"],
                       "artifact_sha256": value["artifact_sha256"]}

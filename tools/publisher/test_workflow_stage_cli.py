@@ -379,6 +379,47 @@ class WorkflowStageCliTests(unittest.TestCase):
         finally:
             fixture.tearDown()
 
+    def test_cli_persists_promote_intent_with_its_reference_closure(self):
+        from contextlib import redirect_stderr, redirect_stdout
+        import io
+
+        fixture = self._proof_fixture()
+        try:
+            proof_path, bundle_path = self.root / "preproof.json", self.root / "promote-bundle.json"
+            deploy_intent_path = self.root / "zero-intent.json"
+            deploy_result_path = self.root / "zero-result.json"
+            transport.write_artifact(proof_path, fixture.proof,
+                                     referenced_artifacts=fixture.references)
+            transport.write_artifact(bundle_path, fixture.bundle)
+            transport.write_artifact(deploy_intent_path, fixture.deploy_intent)
+            transport.write_artifact(deploy_result_path, fixture.deploy_result)
+            journal_path = self.root / "promote-journal.json"
+            journal_path.write_text(json.dumps(journal_module.empty_journal(WORKER)), encoding="utf-8")
+            journal_module.TransactionJournal.from_file(journal_path, WORKER).admit(REVISION, "synthetic")
+            output_path = self.root / "promote-intent.json"
+            references = [proof_path, bundle_path, deploy_intent_path, deploy_result_path]
+            argv = ["create-mutation-intent", "--operation", "promote",
+                    "--build-bundle", str(bundle_path), "--prerequisite", str(proof_path),
+                    "--prerequisite-intent", str(deploy_intent_path), "--journal", str(journal_path),
+                    "--output", str(output_path)]
+            for path in references:
+                argv.extend(("--reference", str(path)))
+
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                status = cli.main(argv)
+
+            self.assertEqual(0, status, stderr.getvalue())
+            created = transport.read_artifact(
+                output_path, expected_type="mutation_intent",
+                referenced_artifacts=transport.read_references(references),
+            )
+            self.assertEqual("promote", created["payload"]["operation_name"])
+            self.assertEqual(fixture.bundle["producer"]["source_sha"], created["producer"]["source_sha"])
+            self.assertIn('"status": "SEALED_INTENT"', stdout.getvalue())
+        finally:
+            fixture.tearDown()
+
     def test_promote_rejects_false_and_tampered_preproof(self):
         fixture = self._proof_fixture()
         try:
