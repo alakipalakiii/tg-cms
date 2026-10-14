@@ -1532,8 +1532,9 @@ jobs:
               "zero carryforward: build bundle SHA mismatch between intent and result"
           assert zero_result["payload"]["result_state"] == "APPLIED", \
               f"zero carryforward: source result state is {zero_result['payload']['result_state']}, expected APPLIED"
-          assert zero_result["producer"]["workflow_run_id"] == source_run, \
-              f"zero carryforward: result produced by run {zero_result['producer']['workflow_run_id']}, expected {source_run}"
+          assert zero_result["producer"]["workflow_run_id"] == zero_intent["producer"]["workflow_run_id"] \
+              and zero_result["producer"]["source_sha"] == zero_intent["producer"]["source_sha"], \
+              "zero carryforward: result producer does not match its sealed intent"
 
           print(f"RESUME_ZERO_CARRY_FORWARD=run{source_run}; journal zero-percent APPLIED; re-exposing source zero intent/result")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
@@ -1739,8 +1740,8 @@ jobs:
     # bridge (UNKNOWN source result), or the direct carryforward (APPLIED source result).
     # When the source zero-percent is already APPLIED and re-exposed by
     # resume-zero-carryforward, the direct intent-write is skipped to avoid
-    # DuplicateMutation; the carried sealed evidence is used downstream instead.
-    if: ${{ always() && ((needs.upload-result-write.result == 'success' && needs.upload-result-write.outputs.result_state == 'APPLIED') || needs.upload-create-recovered-result.outputs.recovered == 'true' || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.resume-source-carryforward.result == 'success' && needs.resume-source-carryforward.outputs.source_result_state == 'APPLIED')) && !(needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true') }}
+    # DuplicateMutation; POST_PROMOTION_FINALIZE also forbids fallback intent creation.
+    if: ${{ always() && inputs.mode != 'POST_PROMOTION_FINALIZE' && ((needs.upload-result-write.result == 'success' && needs.upload-result-write.outputs.result_state == 'APPLIED') || needs.upload-create-recovered-result.outputs.recovered == 'true' || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.resume-source-carryforward.result == 'success' && needs.resume-source-carryforward.outputs.source_result_state == 'APPLIED')) && !(needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true') }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:

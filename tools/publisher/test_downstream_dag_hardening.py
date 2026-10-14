@@ -322,6 +322,8 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         self.assertNotIn("execute-operation", commands)
         self.assertNotIn("CLOUDFLARE_API_TOKEN", str(carry))
         self.assertIn("a6-promote-result-${{ inputs.resume_source_run_id }}", str(carry))
+        zero_intent_gate = self.gate("zero-percent-intent-write")
+        self.assertIn("inputs.mode != 'POST_PROMOTION_FINALIZE'", zero_intent_gate)
 
         promote_intent = self.job("promote-intent-write")
         self.assertIn("inputs.mode != 'POST_PROMOTION_FINALIZE'", str(promote_intent.get("if", "")))
@@ -366,6 +368,13 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         job = self.job("resume-source-carryforward")
         self.assertIn("a6-upload-direct-result-${{ inputs.resume_source_run_id }}", str(job))
         self.assertNotIn("a6-upload-result-${{ inputs.resume_source_run_id }}", str(job))
+
+    def test_zero_carryforward_accepts_reexposed_producers_but_matches_intent(self):
+        job = self.job("resume-zero-carryforward")
+        commands = "\n".join(str(step.get("run", "")) for step in job["steps"])
+        self.assertIn('zero_result["producer"]["workflow_run_id"] == zero_intent["producer"]["workflow_run_id"]',
+                      commands)
+        self.assertNotIn('zero_result["producer"]["workflow_run_id"] == source_run', commands)
 
     # Missing or mismatched evidence must fail closed: if the carryforward job
     # did NOT run (resume not APPLIED), the zero-percent-intent-write gate
