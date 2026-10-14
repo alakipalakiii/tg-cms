@@ -536,7 +536,10 @@ class ProofObservationTests(unittest.TestCase):
 
         def run(command, **kwargs):
             if command[0] == "node":
-                return CompletedProcess(command, 1, stdout=b"", stderr=b"RuntimeError: API_TOKEN=synthetic-secret-marker\n")
+                return CompletedProcess(
+                    command, 1, stdout=b"",
+                    stderr=b"Error: API_TOKEN=synthetic-secret-marker\n    at run (gate.mjs:1:2)\nNode.js v22.23.3\n",
+                )
             crawl_out = Path(kwargs["env"]["MAHOON_CRAWL_OUTPUT"]) / "production-override-crawl"
             crawl_out.mkdir(parents=True)
             (crawl_out / "production-override-crawl-summary.json").write_text("{}", encoding="utf-8")
@@ -552,7 +555,7 @@ class ProofObservationTests(unittest.TestCase):
              }), patch.object(runner.subprocess, "run", side_effect=run):
             with self.assertRaisesRegex(
                 runner.ObservationRejected,
-                "read-only browser observation did not complete.*RuntimeError: API_TOKEN=\\[redacted\\]",
+                "read-only browser observation did not complete.*Error: API_TOKEN=\\[redacted\\]",
             ) as error:
                 backend.collect(context)
         self.assertNotIn("synthetic-secret-marker", str(error.exception))

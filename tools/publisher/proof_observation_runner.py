@@ -27,7 +27,10 @@ def _subprocess_failure_diagnostic(process: subprocess.CompletedProcess) -> str:
     if isinstance(output, bytes):
         output = output.decode("utf-8", "replace")
     lines = output.strip().splitlines()
-    diagnostic = lines[-1] if lines else f"exit code {process.returncode}"
+    diagnostic = next(
+        (line.strip() for line in lines if re.match(r"^(?:Error|[A-Za-z]+Error)(?:\s*\[[^]]+\])?:", line.strip())),
+        lines[-1] if lines else f"exit code {process.returncode}",
+    )
     diagnostic = re.sub(r"(?i)\bBearer\s+\S+", "Bearer [redacted]", diagnostic)
     diagnostic = re.sub(
         r"(?i)\b([\w-]*(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTHORIZATION|API[_-]?KEY)[\w-]*\s*[=:]\s*)\S+",
