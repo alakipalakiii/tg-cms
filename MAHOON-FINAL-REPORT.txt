@@ -1,58 +1,16 @@
 MAHOON_PROJECT_FINALIZED_AND_LIVE: BLOCKED
+Updated:2026-10-14T20:53:15Z (2026-10-15 Tehran)
 
-Date: 2026-10-14
-Repository: https://github.com/alakipalakiii/tg-cms
-Code fix pushed: 9ff3b9e7ab28a7b3271b545ddb81e3afb2b0a98c
+Revision163 is now durably COMPLETED; latest content and final functionality acceptance remain.
+Completion run38634275983:SUCCESS. Independent reconciliation38635735894:SUCCESS.
+Journal generation119; active:null; pending:null.
+Production proof5eabba732b07a9a1594f72127c3855cd13a432b507ccee7bccc7ab7c2aa39194 was really measured in38599823193;4221/4221 routes,557 bound media objects,8/8 browser pages, all production gates PASS. Sanitized observations and screenshots retained.
+Exact six-file state commit7c0be71556f041ec940e6f7d3264cd2dca766675; journal closing commit349998b. All six Git blobs independently match accepted staged evidence. Final persistence artifact2b80a4c860e397cdf1049f57f19ff5abaa2eaad1d4a2c6f519d8c825d8c25d3f.
+Fresh Cloudflare readback:deployment54325ccc-494e-448f-bfcd-c07e74564928; candidateb3aa78ef-7b15-4d36-a87e-90dec308eb00:100%; baselinecefbdeec-a3a7-4963-a4e9-19937f7829f9:0%.
+No APPLIED upload, zero-percent or promotion was repeated. No manual journal edit or force push occurred.
 
-## Authoritative live state
+CHECK_ONLY38635779560 measured current revision181 against persisted163. Its exit3 is the expected CHANGED signal. Normal guarded publication is the next step, followed by complete proof/persistence/reconciliation, independent new-post/media/functionality acceptance, final revision recheck and a documented cutoff.
 
-Read from Cloudflare with the read-only Wrangler deployment listing after run 38594845230:
-- Worker: mahoon-art-magazine
-- Active deployment: 54325ccc-494e-448f-bfcd-c07e74564928
-- Candidate b3aa78ef-7b15-4d36-a87e-90dec308eb00: 100%
-- Baseline cefbdeec-a3a7-4963-a4e9-19937f7829f9: 0%
-- Deployment created: 2026-10-14T13:13:22.133845Z
+Required code repairs are pushed throughd5413ab:runtime/browser setup and evidence preservation; complete finalization references; exact inventory ordering; bound legacy media normalization and fresh current media records; static archive/home search/load-more; correct persistence journal path; small sealed content metadata. Focused tests, static browser fixtures and website build passed. Final diagnostic also requires loaded MahoonFont and401 admin authentication boundary.
 
-Canonical journal from origin/main after the continuation:
-- Generation 117; active revision 163; transaction a180efc687b8bac3039d9ee055735c72ad77163192bf93a2680d5f188344dfac.
-- State: operation_reported; pending transaction: none.
-- Upload, zero-percent and promotion: APPLIED; promotion attempts: NOT_APPLIED then APPLIED.
-- Proof SHA-256 and final state commit SHA: null.
-- Run 38594845230 did not alter the journal's operation states or repeat any Cloudflare mutation.
-
-Direct public health probes returned HTTP 200 for the homepage (130,230 bytes), /posts/ (97,910 bytes), /robots.txt (109 bytes), /sitemap.xml (654,737 bytes), /rss.xml (39,194 bytes), and the /admin shell (165,070 bytes). These are live endpoint probes, not full website acceptance. The workstation's direct content-revision endpoint request returned 403; the latest successful scheduled check-only run 38590971385 reported revision 177 versus last persisted revision 81. The latest revision must be checked again after revision 163 is finalized.
-
-Hosted run 38578178875 compared baseline and candidate /posts/ responses. Both were HTTP 200, fully transferred, matched their requested version-attribution headers, and had no Content-Length header: baseline 99,201 bytes; candidate 97,543 bytes. This did not reproduce corruption.
-
-## Production proof diagnosis
-
-Run 38582922041 logged only `WORKFLOW_STAGE_BLOCKED: ProductionProofRejected`, without a traceback. Its code-level cause is the missing backend context value: `create_production_proof()` validated the build bundle but omitted it from the context, while `RuntimeObservationBackend.collect()` immediately reads `context["build_bundle"]`. If lineage validation reaches the backend, this deterministically raises `KeyError` before sealed-file verification, Cloudflare readback, crawler or browser work; the then-current wrapper reduced it to the exception name. The small sealed artifacts agree on revision 163, the journal build-bundle digest, candidate/baseline IDs, zero-percent result, promotion lineage and deployment ID.
-
-Commit 9ff3b9e adds the validated bundle to that context. Regression coverage asserts the backend receives the sealed bundle. Tests passed:
-- `python -m unittest test_a53_executors -q`: 54 tests.
-- `python -m unittest test_proof_observation_runner -q`: 62 tests.
-- `git diff --check`.
-
-The 645 MB build artifact's ZIP service did not support byte ranges. A local full-artifact retrieval was stopped; no 4,221-route crawl was used to diagnose the 7-second failure. The subsequent hosted run 38594845230 successfully revalidated the carried-forward build bundle and build lineage.
-
-## Historical continuation result
-
-Run 38594845230 was the one dispatched `POST_PROMOTION_FINALIZE` continuation. Journal verification, revision resolution, resume admission, build validation, build-ready write, upload carryforward and zero-percent carryforward succeeded. Upload, zero-percent and promotion mutation jobs stayed skipped.
-
-I omitted `preproof_source_run_id` from the dispatch. That caused the workflow to rerun the pre-promotion zero-percent observer against the already-promoted 100% deployment instead of carrying forward the existing passing pre-promotion proof from run 38569347431. The browser self-test passed, but `pre-promotion-proof` correctly stopped before crawling with `ObservationRejected — zero-percent deployment readback does not match sealed result`. No production proof, final-state materialization or final persistence ran. The journal remains at generation 117 / revision 163 / operation_reported.
-
-The prior turn stopped under the then-active single-run cap. The owner's subsequent finalization mission explicitly superseded that cap. Controlled continuation 38599823193 was dispatched at 2026-10-14T16:38:40Z with all original transaction/source inputs and preproof_source_run_id=38569347431. It is active; do not dispatch a duplicate.
-
-Guard and diagnostic commit: 1ccca7e39c66e1f9883e1197361e3dc3df955221. Before dispatch, canonical journal generation 117 and exact live deployment/candidate 100%/baseline 0% were reverified; source artifact availability and small-artifact seal digests matched. The guard rejects missing/zero/invalid preproof inputs and excludes zero-percent observation in POST_PROMOTION_FINALIZE. Proof CLI failures now emit sanitized structured BLOCKED status; observation failures preserve sanitized route/browser evidence and public screenshots. 235 focused downstream tests and 23 normal publisher boundary/gate tests passed (one existing skip in each suite). The hosted journal/revision/admission/build/upload/zero/preproof carryforward stages passed. Promotion carryforward passed; production proof is active since 2026-10-14T16:48:50Z; pinned Chromium installation and the hosted self-test passed. All three Cloudflare mutation jobs are skipped. No mutation has been replayed.
-
-## Acceptance still outstanding
-
-Revision 163 has no production proof or durable final state. No final reconciliation or latest-content publication occurred. Full parity and acceptance for routes, newly published posts, images, audio, video, navigation, SEO, sitemap/RSS, and admin shell remain unproven. Keep status BLOCKED. Do not start a new transaction or replay APPLIED mutations.
-
-## New production proof and remaining persistence repair
-
-Run 38599823193 completed with production proof PASS. Proof SHA-256: 5eabba732b07a9a1594f72127c3855cd13a432b507ccee7bccc7ab7c2aa39194. Accepted evidence: 4,221/4,221 routes, 557 media objects, 8/8 browser pages; all production gates true; matching deployment 54325ccc-494e-448f-bfcd-c07e74564928, candidate b3aa78ef-7b15-4d36-a87e-90dec308eb00 at 100%, baseline at 0%; zero forbidden runtime requests. Sanitized observations and screenshots were retained in a6-production-proof-38599823193.
-
-Final-state materialization failed before persistence. Its exact local reproduction using the real six small operation artifacts was ArtifactContractError: promote authority referenced artifact is unavailable. Both finalization callers omitted the preproof/build references. A second staging mismatch would have rejected persistence: it selected handoff/<transaction>/publisher-state instead of handoff/<transaction>. These are being corrected with regression coverage and explicit revalidation/carryforward of the real passing proof, including observation hashes and fresh Cloudflare/public identity checks. No recrawl or repeated APPLIED mutation is needed. 240 focused tests passed (one existing skip).
-
-Independent hosted interaction diagnostic 38602783467 confirmed inert archive search/load-more. Follow-up 38605324686 confirmed inert homepage/category search and proved real decoded audio and video playback, with no forbidden runtime dependencies or JS errors. Static archive repair 11da38f3dee2d149daad7460f538cb6a43deca7c is pushed and tested (Node browser fixtures, focused Python tests, required website build). It is intended for the later latest-content publication. Current live index baseline is 933 posts, maximum database ID 1910. Revision 163 final persistence and latest-content publication still remain; final project status is BLOCKED.
+This is a progress checkpoint, not a final PASS. See MAHOON-CODEX-HANDOFF.md for verified source/evidence references and the remaining acceptance steps.
