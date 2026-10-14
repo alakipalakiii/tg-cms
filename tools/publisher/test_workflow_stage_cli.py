@@ -273,6 +273,19 @@ class WorkflowStageCliTests(unittest.TestCase):
         self.assertEqual("VALID", json.loads(stdout.getvalue())["status"])
         self.assertEqual("", stderr.getvalue())
 
+    def test_artifact_contract_rejection_reports_safe_reason(self):
+        from contextlib import redirect_stdout, redirect_stderr
+        import io
+        invalid = self.root / "invalid-artifact.json"
+        invalid.write_text("{}", encoding="utf-8")
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            status = cli.main(["validate-artifact", "--input", str(invalid)])
+        self.assertEqual(2, status)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("WORKFLOW_STAGE_BLOCKED: ArtifactContractError — artifact missing required fields",
+                      stderr.getvalue())
+
     def test_pre_promotion_proof_is_sealed_from_exact_a51_lineage(self):
         fixture = self._proof_fixture()
         try:

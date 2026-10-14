@@ -1732,6 +1732,9 @@ def main(argv: list[str] | None = None) -> int:
         # exactly which read-only check fired, which is safe to surface for triage.
         if hasattr(exc, "__class__") and exc.__class__.__name__ == "ObservationRejected":
             print("WORKFLOW_STAGE_BLOCKED: ObservationRejected — " + str(exc), file=sys.stderr)
+        elif isinstance(exc, contracts.ArtifactContractError):
+            detail = " ".join(str(exc).split())[:300]
+            print("WORKFLOW_STAGE_BLOCKED: ArtifactContractError — " + detail, file=sys.stderr)
         else:
             print("WORKFLOW_STAGE_BLOCKED: " + type(exc).__name__, file=sys.stderr)
         return 2
