@@ -569,7 +569,7 @@ class WorkflowStageCliTests(unittest.TestCase):
         result = execute_final_persistence(
             proof_path=proof_path, build_path=bundle_path, upload_result_path=upload_path,
             deploy_result_path=deploy_path, promote_result_path=promote_path,
-            repository=git.root, state_dir=staged, journal_path=journal_path,
+            repository=git.root, state_dir=staged, journal_path=repo_persistence.JOURNAL_PATH,
             remote="origin", branch="main", output_path=output,
         )
         final_artifact = transport.read_artifact(output, expected_type="final_persistence_payload")

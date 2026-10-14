@@ -2954,7 +2954,7 @@ jobs:
             --promote-result "$promote_result"
             --repository state
             --state-dir "handoff/${tx_id}"
-            --journal state/publisher-state/production-transaction-journal.json
+            --journal publisher-state/production-transaction-journal.json
             --remote origin --branch main
             --output final-persistence-result.json
           )

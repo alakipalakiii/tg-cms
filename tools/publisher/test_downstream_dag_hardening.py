@@ -507,6 +507,8 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         persistence = "\n".join(str(s.get("run", "")) for s in self.job("final-persistence")["steps"])
         self.assertIn('--state-dir "handoff/${tx_id}"', persistence)
         self.assertNotIn('--state-dir "handoff/${tx_id}/publisher-state"', persistence)
+        self.assertIn('--journal publisher-state/production-transaction-journal.json', persistence)
+        self.assertNotIn('--journal state/publisher-state/production-transaction-journal.json', persistence)
 
     def test_passing_production_proof_carryforward_is_explicit_and_revalidated(self):
         job = self.job("production-proof")
