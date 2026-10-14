@@ -12,9 +12,18 @@ await mkdir(output, { recursive: true });
 const checks = [];
 const publicDependencies = [];
 const pageErrors = [];
+let newPosts = [];
 let browser, page;
 
+async function saveProgress(activeCheck) {
+  await writeFile(`${output}/result.json`, JSON.stringify({ status: 'RUNNING', measured: Boolean(browser),
+    expected_version: expected, active_check: activeCheck, checks, new_post_ids: newPosts.map((post) => post.id),
+    public_dependencies: publicDependencies, page_errors: pageErrors, PASS: false,
+  }, null, 2) + '\n');
+}
+
 async function check(name, action) {
+  await saveProgress(name);
   try {
     checks.push({ name, PASS: true, evidence: await action() });
   } catch (error) {
@@ -23,6 +32,7 @@ async function check(name, action) {
         .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
         .replace(/\b([\w-]*(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTHORIZATION|API[_-]?KEY)[\w-]*\s*[=:]\s*)\S+/gi, '$1[redacted]').slice(0, 300) });
   }
+  await saveProgress(null);
 }
 
 async function navigate(path) {
@@ -30,6 +40,21 @@ async function navigate(path) {
   assert.equal(response.status(), 200);
   assert.equal(response.headers()['x-mahoon-worker-version'], expected);
   return path;
+}
+
+async function playback(kind) {
+  const element = page.locator(kind).first();
+  await element.evaluate((node) => { node.preload = 'auto'; node.load(); });
+  await page.waitForFunction((tag) => {
+    const node = document.querySelector(tag);
+    return node && node.readyState >= 2 && Number.isFinite(node.duration) && node.duration > 0;
+  }, kind, { timeout: 30000 });
+  if (kind === 'audio') await page.locator('[data-mahoon-native-player] .js-play:visible').first().click();
+  else await element.evaluate((node) => node.play());
+  await page.waitForFunction((tag) => document.querySelector(tag).currentTime > 0.1, kind, { timeout: 10000 });
+  return element.evaluate((node) => { node.pause(); return {
+    duration: node.duration, current_time: node.currentTime, source_path: new URL(node.currentSrc).pathname,
+  }; });
 }
 
 try {
@@ -52,6 +77,12 @@ try {
     id: record.id, path: new URL(record.url).pathname, category: record.category,
   })), null, 2) + '\n');
   const latest = records.reduce((a, b) => Number(a.id) > Number(b.id) ? a : b);
+  if (process.env.MAHOON_BASELINE_RUN_ID) {
+    const baseline = JSON.parse(await readFile('baseline/runner-evidence/live-functionality/index-post-identities.json', 'utf8'));
+    assert.ok(Array.isArray(baseline) && baseline.every((post) => Number.isInteger(post.id)));
+    const prior = new Set(baseline.map((post) => post.id));
+    newPosts = records.filter((post) => !prior.has(post.id));
+  }
   await check('archive_load_more', async () => {
     await navigate('/posts/');
     const before = await page.locator('#archiveGrid article').count();
@@ -105,18 +136,25 @@ try {
       const post = records.find((record) => media.post_ids.includes(record.id));
       const path = new URL(post.url).pathname;
       await navigate(path);
-      const element = page.locator(kind).first();
-      await element.evaluate((node) => { node.preload = 'auto'; node.load(); });
-      await page.waitForFunction((tag) => {
-        const node = document.querySelector(tag);
-        return node && node.readyState >= 2 && Number.isFinite(node.duration) && node.duration > 0;
-      }, kind, { timeout: 30000 });
-      await element.evaluate((node) => node.play());
-      await page.waitForFunction((tag) => document.querySelector(tag).currentTime > 0.1, kind, { timeout: 10000 });
-      const evidence = await element.evaluate((node) => { node.pause(); return {
-        duration: node.duration, current_time: node.currentTime, source_path: new URL(node.currentSrc).pathname,
-      }; });
+      const evidence = await playback(kind);
       return { database_id: post.id, path, ...evidence };
+    });
+  }
+  for (const post of newPosts) {
+    await check(`new_article_${post.id}`, async () => {
+      const path = new URL(post.url).pathname;
+      await navigate(path);
+      assert.ok((await page.locator('main').innerText()).trim().length > 80);
+      const images = page.locator('main img');
+      for (const image of await images.all()) {
+        await image.scrollIntoViewIfNeeded();
+        await image.evaluate((node) => node.decode());
+        assert.ok(await image.evaluate((node) => node.naturalWidth > 0 && node.naturalHeight > 0));
+      }
+      const media = {};
+      for (const kind of ['audio', 'video']) if (await page.locator(kind).count()) media[kind] = await playback(kind);
+      await page.screenshot({ path: `${output}/new-post-${post.id}.png`, fullPage: true });
+      return { database_id: post.id, path, decoded_images: await images.count(), media };
     });
   }
 } catch (error) {
@@ -124,7 +162,8 @@ try {
 } finally {
   await browser?.close();
   const result = { measured: Boolean(browser), expected_version: expected, checks, public_dependencies: publicDependencies,
-    page_errors: pageErrors, PASS: checks.length === 7 && checks.every((item) => item.PASS)
+    new_post_ids: newPosts.map((post) => post.id), baseline_run_id: process.env.MAHOON_BASELINE_RUN_ID || null,
+    page_errors: pageErrors, PASS: checks.length === 7 + newPosts.length && checks.every((item) => item.PASS)
       && publicDependencies.length === 0 && pageErrors.length === 0 };
   await writeFile(`${output}/result.json`, JSON.stringify(result, null, 2) + '\n');
   console.log(JSON.stringify(result));

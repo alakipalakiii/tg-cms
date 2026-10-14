@@ -760,6 +760,70 @@ def execute_final_persistence(*, proof_path: str | Path, build_path: str | Path,
             "state_commit_sha": artifact["payload"]["state_commit_sha"]}
 
 
+def carry_production_proof(*, proof_path: str | Path, build_path: str | Path,
+                           operation_result_paths: Mapping[str, str | Path],
+                           observations_dir: str | Path, output_path: str | Path,
+                           reference_paths: list[str]) -> dict:
+    from publisher import cloudflare_wrangler, remote_proof_harness
+
+    refs = _refs(*_many(reference_paths))
+    bundle = _read(build_path, "build_bundle", refs)
+    results = {name: _read(path, refs=refs) for name, path in operation_result_paths.items()}
+    proof = recovery.validate_proof(_read(proof_path, "proof_evidence", refs), bundle, results,
+                                    referenced_artifacts=refs)
+    payload = proof["payload"]
+    if payload["proof_state"] != "PASS" or payload["production_validation"]["PASS"] is not True:
+        raise production_proof.ProductionProofRejected("carried production proof did not pass")
+    source = Path(observations_dir)
+    files = {"crawler-summary.json": "crawler_evidence_sha256",
+             "browser-observations.json": "browser_evidence_sha256",
+             "crawler-route-state.json": "route_state_evidence_sha256"}
+    for name, field in files.items():
+        path = source / name
+        if source.is_symlink() or path.is_symlink() or contracts.sha256_bytes(path.read_bytes()) != payload["gate_results"]["production"][field]:
+            raise production_proof.ProductionProofRejected("carried production observation hash mismatch: " + name)
+    identity = payload["production_validation"]["identity_confirmation"]
+    live = cloudflare_wrangler.active_deployment(bundle["transaction"]["worker"])
+    allocation = {item["version_id"]: item["percentage"] for item in live["versions"]}
+    if (live["id"] != identity["promotion_deployment_id"]
+            or any(isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100
+                   for value in allocation.values())
+            or allocation.get(identity["candidate_version_id"]) != 100
+            or allocation.get(identity["baseline_version_id"]) != 0
+            or sum(allocation.values()) != 100):
+        raise production_proof.ProductionProofRejected("live deployment differs from carried production proof")
+    probes = []
+    for route in ("/", "/posts/", "/robots.txt"):
+        observed = remote_proof_harness.request_with_version_pinning(
+            "https://mahoonartmagazine.ir" + route, worker=bundle["transaction"]["worker"],
+            version=identity["candidate_version_id"], send_version_override=False,
+            require_actual_version=True, headers={"User-Agent": "MAHOON-production-proof-carryforward/1.0"})
+        if (observed["status"] != 200 or observed["version_attribution_status"] != "PROVEN"
+                or observed["actual_version"] != identity["candidate_version_id"]
+                or observed["override_header_sent"] is not False or not observed["body"]):
+            raise production_proof.ProductionProofRejected("carried production proof public identity probe failed: " + route)
+        probes.append({"route": route, "status": 200, "actual_version": observed["actual_version"],
+                       "body_bytes": len(observed["body"]), "override_sent": False})
+    target = Path(output_path).parent / "runner-evidence/production-proof"
+    target.mkdir(parents=True, exist_ok=False)
+    for name in files:
+        shutil.copyfile(source / name, target / name)
+    screenshots = source.with_name(source.name + "-screenshots")
+    if screenshots.is_dir() and not screenshots.is_symlink():
+        destination = target.with_name(target.name + "-screenshots")
+        destination.mkdir()
+        for path in screenshots.glob("*.png"):
+            if path.is_symlink():
+                raise production_proof.ProductionProofRejected("carried screenshot is unsafe")
+            shutil.copyfile(path, destination / path.name)
+    readback = {"observed_at": datetime.now(timezone.utc).isoformat(), "source_proof_sha256": proof["artifact_sha256"],
+                "deployment_id": live["id"], "versions": live["versions"], "public_probes": probes}
+    (target.parent / "carried-production-proof-readback.json").write_text(
+        json.dumps(readback, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    transport.write_artifact(output_path, proof, expected_type="proof_evidence", referenced_artifacts=refs)
+    return {"status": "PASS", "artifact_sha256": proof["artifact_sha256"], "carried": True}
+
+
 def _staged_state_files(root: Path) -> dict[str, bytes]:
     files = {}
     directories = set()
@@ -1051,6 +1115,11 @@ def _parser() -> argparse.ArgumentParser:
                 "local-gates", "base-url", "evidence-dir", "output"):
         observe_prod.add_argument("--" + arg, required=True)
     observe_prod.add_argument("--reference", action="append", default=[])
+
+    carry_prod = commands.add_parser("production-proof-carryforward")
+    for arg in ("proof", "build-bundle", "upload-result", "deploy-result", "promote-result", "observations-dir", "output"):
+        carry_prod.add_argument("--" + arg, required=True)
+    carry_prod.add_argument("--reference", action="append", default=[])
 
     proof = commands.add_parser("production-proof")
     for arg in ("build-bundle", "upload-intent", "upload-result", "deploy-intent",
@@ -1629,6 +1698,11 @@ def main(argv: list[str] | None = None) -> int:
                 observations_path=args.observations, output_path=args.output,
                 reference_paths=args.reference,
             )
+        elif args.command == "production-proof-carryforward":
+            output = carry_production_proof(proof_path=args.proof, build_path=args.build_bundle,
+                operation_result_paths={"upload_version": args.upload_result,
+                    "deploy_zero_percent": args.deploy_result, "promote": args.promote_result},
+                observations_dir=args.observations_dir, output_path=args.output, reference_paths=args.reference)
         elif args.command == "production-proof-observe":
             artifact_paths = {
                 "build": args.build_bundle, "upload_intent": args.upload_intent,
@@ -1729,13 +1803,13 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         # Exception messages from external backends may contain sensitive diagnostics.
         safe_reason = None
-        if type(exc).__name__ in {"ObservationRejected", "ArtifactContractError", "ProductionProofRejected"}:
+        if type(exc).__name__ in {"ObservationRejected", "ArtifactContractError", "ProductionProofRejected", "MaterializationRejected", "ProofRecoveryRejected", "PersistenceBlocked"}:
             from publisher.proof_observation_runner import _sanitize_browser_value
             safe_reason = _sanitize_browser_value(" ".join(str(exc).split()))[:300]
             print("WORKFLOW_STAGE_BLOCKED: " + type(exc).__name__ + " — " + safe_reason, file=sys.stderr)
         else:
             print("WORKFLOW_STAGE_BLOCKED: " + type(exc).__name__, file=sys.stderr)
-        if args.command in {"pre-promotion-proof-observe", "production-proof-observe"}:
+        if args.command in {"pre-promotion-proof-observe", "production-proof-observe", "production-proof-carryforward", "materialize-final-state", "final-persistence-execute"}:
             diagnostic = {"status": "BLOCKED", "error_type": type(exc).__name__}
             if safe_reason is not None:
                 diagnostic["reason"] = safe_reason

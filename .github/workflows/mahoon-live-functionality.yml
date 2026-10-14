@@ -7,9 +7,15 @@ on:
         description: "Authoritatively verified production version"
         type: string
         required: true
+      baseline_run_id:
+        description: "Optional prior read-only diagnostic for new-post comparison"
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: mahoon-read-only-functionality
@@ -34,9 +40,19 @@ jobs:
         run: node tools/publisher/prepromotion_browser_gate.mjs --self-test > browser-self-test.json
       - name: Run static archive regression fixtures
         run: node tools/publisher/test_static_archive.mjs
+      - name: Read prior browser post identities
+        if: ${{ inputs.baseline_run_id != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: mahoon-live-functionality-${{ inputs.baseline_run_id }}
+          path: baseline
+          run-id: ${{ inputs.baseline_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
       - name: Check live interactions without mutation or version override
         env:
           MAHOON_EXPECTED_VERSION: ${{ inputs.expected_version }}
+          MAHOON_BASELINE_RUN_ID: ${{ inputs.baseline_run_id }}
         run: node tools/publisher/live_functionality_smoke.mjs
       - uses: actions/upload-artifact@v4
         if: always()

@@ -164,6 +164,58 @@ class ProofObservationTests(unittest.TestCase):
     def test_01_valid_applied_zero_percent_lineage_enters_observation(self):
         fake = FakeBackend(); self.assertEqual("PASS", self.pre(fake)["status"]); self.assertEqual(1, fake.calls)
 
+    def test_carry_production_proof_requires_pass_hashes_and_fresh_live_identity(self):
+        from publisher import cloudflare_wrangler, remote_proof_harness, workflow_stage_cli as cli
+        self.production()
+        live = {"id": "dep-promoted", "versions": [
+            {"version_id": "candidate-v1", "percentage": 100},
+            {"version_id": "baseline-v1", "percentage": 0}]}
+        probe = {"status": 200, "version_attribution_status": "PROVEN", "override_header_sent": False,
+                 "actual_version": "candidate-v1", "body": b"public fixture"}
+        def carry(name):
+            directory = self.root / name; directory.mkdir()
+            return cli.carry_production_proof(proof_path=self.root / "proof-output.json",
+                build_path=self.paths["build"], operation_result_paths={
+                    "upload_version": self.paths["upload_result"], "deploy_zero_percent": self.paths["deploy_result"],
+                    "promote": self.paths["promote_result"]}, observations_dir=self.root / "prod-evidence",
+                output_path=directory / "production-proof.json", reference_paths=[str(p) for p in self.paths.values()])
+        with patch.object(cloudflare_wrangler, "active_deployment", return_value=live), \
+                patch.object(remote_proof_harness, "request_with_version_pinning", return_value=probe) as request:
+            result = carry("carried")
+            self.assertTrue(result["carried"])
+            original = json.loads((self.root / "proof-output.json").read_text())
+            self.assertEqual(original["artifact_sha256"], result["artifact_sha256"])
+            readback = json.loads((self.root / "carried/runner-evidence/carried-production-proof-readback.json").read_text())
+            self.assertEqual(result["artifact_sha256"], readback["source_proof_sha256"])
+            for name in ("crawler-summary.json", "browser-observations.json", "crawler-route-state.json"):
+                self.assertEqual((self.root / "prod-evidence" / name).read_bytes(),
+                    (self.root / "carried/runner-evidence/production-proof" / name).read_bytes())
+            self.assertEqual(3, request.call_count)
+            self.assertTrue(all(c.kwargs["send_version_override"] is False for c in request.call_args_list))
+            live["id"] = "different-deployment"
+            with self.assertRaisesRegex(Exception, "live deployment differs"):
+                carry("wrong-live")
+            live["id"] = "dep-promoted"
+            probe["version_attribution_status"] = "NOT_PROVEN"
+            with self.assertRaisesRegex(Exception, "public identity probe failed"):
+                carry("wrong-public")
+            probe["version_attribution_status"] = "PROVEN"
+            (self.root / "prod-evidence/browser-observations.json").write_text("changed")
+            with self.assertRaisesRegex(Exception, "observation hash mismatch"):
+                carry("wrong-hash")
+
+    def test_carry_production_proof_rejects_failed_gate_before_live_io(self):
+        from publisher import cloudflare_wrangler, workflow_stage_cli as cli
+        self.production(FakeBackend(visual=False))
+        with patch.object(cloudflare_wrangler, "active_deployment") as live:
+            with self.assertRaisesRegex(Exception, "did not pass"):
+                cli.carry_production_proof(proof_path=self.root / "proof-output.json", build_path=self.paths["build"],
+                    operation_result_paths={"upload_version": self.paths["upload_result"],
+                        "deploy_zero_percent": self.paths["deploy_result"], "promote": self.paths["promote_result"]},
+                    observations_dir=self.root / "prod-evidence", output_path=self.root / "unused.json",
+                    reference_paths=[str(p) for p in self.paths.values()])
+            live.assert_not_called()
+
     def test_02_not_applied_deployment_rejected(self):
         bad = copy.deepcopy(self.f.deploy_result); bad["payload"]["result_state"] = "NOT_APPLIED"
         bad = contracts.seal_artifact(bad)

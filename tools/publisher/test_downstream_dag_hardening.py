@@ -465,6 +465,7 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         text = path.read_text(encoding="utf-8")
         workflow = yaml.load(text, Loader=yaml.BaseLoader)
         self.assertEqual("read", workflow["permissions"]["contents"])
+        self.assertEqual("read", workflow["permissions"]["actions"])
         self.assertIn("contents: read", text)
         self.assertIn("group: mahoon-read-only-functionality", text)
         self.assertIn("node-version: 22", text)
@@ -472,7 +473,9 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         self.assertIn("--self-test", text)
         self.assertIn("inputs.expected_version", text)
         self.assertIn("if: always()", text)
-        for forbidden in ("contents: write", "secrets.", "download-artifact", "execute-operation", "deploy"):
+        self.assertIn("mahoon-live-functionality-${{ inputs.baseline_run_id }}", text)
+        self.assertNotIn("a6-build-", text)
+        for forbidden in ("contents: write", "secrets.", "execute-operation", "deploy"):
             self.assertNotIn(forbidden, text)
 
     def test_production_proof_references_the_full_promotion_authority_chain(self):
@@ -485,6 +488,28 @@ class DownstreamDagHardeningTests(unittest.TestCase):
             "admission.json",
         ):
             self.assertIn(f'--reference "$workspace/handoff/{path}"', observer["run"])
+
+    def test_finalization_references_authorities_and_uses_transaction_staging_root(self):
+        for name in ("final-state-materialization", "final-persistence"):
+            job = self.job(name)
+            run = "\n".join(str(step.get("run", "")) for step in job["steps"])
+            for path in ("runner-evidence/v1-build-bundle.json", "pre-promotion-proof.json", "admission.json"):
+                self.assertIn("--reference handoff/" + path, run)
+            self.assertIn("a6-preproof-${{ github.run_id }}", str(job))
+            self.assertIn("diagnostics/tools/publisher/workflow_stage_cli.py", run)
+        persistence = "\n".join(str(s.get("run", "")) for s in self.job("final-persistence")["steps"])
+        self.assertIn('--state-dir "handoff/${tx_id}"', persistence)
+        self.assertNotIn('--state-dir "handoff/${tx_id}/publisher-state"', persistence)
+
+    def test_passing_production_proof_carryforward_is_explicit_and_revalidated(self):
+        job = self.job("production-proof")
+        carry = next(s for s in job["steps"] if s.get("name", "").startswith("Revalidate passing production proof"))
+        self.assertIn("inputs.mode == 'POST_PROMOTION_FINALIZE'", carry["if"])
+        self.assertIn("inputs.source_proof_run_id", carry["if"])
+        self.assertIn("production-proof-carryforward", carry["run"])
+        self.assertIn("--observations-dir retained-proof/runner-evidence/production-proof", carry["run"])
+        observer = next(s for s in job["steps"] if s.get("name") == "Observe and seal combined production proof")
+        self.assertIn("inputs.source_proof_run_id == ''", observer["if"])
 
     def test_passing_preproof_can_be_carried_forward_with_complete_lineage(self):
         inputs = self.WORKFLOW["on"]["workflow_dispatch"]["inputs"]
