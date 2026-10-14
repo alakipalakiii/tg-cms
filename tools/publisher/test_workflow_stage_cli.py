@@ -420,6 +420,81 @@ class WorkflowStageCliTests(unittest.TestCase):
         finally:
             fixture.tearDown()
 
+    def test_failed_promote_reconciliation_records_unknown_with_full_lineage(self):
+        from types import SimpleNamespace
+
+        fixture = self._proof_fixture()
+        try:
+            bundle_path, admission_path = self.root / "reconcile-bundle.json", self.receipt_path
+            proof_path, intent_path = self.root / "reconcile-preproof.json", self.root / "reconcile-intent.json"
+            deploy_intent_path, deploy_result_path = self.root / "reconcile-zero-intent.json", self.root / "reconcile-zero-result.json"
+            transport.write_artifact(proof_path, fixture.proof,
+                                     referenced_artifacts=fixture.references)
+            transport.write_artifact(bundle_path, fixture.bundle)
+            transport.write_artifact(deploy_intent_path, fixture.deploy_intent)
+            transport.write_artifact(deploy_result_path, fixture.deploy_result)
+            journal_path = self.root / "reconcile-journal.json"
+            journal_path.write_text(json.dumps(journal_module.empty_journal(WORKER)), encoding="utf-8")
+            journal_module.TransactionJournal.from_file(journal_path, WORKER).admit(REVISION, "synthetic")
+            reference_paths = [str(proof_path), str(deploy_intent_path),
+                               str(deploy_result_path), str(bundle_path)]
+            with mock.patch.dict(os.environ, {"GITHUB_RUN_ID": "38566401139", "GITHUB_RUN_ATTEMPT": "1"}):
+                intent = cli.create_mutation_intent(
+                    "promote", bundle_path, proof_path, None, journal_path,
+                    prerequisite_intent_path=deploy_intent_path,
+                    reference_paths=reference_paths,
+                )
+            transport.write_artifact(intent_path, intent,
+                                     referenced_artifacts=transport.read_references(reference_paths))
+
+            class FakeWriter:
+                def _confirm_current(self):
+                    active = {
+                        "logical_transaction_id": TX["logical_transaction_id"],
+                        "state": "intent_recorded",
+                        "operations": {"promote": {
+                            "result_state": "NOT_REPORTED",
+                            "attempts": [{"attempt_id": intent["payload"]["attempt_id"],
+                                          "intent_artifact_sha256": intent["artifact_sha256"],
+                                          "result_state": "NOT_REPORTED"}],
+                        }},
+                    }
+                    return {"active": active}, 113, "f" * 64
+
+                def reconcile_recovery_decision(self, _decision):
+                    return {"status": "RECONCILED_NOT_APPLIED"}
+
+            writer = FakeWriter()
+            args = SimpleNamespace(
+                build_bundle=str(bundle_path), admission=str(admission_path),
+                intent=str(intent_path), reference=reference_paths,
+                repository=str(self.root), remote="origin", branch="main",
+                github_owner="owner", github_repo="repo", source_run_id="38566401139",
+                source_run_attempt=1, source_sha="e" * 40,
+                expected_generation=113, journal_sha256="f" * 64,
+                expected_revision=REVISION, production_baseline="",
+            )
+            run = {"status": "completed", "head_repository": {"full_name": "owner/repo"},
+                   "run_attempt": 1, "head_sha": args.source_sha}
+            jobs = {"jobs": [{"name": "cloudflare-promote-operation", "conclusion": "failure"}]}
+            with (mock.patch.object(cli, "_writer", return_value=writer),
+                  mock.patch.object(cli, "_writer_journal_path", return_value=journal_path),
+                  mock.patch.object(cli, "_run_gh_api", side_effect=[json.dumps(run), json.dumps(jobs)]),
+                  mock.patch.object(cli, "record_result") as record,
+                  mock.patch.object(cli, "create_recovery_readback") as readback,
+                  mock.patch.object(cli, "make_recovery_decision", return_value={"decision": "RECONCILED_NOT_APPLIED"})):
+                result = cli.reconciliation_decision(args)
+
+            self.assertEqual("recovery", result["reconciliation_path"])
+            record_args = record.call_args.args
+            self.assertEqual((str(journal_path), str(intent_path)), record_args[:2])
+            self.assertEqual(reference_paths, record_args[3])
+            self.assertIs(record.call_args.kwargs["remote_writer"], writer)
+            self.assertEqual([str(bundle_path), str(admission_path), *reference_paths],
+                             readback.call_args.args[2])
+        finally:
+            fixture.tearDown()
+
     def test_promote_rejects_false_and_tampered_preproof(self):
         fixture = self._proof_fixture()
         try:

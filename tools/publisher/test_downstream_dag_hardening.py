@@ -27,6 +27,11 @@ class DownstreamDagHardeningTests(unittest.TestCase):
              / ".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8"),
             Loader=yaml.BaseLoader,
         )
+        cls.RECONCILER = yaml.load(
+            (pathlib.Path(__file__).resolve().parents[2]
+             / ".github/workflows/mahoon-post-run-reconciler.yml").read_text(encoding="utf-8"),
+            Loader=yaml.BaseLoader,
+        )
 
     def job(self, name):
         return self.WORKFLOW["jobs"][name]
@@ -417,6 +422,26 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         intent_command = next(step["run"] for step in promote["steps"]
                               if step.get("id") == "intent")
         self.assertIn("--reference handoff/runner-evidence/v1-build-bundle.json", intent_command)
+
+    def test_post_run_reconciler_binds_and_reads_back_the_exact_orphan(self):
+        steps = self.RECONCILER["jobs"]["reconcile"]["steps"]
+        classify = next(step for step in steps if step.get("name") == "Identify and classify orphaned intent")
+        self.assertIn('intent_value.get("artifact_sha256") == recorded_attempt.get("intent_artifact_sha256")',
+                      classify["run"])
+        self.assertIn('producer.get("workflow_run_id") == run_id', classify["run"])
+        self.assertIn('producer.get("run_attempt") == source_attempt', classify["run"])
+        self.assertNotIn("recorded_by_this_run and", classify["run"])
+
+        failed = next(step for step in steps if step.get("name") == "Reconcile orphaned Class B intent (failed mutation)")
+        self.assertEqual("${{ secrets.CLOUDFLARE_READ_API_TOKEN }}", failed["env"]["CLOUDFLARE_API_TOKEN"])
+        self.assertEqual("npx wrangler@4.83.0", failed["env"]["MAHOON_WRANGLER"])
+        self.assertIn("a6-preproof-${{ steps.classify.outputs.run_id }}", failed["run"])
+        self.assertIn('"${refs[@]}"', failed["run"])
+
+    def test_promote_operation_validates_the_build_bundle_as_a_reference(self):
+        step = next(step for step in self.job("cloudflare-promote-operation")["steps"]
+                    if step.get("name") == "Execute exact authorized promotion")
+        self.assertIn("refs=(--reference handoff/runner-evidence/v1-build-bundle.json", step["run"])
 
 
 if __name__ == "__main__":

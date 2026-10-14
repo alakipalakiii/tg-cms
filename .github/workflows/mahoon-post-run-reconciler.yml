@@ -162,21 +162,27 @@ jobs:
               print(f"RECONCILE=blocked; operation {target!r} has no known intent artifact mapping")
               sys.exit(1)
 
-          # An orphan intent belongs to the run that recorded it. The journal
-          # binds the active transaction to recording runs via
-          # execution_attempts[].run_id; the sealed intent artifact is named
-          # after its recording run. CHECK_ONLY and early-failing runs record
-          # no durable intent, so when this source run is not the recorder it
-          # left nothing behind: say "none" instead of failing the pipeline
-          # on someone else's orphan.
+          # RESUME_ADMITTED does not append to execution_attempts. Bind the
+          # orphan to the exact durable intent digest and its producer run.
           art = gh(source_repo, f"actions/runs/{run_id}/artifacts")
           artifact_names = {a.get("name") for a in art.get("artifacts", [])}
           attempts = [str(e.get("run_id")) for e in active.get("execution_attempts", []) if e.get("run_id")]
-          recorded_by_this_run = run_id in attempts
           intent_artifact, intent_file = intent_artifact_map[target]
           intent_artifact_full = f"{intent_artifact}-{run_id}"
-          if not (recorded_by_this_run and intent_artifact_full in artifact_names):
-              print(f"RECONCILE=none; run {run_id} did not record the active orphan intent (recording runs={attempts}, intent artifact {intent_artifact_full!r} present={intent_artifact_full in artifact_names})")
+          intent_path = Path("handoff") / intent_artifact_full / intent_file
+          recorded_attempt = active["operations"][target]["attempts"][-1]
+          try:
+              intent_value = json.loads(intent_path.read_text(encoding="utf-8")) if intent_artifact_full in artifact_names else {}
+          except (OSError, UnicodeError, json.JSONDecodeError):
+              intent_value = {}
+          producer = intent_value.get("producer", {})
+          owns_intent = (
+              intent_value.get("artifact_sha256") == recorded_attempt.get("intent_artifact_sha256")
+              and producer.get("workflow_run_id") == run_id
+              and producer.get("run_attempt") == source_attempt
+          )
+          if not owns_intent:
+              print(f"RECONCILE=none; run {run_id} does not own the journaled intent digest (recording runs={attempts}, artifact {intent_artifact_full!r} present={intent_artifact_full in artifact_names})")
               sys.exit(0)
 
           job_map = {
@@ -317,12 +323,27 @@ jobs:
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          MAHOON_WRANGLER: npx wrangler@4.83.0
           CF_ACCOUNT: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CF_WORKER: mahoon-art-magazine
           CF_HOSTNAME: ${{ vars.CLOUDFLARE_EXPECTED_HOSTNAME }}
         run: |
           BASE_NAME=$(echo "${{ steps.classify.outputs.source_repo }}" | awk -F/ '{print $NF}')
           OWNER_NAME=$(echo "${{ steps.classify.outputs.source_repo }}" | awk -F/ '{print $1}')
+          refs=()
+          if [ '${{ steps.classify.outputs.operation }}' = 'promote' ]; then
+            for path in \
+              "handoff/a6-preproof-${{ steps.classify.outputs.run_id }}/pre-promotion-proof.json" \
+              "handoff/a6-zero-intent-${{ steps.classify.outputs.run_id }}/zero-percent-intent.json" \
+              "handoff/a6-zero-direct-result-${{ steps.classify.outputs.run_id }}/zero-percent-result.json" \
+              "handoff/a6-zero-recovered-result-${{ steps.classify.outputs.run_id }}/recovered-zero-result.json" \
+              "handoff/a6-zero-readback-${{ steps.classify.outputs.run_id }}/zero-recovery-readback.json" \
+              "handoff/a6-zero-decision-${{ steps.classify.outputs.run_id }}/zero-recovery-decision.json"; do
+              if [ -f "$path" ]; then refs+=(--reference "$path"); fi
+            done
+          fi
           python code/tools/publisher/workflow_stage_cli.py reconciliation-decision \
             --operation "${{ steps.classify.outputs.operation }}" \
             --intent "handoff/${{ steps.classify.outputs.intent_artifact }}-${{ steps.classify.outputs.run_id }}/${{ steps.classify.outputs.intent_file }}" \
@@ -340,4 +361,5 @@ jobs:
             --production-baseline "${{ steps.baseline.outputs.production_baseline }}" \
             --expected-generation "${{ steps.baseline.outputs.expected_generation }}" \
             --journal-sha256 "${{ steps.baseline.outputs.journal_sha256 }}" \
-            --expected-revision "${{ steps.baseline.outputs.expected_revision }}"
+            --expected-revision "${{ steps.baseline.outputs.expected_revision }}" \
+            "${refs[@]}"

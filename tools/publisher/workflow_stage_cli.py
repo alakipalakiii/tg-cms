@@ -1276,7 +1276,8 @@ def reconciliation_decision(args) -> dict:
     """
     from publisher import unexecuted_intent_abandonment as abandon
 
-    refs = _refs(*_many([args.build_bundle, args.admission]))
+    reference_paths = [args.build_bundle, args.admission, *args.reference]
+    refs = _refs(*_many(reference_paths))
     intent = _read(args.intent, "mutation_intent", refs)
     bundle = _read(args.build_bundle, "build_bundle")
     admission = _read(args.admission, "admission_receipt", refs)
@@ -1427,16 +1428,17 @@ def reconciliation_decision(args) -> dict:
 
         # Persist UNKNOWN through the existing durable path (writes the local
         # journal at the writer's path, then confirms the remote commit).
-        record_result(str(journal_file), str(result_path), remote_writer=writer)
+        record_result(str(journal_file), args.intent, str(result_path), args.reference,
+                      remote_writer=writer)
 
         create_recovery_readback(
             args.intent, str(result_path),
-            [args.build_bundle, args.admission],
+            reference_paths,
             output_path=str(readback_path),
         )
         decision = make_recovery_decision(
             args.intent, str(result_path), str(readback_path),
-            str(journal_file), [args.build_bundle, args.admission],
+            str(journal_file), reference_paths,
         )
         output = writer.reconcile_recovery_decision(decision)
         output["reconciliation_path"] = "recovery"

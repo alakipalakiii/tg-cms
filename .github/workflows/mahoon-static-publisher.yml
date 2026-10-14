@@ -2167,7 +2167,7 @@ jobs:
           MAHOON_WRANGLER: npx wrangler@4.83.0
           CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
         run: |
-          refs=(--reference handoff/pre-promotion-proof.json --reference handoff/zero-percent-intent.json)
+          refs=(--reference handoff/runner-evidence/v1-build-bundle.json --reference handoff/pre-promotion-proof.json --reference handoff/zero-percent-intent.json)
           if [ '${{ needs.promote-intent-write.outputs.zero_recovered }}' = 'true' ]; then
             refs+=(--reference handoff/zero-percent-result.json --reference handoff/recovered-zero-result.json --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json)
           else
