@@ -477,6 +477,11 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         self.assertNotIn("a6-build-", text)
         for forbidden in ("contents: write", "secrets.", "execute-operation", "deploy"):
             self.assertNotIn(forbidden, text)
+        script = (path.parents[2] / "tools/publisher/live_functionality_smoke.mjs").read_text(encoding="utf-8")
+        self.assertIn("check('admin_authentication_boundary'", script)
+        self.assertIn("page.request.get('https://api.mahoonartmagazine.ir/admin/health')", script)
+        self.assertIn("assert.equal(response.status(), 401)", script)
+        self.assertIn("checks.length === 8 + newPosts.length", script)
 
     def test_production_proof_references_the_full_promotion_authority_chain(self):
         proof = self.job("production-proof")

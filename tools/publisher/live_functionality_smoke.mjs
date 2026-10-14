@@ -140,6 +140,17 @@ try {
       return { database_id: post.id, path, ...evidence };
     });
   }
+  await check('admin_authentication_boundary', async () => {
+    await navigate('/admin');
+    assert.ok(await page.locator('#loginView #tokenInput[type="password"]').isVisible());
+    assert.ok(await page.locator('#loginView #loginBtn').isVisible());
+    const response = await page.request.get('https://api.mahoonartmagazine.ir/admin/health');
+    assert.equal(response.status(), 401);
+    const body = await response.json();
+    assert.equal(body.ok, false);
+    assert.equal(body.error, 'Unauthorized');
+    return { login_visible: true, unauthenticated_api_status: response.status() };
+  });
   for (const post of newPosts) {
     await check(`new_article_${post.id}`, async () => {
       const path = new URL(post.url).pathname;
@@ -163,7 +174,7 @@ try {
   await browser?.close();
   const result = { measured: Boolean(browser), expected_version: expected, checks, public_dependencies: publicDependencies,
     new_post_ids: newPosts.map((post) => post.id), baseline_run_id: process.env.MAHOON_BASELINE_RUN_ID || null,
-    page_errors: pageErrors, PASS: checks.length === 7 + newPosts.length && checks.every((item) => item.PASS)
+    page_errors: pageErrors, PASS: checks.length === 8 + newPosts.length && checks.every((item) => item.PASS)
       && publicDependencies.length === 0 && pageErrors.length === 0 };
   await writeFile(`${output}/result.json`, JSON.stringify(result, null, 2) + '\n');
   console.log(JSON.stringify(result));
