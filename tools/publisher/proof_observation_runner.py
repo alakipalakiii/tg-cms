@@ -96,6 +96,28 @@ def _browser_diagnostic(browser: object, *, stage: str, returncode: int | None,
     }
 
 
+def _sanitize_route_state(state: Mapping[str, Any]) -> dict:
+    safe = _sanitize_browser_value({key: value for key, value in state.items() if key != "routes"})
+    routes = state.get("routes")
+    if isinstance(routes, Mapping):
+        safe["routes"] = {str(_sanitize_browser_value(route, "route")): _sanitize_browser_value(value)
+                          for route, value in routes.items()}
+    return safe
+
+
+def _preserve_screenshots(directory: Path, target: Path) -> None:
+    source = directory / "browser.json.screenshots"
+    if not source.is_dir():
+        return
+    if source.is_symlink():
+        raise ObservationRejected("browser screenshot directory is unsafe")
+    target.mkdir(parents=True, exist_ok=True)
+    for screenshot in source.glob("*.png"):
+        if screenshot.is_symlink() or not screenshot.is_file():
+            raise ObservationRejected("browser screenshot file is unsafe")
+        shutil.copyfile(screenshot, target / screenshot.name)
+
+
 class ReadOnlyObservationBackend(Protocol):
     def collect(self, context: Mapping[str, Any]) -> Mapping[str, Any]: ...
 
@@ -266,6 +288,27 @@ class RuntimeObservationBackend:
         target.write_bytes(_canonical(_browser_diagnostic(
             browser, stage=self.stage, returncode=returncode, detail=detail)))
 
+    def _save_failure_diagnostic(self, directory: Path, phase: str, error: Exception) -> None:
+        target = self.evidence_root.with_name(f"{self.evidence_root.name}-failed")
+        target.mkdir(parents=True, exist_ok=True)
+        detail = str(error) if isinstance(error, ObservationRejected) else type(error).__name__
+        (target / "failure.json").write_bytes(_canonical({
+            "stage": self.stage, "phase": phase, "error_type": type(error).__name__,
+            "reason": _sanitize_browser_value(detail),
+        }))
+        crawl = directory / "crawl" / "production-override-crawl"
+        for name, source in (("crawler-summary.json", crawl / "production-override-crawl-summary.json"),
+                             ("crawler-route-state.json", crawl / "production-override-crawl-state.json"),
+                             ("browser-observations.json", directory / "browser.json")):
+            try:
+                value = json.loads(source.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            safe = (_sanitize_route_state(value) if name == "crawler-route-state.json"
+                    and isinstance(value, Mapping) else _sanitize_browser_value(value))
+            (target / name).write_bytes(_canonical(safe))
+        _preserve_screenshots(directory, self.evidence_root.with_name(f"{self.evidence_root.name}-screenshots"))
+
     def collect(self, context: Mapping[str, Any]) -> Mapping[str, Any]:
         bundle = context["build_bundle"]
         _input_files_match(bundle, sealed_root=self.sealed_root, snapshot=self.snapshot,
@@ -273,6 +316,7 @@ class RuntimeObservationBackend:
         self.evidence_root.parent.mkdir(parents=True, exist_ok=True)
         stage_root = Path(tempfile.mkdtemp(prefix=f".{self.evidence_root.name}.stage-",
                                            dir=self.evidence_root.parent))
+        phase = "deployment_readback"
         try:
             from publisher import cloudflare_wrangler
             worker = context["transaction"]["worker"]
@@ -334,6 +378,7 @@ class RuntimeObservationBackend:
             if self.stage == "production":
                 env["MAHOON_DISABLE_VERSION_OVERRIDE"] = "1"
             crawler_path = Path(__file__).with_name("candidate_override_crawl.py")
+            phase = "crawler"
             crawler = subprocess.run([sys.executable, str(crawler_path)], cwd=Path(__file__).parents[2],
                                      env=env, capture_output=True, timeout=3600, check=False)
             if crawler.returncode:
@@ -350,6 +395,7 @@ class RuntimeObservationBackend:
                        "--routes", str(self.routes), "--output", str(browser_path)]
             if self.stage == "pre-promotion":
                 command.extend(["--candidate-version", context["candidate_identity"]["candidate_version_id"]])
+            phase = "browser"
             try:
                 browser_proc = subprocess.run(command, cwd=Path(__file__).parents[2], env=env,
                                               capture_output=True, timeout=600, check=False)
@@ -363,6 +409,7 @@ class RuntimeObservationBackend:
                     args=command, returncode=1, stdout=b"", stderr=str(error).encode("utf-8", "replace")))
                 self._save_browser_diagnostic(None, None, f"process_start_error: {detail}")
                 raise ObservationRejected(f"read-only browser process could not start: {detail}") from error
+            phase = "browser_evidence"
             detail = _subprocess_failure_diagnostic(browser_proc) if browser_proc.returncode else None
             try:
                 browser = json.loads(browser_path.read_text(encoding="utf-8"))
@@ -389,10 +436,15 @@ class RuntimeObservationBackend:
                         message = "read-only browser observation did not complete"
                     raise ObservationRejected(f"{message} (exit {browser_proc.returncode}): "
                                               f"{browser.get('failure') or detail or 'measurement unavailable'}")
+            _preserve_screenshots(stage_root, self.evidence_root.with_name(f"{self.evidence_root.name}-screenshots"))
             return {"crawler": summary, "route_state": state, "browser": browser,
                     "identity_confirmation": identity,
                     "directory": stage_root}
-        except Exception:
+        except Exception as error:
+            try:
+                self._save_failure_diagnostic(stage_root, phase, error)
+            except (OSError, ValueError):
+                pass
             shutil.rmtree(stage_root, ignore_errors=True)
             raise
 
@@ -414,11 +466,11 @@ def _observation_parts(raw: object, expected_routes: int, evidence_root: Path) -
 def _evidence(root: Path, crawler: dict, state: dict, browser: dict,
               identity: Mapping[str, Any]) -> tuple[dict, Path]:
     hashes = _persist_evidence(root, {"crawler-summary.json": {
-                                          "summary": crawler,
+                                          "summary": _sanitize_browser_value(crawler),
                                           "deployment_readback": dict(identity),
                                       },
-                                      "crawler-route-state.json": state,
-                                      "browser-observations.json": browser})
+                                      "crawler-route-state.json": _sanitize_route_state(state),
+                                      "browser-observations.json": _sanitize_browser_value(browser)})
     return hashes, root
 
 

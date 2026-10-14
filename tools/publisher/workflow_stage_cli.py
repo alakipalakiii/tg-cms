@@ -1728,18 +1728,20 @@ def main(argv: list[str] | None = None) -> int:
                      and output.get("status") == "FAIL") else 0
     except Exception as exc:
         # Exception messages from external backends may contain sensitive diagnostics.
-        # ObservationRejected is a fail-closed proof rejection: its message names
-        # exactly which read-only check fired, which is safe to surface for triage.
-        if hasattr(exc, "__class__") and exc.__class__.__name__ == "ObservationRejected":
-            print("WORKFLOW_STAGE_BLOCKED: ObservationRejected — " + str(exc), file=sys.stderr)
-        elif isinstance(exc, contracts.ArtifactContractError):
-            detail = " ".join(str(exc).split())[:300]
-            print("WORKFLOW_STAGE_BLOCKED: ArtifactContractError — " + detail, file=sys.stderr)
-        elif exc.__class__.__name__ == "ProductionProofRejected":
-            detail = " ".join(str(exc).split())[:300]
-            print("WORKFLOW_STAGE_BLOCKED: ProductionProofRejected — " + detail, file=sys.stderr)
+        safe_reason = None
+        if type(exc).__name__ in {"ObservationRejected", "ArtifactContractError", "ProductionProofRejected"}:
+            from publisher.proof_observation_runner import _sanitize_browser_value
+            safe_reason = _sanitize_browser_value(" ".join(str(exc).split()))[:300]
+            print("WORKFLOW_STAGE_BLOCKED: " + type(exc).__name__ + " — " + safe_reason, file=sys.stderr)
         else:
             print("WORKFLOW_STAGE_BLOCKED: " + type(exc).__name__, file=sys.stderr)
+        if args.command in {"pre-promotion-proof-observe", "production-proof-observe"}:
+            diagnostic = {"status": "BLOCKED", "error_type": type(exc).__name__}
+            if safe_reason is not None:
+                diagnostic["reason"] = safe_reason
+            if exc.__cause__ is not None:
+                diagnostic["cause_type"] = type(exc.__cause__).__name__
+            print(json.dumps(diagnostic, ensure_ascii=False, sort_keys=True))
         return 2
 
 

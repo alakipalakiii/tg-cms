@@ -327,6 +327,7 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         self.assertIn("a6-promote-result-${{ inputs.resume_source_run_id }}", str(carry))
         zero_intent_gate = self.gate("zero-percent-intent-write")
         self.assertIn("inputs.mode != 'POST_PROMOTION_FINALIZE'", zero_intent_gate)
+        self.assertIn("inputs.mode != 'POST_PROMOTION_FINALIZE'", self.gate("pre-promotion-proof"))
 
         promote_intent = self.job("promote-intent-write")
         self.assertIn("inputs.mode != 'POST_PROMOTION_FINALIZE'", str(promote_intent.get("if", "")))
@@ -453,6 +454,10 @@ class DownstreamDagHardeningTests(unittest.TestCase):
             self.assertIn("always()", str(evidence_upload.get("if", "")))
             self.assertIn("browser-diagnostic.json", str(evidence_upload.get("with", {})))
             self.assertIn("browser-self-test.json", str(evidence_upload.get("with", {})))
+            self.assertIn("-failed/**", evidence_upload["with"]["path"])
+            self.assertIn("-screenshots/**", evidence_upload["with"]["path"])
+            self.assertIn("preproof-status.json" if job_name == "pre-promotion-proof" else "proof-status.json",
+                          evidence_upload["with"]["path"])
 
     def test_production_proof_references_the_full_promotion_authority_chain(self):
         proof = self.job("production-proof")

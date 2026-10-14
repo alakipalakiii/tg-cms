@@ -728,7 +728,9 @@ class WorkflowStageCliTests(unittest.TestCase):
         with redirect_stdout(stdout), redirect_stderr(stderr):
             status = cli.main(args)
         self.assertEqual(2, status)
-        self.assertEqual("", stdout.getvalue())
+        self.assertEqual({"status": "BLOCKED", "error_type": "ObservationRejected",
+                          "reason": "sealed proof input is unreadable", "cause_type": "FileNotFoundError"},
+                         json.loads(stdout.getvalue()))
         self.assertIn("WORKFLOW_STAGE_BLOCKED: ObservationRejected — sealed proof input is unreadable",
                       stderr.getvalue())
 
@@ -749,9 +751,18 @@ class WorkflowStageCliTests(unittest.TestCase):
                 redirect_stdout(stdout), redirect_stderr(stderr):
             status = cli.main(args)
         self.assertEqual(2, status)
-        self.assertEqual("", stdout.getvalue())
+        self.assertEqual({"status": "BLOCKED", "error_type": "ProductionProofRejected",
+                          "reason": "pre-promotion/promote lineage mismatch"}, json.loads(stdout.getvalue()))
         self.assertIn("WORKFLOW_STAGE_BLOCKED: ProductionProofRejected — pre-promotion/promote lineage mismatch",
                       stderr.getvalue())
+
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with mock.patch.object(cli, "execute_observed_production_proof",
+                               side_effect=RuntimeError("API_TOKEN=synthetic-secret-marker")), \
+                redirect_stdout(stdout), redirect_stderr(stderr):
+            self.assertEqual(2, cli.main(args))
+        self.assertEqual({"status": "BLOCKED", "error_type": "RuntimeError"}, json.loads(stdout.getvalue()))
+        self.assertNotIn("synthetic-secret-marker", stdout.getvalue() + stderr.getvalue())
 
     # ------------------------------------------------------------------
     # Post-run reconciliation decision (Class A skipped / Class B failed)

@@ -520,7 +520,8 @@ class A6WorkflowContractTests(unittest.TestCase):
             env = {"REQUESTED_TRANSACTION_ID": tx, "REQUESTED_READY": "YES",
                    "REQUESTED_RESUME_SOURCE_SHA": "e042a1a4d0a6fd5ae3d24c86d01d86dcc096ddad",
                    "REQUESTED_MODE": "RESUME_ADMITTED",
-                   "SOURCE_RUN_ID": "38320622522", "RESUME_SOURCE_RUN_ID": "38320622522"}
+                   "SOURCE_RUN_ID": "38320622522", "RESUME_SOURCE_RUN_ID": "38320622522",
+                   "PREPROOF_SOURCE_RUN_ID": "38320622522"}
 
             def run(candidate=fixture, **overrides):
                 state.write_text(json.dumps(candidate), encoding="utf-8")
@@ -573,6 +574,13 @@ class A6WorkflowContractTests(unittest.TestCase):
             self.assertEqual(0, accepted_applied_retry.returncode, accepted_applied_retry.stderr)
             self.assertIn("RESUME_JOURNAL=POST_PROMOTION_FINALIZATION_RETRY_PENDING; REVISION=122",
                           accepted_applied_retry.stdout)
+
+            for preproof_source in ("", "0", "invalid"):
+                with self.subTest(preproof_source=preproof_source):
+                    rejected = run(post_finalize_applied, REQUESTED_MODE="POST_PROMOTION_FINALIZE",
+                                   PREPROOF_SOURCE_RUN_ID=preproof_source)
+                    self.assertNotEqual(0, rejected.returncode)
+                    self.assertIn("requires a passing preproof_source_run_id", rejected.stderr)
 
             cases = []
             changed = copy.deepcopy(fixture); changed["active"]["operations"]["deploy_zero_percent"]["result_state"] = "UNKNOWN"; cases.append(("unknown zero result", changed, {}))

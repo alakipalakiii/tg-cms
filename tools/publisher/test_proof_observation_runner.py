@@ -537,16 +537,32 @@ class ProofObservationTests(unittest.TestCase):
             args=[], returncode=1, stdout=b"",
             stderr=b"RuntimeError: API_TOKEN=synthetic-secret-marker\n",
         )
+
+        def run(command, **kwargs):
+            crawl_out = Path(kwargs["env"]["MAHOON_CRAWL_OUTPUT"]) / "production-override-crawl"
+            crawl_out.mkdir(parents=True)
+            state = {"routes": {f"/post/{i}?preview=private-value": {
+                "http_status": 503, "error": "API_TOKEN=synthetic-secret-marker",
+            } for i in range(250)}}
+            (crawl_out / "production-override-crawl-state.json").write_text(json.dumps(state), encoding="utf-8")
+            return completed
+
         with patch.object(runner, "_input_files_match"), \
              patch.object(cloudflare_wrangler, "active_deployment", return_value={
                  "id": "dep-zero", "versions": [
                      {"version_id": "candidate-v1", "percentage": 0},
                      {"version_id": "baseline-v1", "percentage": 100},
                  ],
-             }), patch.object(runner.subprocess, "run", return_value=completed):
+              }), patch.object(runner.subprocess, "run", side_effect=run):
             with self.assertRaisesRegex(runner.ObservationRejected, "RuntimeError: API_TOKEN=\\[redacted\\]") as error:
                 backend.collect(context)
         self.assertNotIn("synthetic-secret-marker", str(error.exception))
+        failed = self.root / "runtime-evidence-failed"
+        self.assertEqual("crawler", json.loads((failed / "failure.json").read_text())["phase"])
+        retained = (failed / "crawler-route-state.json").read_text()
+        self.assertEqual(250, len(json.loads(retained)["routes"]))
+        self.assertNotIn("synthetic-secret-marker", retained)
+        self.assertNotIn("private-value", retained)
 
     def test_runtime_browser_rejection_surfaces_redacted_stderr_tail(self):
         from subprocess import CompletedProcess
@@ -630,6 +646,9 @@ class ProofObservationTests(unittest.TestCase):
         def run(command, **kwargs):
             if command[0] == "node":
                 Path(command[command.index("--output") + 1]).write_text(json.dumps(browser), encoding="utf-8")
+                screenshots = Path(command[command.index("--output") + 1] + ".screenshots")
+                screenshots.mkdir()
+                (screenshots / "posts-1440.png").write_bytes(b"public screenshot fixture")
                 return CompletedProcess(command, 1, stdout=b"", stderr=b"visual gate failed\n")
             crawl_out = Path(kwargs["env"]["MAHOON_CRAWL_OUTPUT"]) / "production-override-crawl"
             crawl_out.mkdir(parents=True)
@@ -661,6 +680,24 @@ class ProofObservationTests(unittest.TestCase):
         self.assertNotIn("private-value", evidence.read_text(encoding="utf-8"))
         import shutil
         shutil.rmtree(result["directory"])
+        self.assertEqual(b"public screenshot fixture", (
+            self.root / "runtime-visual-evidence-screenshots/posts-1440.png").read_bytes())
+
+    def test_persisted_observations_sanitize_strings_without_truncating_routes(self):
+        root = self.root / "persisted-evidence"
+        root.mkdir()
+        state = {"routes": {f"/post/{i}": {"http_status": 200,
+                 "final_url": f"https://mahoonartmagazine.ir/post/{i}?preview=private-value"}
+                 for i in range(250)}}
+        browser = _browser()
+        browser["checks"][0]["pageErrors"] = ["API_TOKEN=synthetic-secret-marker"]
+        hashes, _ = runner._evidence(root, _crawler(), state, browser, {})
+        self.assertEqual(250, len(json.loads((root / "crawler-route-state.json").read_text())["routes"]))
+        for name, digest in hashes.items():
+            data = (root / name).read_bytes()
+            self.assertEqual(digest, hashlib.sha256(data).hexdigest())
+            self.assertNotIn(b"private-value", data)
+            self.assertNotIn(b"synthetic-secret-marker", data)
 
     def test_runtime_browser_launch_and_javascript_errors_are_distinguished(self):
         from subprocess import CompletedProcess

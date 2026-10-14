@@ -21,11 +21,13 @@ The one `POST_PROMOTION_FINALIZE` run dispatched was `38594845230`. It passed re
 
 The dispatch omitted `preproof_source_run_id`. As a result, `resume-preproof-carryforward` was skipped and the workflow reran pre-promotion proof against the live promoted state. The browser self-test passed; the observer correctly rejected the zero-percent expectation (`ObservationRejected — zero-percent deployment readback does not match sealed result`) before crawling. Production proof and final persistence were skipped. Canonical journal remains unchanged at generation 117/revision 163/operation_reported.
 
-The explicit one-continuation allowance has been used. No additional dispatch was made.
+The owner's 2026-10-14 finalization mission supersedes the prior single-run cap and authorizes evidence-based controlled continuations. No new dispatch has occurred in this resumed mission yet.
 
-## Next step only if the owner authorizes another continuation
+## Active execution checkpoint
 
-Use the existing transaction and all original source IDs; include the existing passing pre-promotion proof source so no zero-percent observer is rerun:
+Integrated review completed: carry admission/build/upload/zero/preproof/promotion; skip every upload, zero-percent and promotion mutation and the pre-promotion observer. Run production proof, six-file final-state materialization, CAS persistence and exact remote readback. Persistence/contract modules match the sealed source version. New changes fail fast on a missing preproof input, emit structured BLOCKED proof status, and preserve sanitized failed crawl/browser evidence and public screenshots. Focused validation passed: 235 tests across workflow contracts, downstream DAG, CLI, observations, final-state materialization and executors (one existing skip), plus git diff --check.
+
+Use the existing transaction and all original source IDs:
 
 - `mode=POST_PROMOTION_FINALIZE`
 - `ready=YES`
@@ -36,6 +38,8 @@ Use the existing transaction and all original source IDs; include the existing p
 - `preproof_source_run_id=38569347431`
 
 Verify live deployment and journal again first. Do not replay upload, zero-percent or promotion. Continue only through real production proof, retained sanitized evidence, final persistence and reconciliation. Once revision 163 is durable, re-read the latest content revision and use the normal publisher transaction for the latest authorized snapshot. Do not manually edit the journal.
+
+No mutation or journal edit was performed in this review. Latest authoritative readback remains deployment `54325ccc-494e-448f-bfcd-c07e74564928`, candidate 100%, baseline 0%; journal generation 117. Re-read before dispatch.
 
 ## Remaining acceptance
 
