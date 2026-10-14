@@ -1150,7 +1150,7 @@ def _fetch_github_run_evidence(args, source_sha: str) -> dict:
         raise ValueError("source run belongs to another repository")
     if int(run_data.get("run_attempt") or 0) != args.source_run_attempt:
         raise ValueError("source run attempt does not match the recorded attempt")
-    jobs = json.loads(_run_gh_api(base, f"actions/runs/{args.source_run_id}/jobs", env=env)).get("jobs", [])
+    jobs = json.loads(_run_gh_api(base, f"actions/runs/{args.source_run_id}/jobs?per_page=100", env=env)).get("jobs", [])
     job = next((j for j in jobs if j.get("name") == "cloudflare-upload-operation"), None)
     if job is None:
         raise ValueError("cloudflare-upload-operation job is missing from the source run")
@@ -1302,7 +1302,7 @@ def reconciliation_decision(args) -> dict:
         raise ValueError("source run attempt does not match the recorded attempt")
     if run_data.get("head_sha") != args.source_sha:
         raise ValueError("source run head SHA does not match the sealed build")
-    jobs = json.loads(_run_gh_api(base, f"actions/runs/{args.source_run_id}/jobs", env=env)).get("jobs", [])
+    jobs = json.loads(_run_gh_api(base, f"actions/runs/{args.source_run_id}/jobs?per_page=100", env=env)).get("jobs", [])
     job_name_map = {
         "upload_version": "cloudflare-upload-operation",
         "deploy_zero_percent": "cloudflare-zero-percent-operation",

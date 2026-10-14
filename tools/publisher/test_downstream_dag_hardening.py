@@ -430,6 +430,7 @@ class DownstreamDagHardeningTests(unittest.TestCase):
                       classify["run"])
         self.assertIn('producer.get("workflow_run_id") == run_id', classify["run"])
         self.assertIn('producer.get("run_attempt") == source_attempt', classify["run"])
+        self.assertIn('f"actions/runs/{run_id}/jobs?per_page=100"', classify["run"])
         self.assertNotIn("recorded_by_this_run and", classify["run"])
 
         failed = next(step for step in steps if step.get("name") == "Reconcile orphaned Class B intent (failed mutation)")

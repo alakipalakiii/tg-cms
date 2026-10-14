@@ -127,7 +127,7 @@ jobs:
           run_data = gh(source_repo, f"actions/runs/{run_id}")
           source_sha = run_data["head_sha"]
           source_attempt = int(run_data["run_attempt"])
-          jobs = gh(source_repo, f"actions/runs/{run_id}/jobs").get("jobs", [])
+          jobs = gh(source_repo, f"actions/runs/{run_id}/jobs?per_page=100").get("jobs", [])
           job_by_name = {j.get("name"): j for j in jobs}
 
           journal = json.loads(

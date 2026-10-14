@@ -479,13 +479,14 @@ class WorkflowStageCliTests(unittest.TestCase):
             jobs = {"jobs": [{"name": "cloudflare-promote-operation", "conclusion": "failure"}]}
             with (mock.patch.object(cli, "_writer", return_value=writer),
                   mock.patch.object(cli, "_writer_journal_path", return_value=journal_path),
-                  mock.patch.object(cli, "_run_gh_api", side_effect=[json.dumps(run), json.dumps(jobs)]),
+                  mock.patch.object(cli, "_run_gh_api", side_effect=[json.dumps(run), json.dumps(jobs)]) as gh_api,
                   mock.patch.object(cli, "record_result") as record,
                   mock.patch.object(cli, "create_recovery_readback") as readback,
                   mock.patch.object(cli, "make_recovery_decision", return_value={"decision": "RECONCILED_NOT_APPLIED"})):
                 result = cli.reconciliation_decision(args)
 
             self.assertEqual("recovery", result["reconciliation_path"])
+            self.assertIn("actions/runs/38566401139/jobs?per_page=100", gh_api.call_args_list[1].args[1])
             record_args = record.call_args.args
             self.assertEqual((str(journal_path), str(intent_path)), record_args[:2])
             self.assertEqual(reference_paths, record_args[3])
@@ -752,7 +753,7 @@ class WorkflowStageCliTests(unittest.TestCase):
                           "conclusion": conclusion, "started_at": None}]}
         return {
             "actions/runs/9000": json.dumps(run),
-            "actions/runs/9000/jobs": json.dumps(jobs),
+            "actions/runs/9000/jobs?per_page=100": json.dumps(jobs),
         }
 
     def _baseline_file(self):
