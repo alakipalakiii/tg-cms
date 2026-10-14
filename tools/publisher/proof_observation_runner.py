@@ -11,7 +11,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Mapping, Protocol
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from publisher import artifact_contract as contracts
 from publisher import artifact_transport as transport
@@ -51,6 +51,49 @@ def _reject_secret_fields(value: object) -> None:
     elif isinstance(value, (list, tuple)):
         for child in value:
             _reject_secret_fields(child)
+
+
+def _sanitize_browser_value(value: object, key: str = "") -> object:
+    if isinstance(value, Mapping):
+        clean = {}
+        for name, child in list(value.items())[:200]:
+            name = str(name)
+            clean[name] = "[redacted]" if _SECRET_FIELD.search(name) else _sanitize_browser_value(child, name)
+        return clean
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_browser_value(child, key) for child in value[:100]]
+    if isinstance(value, str):
+        text = re.sub(r"(?i)\bBearer\s+\S+", "Bearer [redacted]", value)
+        text = re.sub(
+            r"(?i)\b([\w-]*(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTHORIZATION|API[_-]?KEY)[\w-]*\s*[=:]\s*)\S+",
+            r"\1[redacted]", text,
+        )
+        text = re.sub(r"(https?://[^\s?#]+)\?[^\s#]+", r"\1", text)
+        if key.lower() in {"url", "route", "final_url"}:
+            parts = urlsplit(text)
+            if parts.scheme and parts.netloc:
+                host = parts.hostname or ""
+                if parts.port:
+                    host = f"{host}:{parts.port}"
+                text = urlunsplit((parts.scheme, host, parts.path, "", ""))
+            else:
+                text = text.split("?", 1)[0].split("#", 1)[0]
+        return text[:500]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return str(value)[:500]
+
+
+def _browser_diagnostic(browser: object, *, stage: str, returncode: int | None,
+                        detail: str | None) -> dict:
+    safe_browser = _sanitize_browser_value(browser)
+    return {
+        "schema_version": 1,
+        "stage": stage,
+        "process_exit_code": returncode,
+        "process_error": _sanitize_browser_value(detail, "process_error"),
+        "browser": safe_browser if isinstance(safe_browser, Mapping) else None,
+    }
 
 
 class ReadOnlyObservationBackend(Protocol):
@@ -216,6 +259,13 @@ class RuntimeObservationBackend:
         self.sealed_root, self.snapshot = Path(sealed_root), Path(snapshot)
         self.routes, self.media, self.local_gates = Path(routes), Path(media), local_gates
 
+    def _save_browser_diagnostic(self, browser: object, returncode: int | None,
+                                 detail: str | None) -> None:
+        target = self.evidence_root.with_name(f"{self.evidence_root.name}-browser-diagnostic.json")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(_canonical(_browser_diagnostic(
+            browser, stage=self.stage, returncode=returncode, detail=detail)))
+
     def collect(self, context: Mapping[str, Any]) -> Mapping[str, Any]:
         bundle = context["build_bundle"]
         _input_files_match(bundle, sealed_root=self.sealed_root, snapshot=self.snapshot,
@@ -300,14 +350,45 @@ class RuntimeObservationBackend:
                        "--routes", str(self.routes), "--output", str(browser_path)]
             if self.stage == "pre-promotion":
                 command.extend(["--candidate-version", context["candidate_identity"]["candidate_version_id"]])
-            browser_proc = subprocess.run(command, cwd=Path(__file__).parents[2], env=env,
-                                          capture_output=True, timeout=600, check=False)
-            if browser_proc.returncode:
+            try:
+                browser_proc = subprocess.run(command, cwd=Path(__file__).parents[2], env=env,
+                                              capture_output=True, timeout=600, check=False)
+            except subprocess.TimeoutExpired as error:
+                detail = _subprocess_failure_diagnostic(subprocess.CompletedProcess(
+                    args=command, returncode=1, stdout=error.stdout or b"", stderr=error.stderr or b""))
+                self._save_browser_diagnostic(None, None, f"process_timeout: {detail}")
+                raise ObservationRejected(f"read-only browser process timed out: {detail}") from error
+            except Exception as error:
+                detail = _subprocess_failure_diagnostic(subprocess.CompletedProcess(
+                    args=command, returncode=1, stdout=b"", stderr=str(error).encode("utf-8", "replace")))
+                self._save_browser_diagnostic(None, None, f"process_start_error: {detail}")
+                raise ObservationRejected(f"read-only browser process could not start: {detail}") from error
+            detail = _subprocess_failure_diagnostic(browser_proc) if browser_proc.returncode else None
+            try:
+                browser = json.loads(browser_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as error:
+                self._save_browser_diagnostic(
+                    None, browser_proc.returncode, detail or f"browser.json unavailable: {type(error).__name__}")
                 raise ObservationRejected(
                     f"read-only browser observation did not complete (exit {browser_proc.returncode}): "
-                    f"{_subprocess_failure_diagnostic(browser_proc)}"
-                )
-            browser = json.loads(browser_path.read_text(encoding="utf-8"))
+                    f"{detail or 'browser.json was not produced'}"
+                ) from error
+            if not isinstance(browser, Mapping):
+                raise ObservationRejected("read-only browser observation is malformed")
+            if browser_proc.returncode or browser.get("measured") is not True:
+                self._save_browser_diagnostic(browser, browser_proc.returncode, detail)
+                visual_gate_failed = (browser.get("measured") is True and browser.get("PASS") is False
+                                      and browser_proc.returncode != 0)
+                if not visual_gate_failed:
+                    kind = browser.get("browser_error_kind")
+                    if kind == "browser_launch_error":
+                        message = "read-only browser launch failed"
+                    elif kind == "javascript_exception":
+                        message = "read-only browser JavaScript exception"
+                    else:
+                        message = "read-only browser observation did not complete"
+                    raise ObservationRejected(f"{message} (exit {browser_proc.returncode}): "
+                                              f"{browser.get('failure') or detail or 'measurement unavailable'}")
             return {"crawler": summary, "route_state": state, "browser": browser,
                     "identity_confirmation": identity,
                     "directory": stage_root}

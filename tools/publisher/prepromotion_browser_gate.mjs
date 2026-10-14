@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
-import { readFile, mkdir } from 'node:fs/promises';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,9 +27,53 @@ function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--self-test') args.selfTest = true;
+    else if (argv[i] === '--runtime-probe') args.runtimeProbe = true;
     else if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
   }
   return args;
+}
+
+function safeError(error) {
+  return String(error)
+    .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
+    .replace(/\b([\w-]*(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTHORIZATION|API[_-]?KEY)[\w-]*\s*[=:]\s*)\S+/gi, '$1[redacted]')
+    .slice(0, 300);
+}
+
+async function runtimeInfo(browser = null) {
+  const executable = chromium.executablePath();
+  const packageData = JSON.parse(await readFile(resolve(dirname(require.resolve('playwright')), 'package.json'), 'utf8'));
+  return {
+    node_version: process.version,
+    playwright_version: packageData.version,
+    chromium_executable: executable,
+    chromium_executable_exists: existsSync(executable),
+    chromium_version: browser ? browser.version() : null,
+  };
+}
+
+async function writeResult(target, result) {
+  if (!target) return;
+  const path = resolve(target);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+}
+
+async function probeRuntime(args) {
+  const result = await runtimeInfo();
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    Object.assign(result, await runtimeInfo(browser), { launch: 'PASS' });
+  } catch (error) {
+    result.launch = 'FAIL';
+    result.launch_error = safeError(error);
+  } finally {
+    await browser?.close();
+  }
+  await writeResult(args.output, result);
+  console.log(JSON.stringify(result));
+  return result.launch === 'PASS' ? 0 : 1;
 }
 
 function sortedPosts(posts) {
@@ -75,6 +120,11 @@ async function checkPage(browser, base, candidateVersion, route, name, viewport,
   const pageErrors = [];
   const pinnedRequests = [];
   let actualVersion = null;
+  let navigationStatus = 0;
+  let navigationError = null;
+  let screenshotError = null;
+  let fontLoading = null;
+  let failureStage = 'navigation';
   const baseOrigin = new URL(base).origin;
   await page.route('**/*', async (routeRequest) => {
     const requestUrl = new URL(routeRequest.request().url());
@@ -97,6 +147,7 @@ async function checkPage(browser, base, candidateVersion, route, name, viewport,
   }
   page.on('response', (response) => {
     if (response.request().isNavigationRequest() && response.request().frame() === page.mainFrame()) {
+      navigationStatus = response.status();
       actualVersion = response.headers()['x-mahoon-worker-version'] || null;
     }
     const kind = response.request().resourceType();
@@ -113,9 +164,29 @@ async function checkPage(browser, base, candidateVersion, route, name, viewport,
   const url = new URL(route, base).href;
   let status = 0;
   try {
-    const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-    status = response?.status() || 0;
+    let response;
+    try {
+      response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      status = response?.status() || 0;
+    } catch (error) {
+      navigationError = safeError(error);
+      status = navigationStatus;
+    }
+    if (navigationError) {
+      return { name, route, status, structure: null, resources, runtime, pageErrors,
+        actual_version: actualVersion, version_attribution_pass: !candidateVersion || actualVersion === candidateVersion,
+        override_pinned_on_every_same_origin_request: !candidateVersion || pinnedRequests.length > 0,
+        navigation_error: navigationError, screenshot_error: null, font_loading: null,
+        visual_pass: false, zero_origin_pass: !Object.values(runtime).some(Boolean) };
+    }
     await page.waitForTimeout(800);
+    failureStage = 'font inspection';
+    fontLoading = await page.evaluate(() => {
+      const font = getComputedStyle(document.body).fontFamily.split(',')[0].trim();
+      return { status: document.fonts.status, ready: document.fonts.status === 'loaded', computed_family: font,
+        available: document.fonts.check(`12px ${font}`) };
+    });
+    failureStage = 'page inspection';
     const structure = await page.evaluate(() => ({
       textLength: document.body?.innerText?.trim().length || 0,
       main: Boolean(document.querySelector('main')),
@@ -141,19 +212,27 @@ async function checkPage(browser, base, candidateVersion, route, name, viewport,
     const overridePinned = !candidateVersion || pinnedRequests.length > 0
       && pinnedRequests.every((item) => item.version === candidateVersion);
     if (screenshots) {
-      await mkdir(screenshots, { recursive: true });
-      await page.screenshot({ path: resolve(screenshots, `${name}-${viewport.width}.png`), fullPage: true, timeout: 30000 });
+      try {
+        await mkdir(screenshots, { recursive: true });
+        await page.screenshot({ path: resolve(screenshots, `${name}-${viewport.width}.png`), fullPage: true, timeout: 30000 });
+      } catch (error) {
+        screenshotError = safeError(error);
+      }
     }
     return { name, route, status, structure, resources, runtime, pageErrors,
       actual_version: actualVersion, version_attribution_pass: versionAttributionPass,
       override_pinned_on_every_same_origin_request: overridePinned,
-      visual_pass: status === 200 && styleOk && jsOk && structureOk && versionAttributionPass && overridePinned && pageErrors.length === 0,
+      font_loading: fontLoading, screenshot_error: screenshotError,
+      visual_pass: status === 200 && styleOk && jsOk && structureOk && versionAttributionPass && overridePinned
+        && pageErrors.length === 0 && screenshotError === null,
       zero_origin_pass: !Object.values(runtime).some(Boolean) };
   } catch (error) {
     return { name, route, status, resources, runtime, pageErrors,
       actual_version: actualVersion, version_attribution_pass: !candidateVersion || actualVersion === candidateVersion,
       override_pinned_on_every_same_origin_request: !candidateVersion || pinnedRequests.length > 0,
-      visual_pass: false, zero_origin_pass: !Object.values(runtime).some(Boolean), failure: String(error).slice(0, 300) };
+      navigation_error: navigationError, screenshot_error: screenshotError, font_loading: fontLoading,
+      failure_stage: failureStage, visual_pass: false,
+      zero_origin_pass: !Object.values(runtime).some(Boolean), failure: safeError(error) };
   } finally {
     await context.close();
   }
@@ -169,7 +248,13 @@ async function runCandidate(args) {
   }
   const selected = representatives(snapshot, manifest.routes);
   const screenshots = args.output ? `${args.output}.screenshots` : null;
-  const browser = await chromium.launch({ headless: true });
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+  } catch (error) {
+    error.browser_error_kind = 'browser_launch_error';
+    throw error;
+  }
   try {
     const checks = [];
     for (const item of selected) {
@@ -187,7 +272,7 @@ async function runCandidate(args) {
     const publicChecks = checks.filter((item) => item.name !== 'admin-shell');
     const zeroOriginPass = publicChecks.length > 0 && publicChecks.every((item) => item.zero_origin_pass)
       && Object.values(runtime).every((count) => count === 0);
-    return { measured: true, candidate_version: args['candidate-version'], checks,
+    return { measured: true, candidate_version: args['candidate-version'], runtime: await runtimeInfo(browser), checks,
       visual: { pages_checked: checks.length, PASS: visualPass },
       zero_origin: { public_pages_checked: publicChecks.length, requests: runtime, PASS: zeroOriginPass },
       PASS: visualPass && zeroOriginPass };
@@ -241,6 +326,7 @@ async function selfTest() {
     await brokenNetworkPage.waitForTimeout(300);
     await brokenNetworkPage.close();
     const results = {
+      runtime: await runtimeInfo(browser),
       visual_healthy_fixture: good.visual_pass,
       visual_healthy_diagnostic: { status: good.status, structure: good.structure, resources: good.resources, pageErrors: good.pageErrors },
       visual_broken_fixture: !brokenVisual.visual_pass,
@@ -260,14 +346,28 @@ async function selfTest() {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const exitCode = args.selfTest ? await selfTest() : await runCandidate(args).then(async (result) => {
-  if (args.output) {
-    const target = resolve(args.output);
-    await mkdir(dirname(target), { recursive: true });
-    const { writeFile } = await import('node:fs/promises');
-    await writeFile(target, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+let exitCode;
+if (args.runtimeProbe) {
+  exitCode = await probeRuntime(args);
+} else if (args.selfTest) {
+  exitCode = await selfTest();
+} else {
+  try {
+    const result = await runCandidate(args);
+    await writeResult(args.output, result);
+    console.log(JSON.stringify({ measured: result.measured, visual: result.visual, zero_origin: result.zero_origin, PASS: result.PASS }));
+    exitCode = result.PASS ? 0 : 1;
+  } catch (error) {
+    const diagnostic = {
+      measured: false,
+      candidate_version: args['candidate-version'] || null,
+      runtime: await runtimeInfo().catch(() => null),
+      browser_error_kind: error.browser_error_kind || 'javascript_exception',
+      failure: safeError(error),
+    };
+    await writeResult(args.output, diagnostic);
+    console.error(`${diagnostic.browser_error_kind}: ${diagnostic.failure}`);
+    exitCode = 2;
   }
-  console.log(JSON.stringify({ measured: result.measured, visual: result.visual, zero_origin: result.zero_origin, PASS: result.PASS }));
-  return result.PASS ? 0 : 1;
-});
+}
 process.exitCode = exitCode;

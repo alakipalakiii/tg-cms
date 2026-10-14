@@ -560,6 +560,125 @@ class ProofObservationTests(unittest.TestCase):
                 backend.collect(context)
         self.assertNotIn("synthetic-secret-marker", str(error.exception))
 
+    def test_runtime_browser_visual_failure_preserves_sanitized_page_evidence(self):
+        from subprocess import CompletedProcess
+        from publisher import cloudflare_wrangler
+
+        evidence_root = self.root / "runtime-visual-evidence"
+        backend = runner.RuntimeObservationBackend(
+            stage="pre-promotion", base_url="https://mahoonartmagazine.ir",
+            evidence_root=evidence_root, sealed_root=self.sealed, snapshot=self.snapshot,
+            routes=self.routes, media=self.media,
+        )
+        context = {
+            "build_bundle": {}, "transaction": {"worker": "mahoon-art-magazine"},
+            "candidate_identity": {
+                "candidate_version_id": "candidate-v1", "baseline_version_id": "baseline-v1",
+                "zero_percent_deployment_id": "dep-zero",
+            },
+        }
+        browser = {
+            "measured": True, "candidate_version": "candidate-v1",
+            "runtime": {"node_version": "v22.23.3", "playwright_version": "1.63.0",
+                        "chromium_version": "Chromium 140"},
+            "checks": [{"name": "posts", "route": "/posts/?token=private-value", "status": 200,
+                        "navigation_error": None, "screenshot_error": "screenshot timeout",
+                        "font_loading": {"status": "loading", "ready": False},
+                        "pageErrors": ["API_TOKEN=synthetic-secret-marker"],
+                        "actual_version": "candidate-v1", "version_attribution_pass": True,
+                        "visual_pass": False, "zero_origin_pass": True},
+                       {"name": "old-post", "route": "/post/old?preview=private-value", "status": 0,
+                        "navigation_error": "TimeoutError: navigation timed out", "screenshot_error": None,
+                        "font_loading": None, "actual_version": None,
+                        "version_attribution_pass": False, "visual_pass": False,
+                        "zero_origin_pass": True}],
+            "visual": {"pages_checked": 1, "PASS": False},
+            "zero_origin": {"public_pages_checked": 1, "PASS": True}, "PASS": False,
+        }
+
+        def run(command, **kwargs):
+            if command[0] == "node":
+                Path(command[command.index("--output") + 1]).write_text(json.dumps(browser), encoding="utf-8")
+                return CompletedProcess(command, 1, stdout=b"", stderr=b"visual gate failed\n")
+            crawl_out = Path(kwargs["env"]["MAHOON_CRAWL_OUTPUT"]) / "production-override-crawl"
+            crawl_out.mkdir(parents=True)
+            (crawl_out / "production-override-crawl-summary.json").write_text("{}", encoding="utf-8")
+            (crawl_out / "production-override-crawl-state.json").write_text("{}", encoding="utf-8")
+            return CompletedProcess(command, 0, stdout=b"", stderr=b"")
+
+        with patch.object(runner, "_input_files_match"), \
+             patch.object(cloudflare_wrangler, "active_deployment", return_value={
+                 "id": "dep-zero", "versions": [
+                     {"version_id": "candidate-v1", "percentage": 0},
+                     {"version_id": "baseline-v1", "percentage": 100},
+                 ],
+             }), patch.object(runner.subprocess, "run", side_effect=run):
+            result = backend.collect(context)
+        evidence = self.root / "runtime-visual-evidence-browser-diagnostic.json"
+        diagnostic = json.loads(evidence.read_text(encoding="utf-8"))
+        self.assertFalse(result["browser"]["PASS"])
+        self.assertEqual(1, diagnostic["process_exit_code"])
+        page = diagnostic["browser"]["checks"][0]
+        self.assertEqual("/posts/", page["route"])
+        self.assertEqual(200, page["status"])
+        self.assertEqual("screenshot timeout", page["screenshot_error"])
+        self.assertFalse(page["font_loading"]["ready"])
+        self.assertTrue(page["version_attribution_pass"])
+        self.assertEqual("navigation timed out", diagnostic["browser"]["checks"][1]["navigation_error"].split(": ", 1)[1])
+        self.assertEqual(0, diagnostic["browser"]["checks"][1]["status"])
+        self.assertNotIn("synthetic-secret-marker", evidence.read_text(encoding="utf-8"))
+        self.assertNotIn("private-value", evidence.read_text(encoding="utf-8"))
+        import shutil
+        shutil.rmtree(result["directory"])
+
+    def test_runtime_browser_launch_and_javascript_errors_are_distinguished(self):
+        from subprocess import CompletedProcess
+        from publisher import cloudflare_wrangler
+
+        context = {
+            "build_bundle": {}, "transaction": {"worker": "mahoon-art-magazine"},
+            "candidate_identity": {
+                "candidate_version_id": "candidate-v1", "baseline_version_id": "baseline-v1",
+                "zero_percent_deployment_id": "dep-zero",
+            },
+        }
+        for kind, expected in (("browser_launch_error", "browser launch failed"),
+                               ("javascript_exception", "browser JavaScript exception")):
+            with self.subTest(kind=kind):
+                evidence_root = self.root / f"runtime-{kind}"
+                backend = runner.RuntimeObservationBackend(
+                    stage="pre-promotion", base_url="https://mahoonartmagazine.ir",
+                    evidence_root=evidence_root, sealed_root=self.sealed, snapshot=self.snapshot,
+                    routes=self.routes, media=self.media,
+                )
+
+                def run(command, **kwargs):
+                    if command[0] == "node":
+                        Path(command[command.index("--output") + 1]).write_text(json.dumps({
+                            "measured": False, "browser_error_kind": kind,
+                            "failure": "Error: API_TOKEN=synthetic-secret-marker",
+                        }), encoding="utf-8")
+                        return CompletedProcess(command, 2, stdout=b"", stderr=b"runtime failure\n")
+                    crawl_out = Path(kwargs["env"]["MAHOON_CRAWL_OUTPUT"]) / "production-override-crawl"
+                    crawl_out.mkdir(parents=True)
+                    (crawl_out / "production-override-crawl-summary.json").write_text("{}", encoding="utf-8")
+                    (crawl_out / "production-override-crawl-state.json").write_text("{}", encoding="utf-8")
+                    return CompletedProcess(command, 0, stdout=b"", stderr=b"")
+
+                with patch.object(runner, "_input_files_match"), \
+                     patch.object(cloudflare_wrangler, "active_deployment", return_value={
+                         "id": "dep-zero", "versions": [
+                             {"version_id": "candidate-v1", "percentage": 0},
+                             {"version_id": "baseline-v1", "percentage": 100},
+                         ],
+                     }), patch.object(runner.subprocess, "run", side_effect=run):
+                    with self.assertRaisesRegex(runner.ObservationRejected, expected):
+                        backend.collect(context)
+                evidence = self.root / f"runtime-{kind}-browser-diagnostic.json"
+                saved = json.loads(evidence.read_text(encoding="utf-8"))
+                self.assertEqual(kind, saved["browser"]["browser_error_kind"])
+                self.assertNotIn("synthetic-secret-marker", evidence.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

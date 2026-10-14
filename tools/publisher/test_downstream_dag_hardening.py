@@ -362,6 +362,29 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         self.assertEqual(set(), implicit,
                          f"multi-need jobs without an explicit gate: {implicit}")
 
+    def test_browser_diagnostic_isolated_and_proof_jobs_install_locked_chromium(self):
+        diagnostic = self.job("browser-runtime-diagnostic")
+        self.assertIn("inputs.mode == 'BROWSER_DIAGNOSTIC'", str(diagnostic.get("if", "")))
+        self.assertFalse(diagnostic.get("needs"))
+        commands = "\n".join(str(step.get("run", "")) for step in diagnostic.get("steps", []))
+        self.assertIn("npm ci --prefix diagnostics/website/dreary-disk", commands)
+        self.assertIn("--runtime-probe", commands)
+        self.assertIn("--self-test", commands)
+        self.assertIn("/posts/", commands)
+        self.assertNotIn("CLOUDFLARE_API_TOKEN", str(diagnostic.get("env", {})))
+
+        for job_name in ("pre-promotion-proof", "production-proof"):
+            steps = self.job(job_name)["steps"]
+            install = next((step for step in steps
+                            if "Install lockfile-pinned Playwright Chromium" in str(step.get("name", ""))), None)
+            self.assertIsNotNone(install, f"{job_name} must install Chromium before its browser observer")
+            self.assertIn("npx playwright install --with-deps chromium", install["run"])
+            self.assertLess(next(i for i, step in enumerate(steps) if step.get("run", "").startswith("npm ci ")),
+                            steps.index(install))
+            evidence_upload = next(step for step in steps if step.get("uses") == "actions/upload-artifact@v4")
+            self.assertIn("always()", str(evidence_upload.get("if", "")))
+            self.assertIn("browser-diagnostic.json", str(evidence_upload.get("with", {})))
+
 
 if __name__ == "__main__":
     unittest.main()

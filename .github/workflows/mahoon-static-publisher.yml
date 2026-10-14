@@ -8,7 +8,7 @@ on:
         required: true
         default: CHECK_ONLY
         type: choice
-        options: [CHECK_ONLY, AUTO_TICK, PUBLISH, BUILD_AND_ZERO_PERCENT, REMOTE_PROOF, PROMOTE_AND_VALIDATE, CONTENT_DIAGNOSTIC, SAFETY_TESTS_ONLY, RESUME_ADMITTED, RETIRE_STALE_ADMITTED]
+        options: [CHECK_ONLY, AUTO_TICK, PUBLISH, BUILD_AND_ZERO_PERCENT, REMOTE_PROOF, PROMOTE_AND_VALIDATE, CONTENT_DIAGNOSTIC, SAFETY_TESTS_ONLY, BROWSER_DIAGNOSTIC, RESUME_ADMITTED, RETIRE_STALE_ADMITTED]
       expected_fingerprint:
         description: "Optional reviewed pending-candidate fingerprint for a no-change proof"
         required: false
@@ -96,6 +96,104 @@ jobs:
         with:
           name: mahoon-github-content-transport-diagnostic-${{ github.run_id }}
           path: runner-evidence/github-content-api-transport-matrix.json
+
+  browser-runtime-diagnostic:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'BROWSER_DIAGNOSTIC' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.sha }}', path: diagnostics, persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: diagnostics/website/dreary-disk/package-lock.json
+      - name: Install lockfile-pinned project dependencies
+        run: npm ci --prefix diagnostics/website/dreary-disk
+      - name: Probe Chromium before browser installation
+        id: chromium-before
+        continue-on-error: true
+        run: node diagnostics/tools/publisher/prepromotion_browser_gate.mjs --runtime-probe --output runner-evidence/chromium-before-install.json
+      - name: Install the lockfile-pinned Playwright Chromium when absent or unlaunchable
+        if: ${{ steps.chromium-before.outcome != 'success' }}
+        working-directory: diagnostics/website/dreary-disk
+        run: npx playwright install --with-deps chromium
+      - name: Verify Chromium executable and launch
+        run: node diagnostics/tools/publisher/prepromotion_browser_gate.mjs --runtime-probe --output runner-evidence/chromium-runtime.json
+      - name: Run the existing browser gate self-test
+        run: node diagnostics/tools/publisher/prepromotion_browser_gate.mjs --self-test > runner-evidence/browser-self-test.json
+      - name: Compare complete hosted /posts/ responses for the admitted baseline and candidate
+        if: always()
+        env:
+          MAHOON_BASELINE_VERSION: cefbdeec-a3a7-4963-a4e9-19937f7829f9
+          MAHOON_CANDIDATE_VERSION: b3aa78ef-7b15-4d36-a87e-90dec308eb00
+        run: |
+          mkdir -p runner-evidence/posts-transfer
+          probe() {
+            local label="$1" version="$2" rc=0
+            if curl --silent --show-error --location --max-redirs 5 --max-time 60 \
+              --header "cloudflare-workers-version-overrides: mahoon-art-magazine=\"$version\"" \
+              --dump-header "runner-evidence/posts-transfer/$label.headers" \
+              --output /dev/null \
+              --write-out $'%{http_code}\t%{time_starttransfer}\t%{time_total}\t%{size_download}\t%{content_type}\t%{url_effective}\t%{remote_ip}\n' \
+              https://mahoonartmagazine.ir/posts/ > "runner-evidence/posts-transfer/$label.metrics"; then
+              rc=0
+            else
+              rc=$?
+            fi
+            printf '%s\n' "$rc" > "runner-evidence/posts-transfer/$label.exit"
+          }
+          probe baseline "$MAHOON_BASELINE_VERSION"
+          probe candidate "$MAHOON_CANDIDATE_VERSION"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("runner-evidence/posts-transfer")
+          safe_headers = {"content-type", "content-length", "transfer-encoding", "cache-control",
+                          "cf-cache-status", "cf-ray", "server", "x-mahoon-worker-version"}
+          output = {"url": "https://mahoonartmagazine.ir/posts/", "results": {}}
+          for label, expected in (("baseline", "cefbdeec-a3a7-4963-a4e9-19937f7829f9"),
+                                  ("candidate", "b3aa78ef-7b15-4d36-a87e-90dec308eb00")):
+              fields = (root / f"{label}.metrics").read_text().rstrip("\n").split("\t")
+              status, ttfb, elapsed, size, content_type, final_url, remote_ip = fields
+              blocks, current = [], None
+              for line in (root / f"{label}.headers").read_text(errors="replace").splitlines():
+                  if line.startswith("HTTP/"):
+                      current = {"status_line": line, "headers": {}}
+                      blocks.append(current)
+                  elif current and ":" in line:
+                      name, value = line.split(":", 1)
+                      if name.lower() in safe_headers:
+                          current["headers"][name.lower()] = value.strip()[:300]
+              headers = blocks[-1]["headers"] if blocks else {}
+              byte_count = int(float(size))
+              length = headers.get("content-length")
+              complete = int((root / f"{label}.exit").read_text().strip()) == 0
+              if length and length.isdigit():
+                  complete = complete and byte_count == int(length)
+              output["results"][label] = {
+                  "requested_version": expected, "http_status": int(status),
+                  "content_type": content_type, "headers": headers,
+                  "body_bytes_received": byte_count, "content_length_matches": None if not length or not length.isdigit() else byte_count == int(length),
+                  "transfer_complete": complete, "time_to_first_byte_seconds": float(ttfb),
+                  "total_seconds": float(elapsed), "final_url": final_url.split("?", 1)[0].split("#", 1)[0],
+                  "remote_ip": remote_ip, "version_attributed": headers.get("x-mahoon-worker-version") == expected,
+                  "curl_exit_code": int((root / f"{label}.exit").read_text().strip()),
+              }
+          target = Path("runner-evidence/posts-transfer-comparison.json")
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_text(json.dumps(output, indent=2) + "\n", encoding="utf-8")
+          print(target.read_text(encoding="utf-8"))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mahoon-browser-runtime-diagnostic-${{ github.run_id }}
+          path: runner-evidence/
+          if-no-files-found: warn
 
   safety-tests-only:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'SAFETY_TESTS_ONLY' }}
@@ -1855,6 +1953,13 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci --prefix diagnostics/website/dreary-disk
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('diagnostics/website/dreary-disk/package-lock.json') }}
+      - name: Install lockfile-pinned Playwright Chromium
+        working-directory: diagnostics/website/dreary-disk
+        run: npx playwright install --with-deps chromium
       - name: Observe and seal combined pre-promotion proof
         env:
           PYTHONPATH: diagnostics/tools:code/tools/publisher:code/tools:code
@@ -1884,7 +1989,14 @@ jobs:
           python diagnostics/tools/publisher/workflow_stage_cli.py pre-promotion-proof-observe \
             "${args[@]}" "${refs[@]}"
       - uses: actions/upload-artifact@v4
-        with: { name: 'a6-preproof-${{ github.run_id }}', path: pre-promotion-proof.json, if-no-files-found: error }
+        if: always()
+        with:
+          name: a6-preproof-${{ github.run_id }}
+          path: |
+            pre-promotion-proof.json
+            runner-evidence/pre-promotion-proof/**
+            runner-evidence/pre-promotion-proof-browser-diagnostic.json
+          if-no-files-found: ignore
 
   promote-intent-write:
     needs: [pre-promotion-proof, zero-percent-result-write, zero-create-recovered-result, resume-zero-carryforward]
@@ -2198,6 +2310,13 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci --prefix diagnostics/website/dreary-disk
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('diagnostics/website/dreary-disk/package-lock.json') }}
+      - name: Install lockfile-pinned Playwright Chromium
+        working-directory: diagnostics/website/dreary-disk
+        run: npx playwright install --with-deps chromium
       - name: Observe and seal combined production proof
         env:
           PYTHONPATH: diagnostics/tools:code/tools/publisher:code/tools:code
@@ -2247,8 +2366,14 @@ jobs:
         if: ${{ always() && hashFiles('proof-status.json') != '' }}
         run: python -c "import json,os; d=json.load(open('proof-status.json')); open(os.environ['GITHUB_OUTPUT'],'a').write('proof_state='+d['status']+'\n')"
       - uses: actions/upload-artifact@v4
-        if: ${{ always() && hashFiles('production-proof.json') != '' }}
-        with: { name: 'a6-production-proof-${{ github.run_id }}', path: production-proof.json, if-no-files-found: error }
+        if: always()
+        with:
+          name: a6-production-proof-${{ github.run_id }}
+          path: |
+            production-proof.json
+            runner-evidence/production-proof/**
+            runner-evidence/production-proof-browser-diagnostic.json
+          if-no-files-found: ignore
 
   final-state-materialization:
     needs: [production-proof, upload-create-recovered-result, zero-create-recovered-result,
