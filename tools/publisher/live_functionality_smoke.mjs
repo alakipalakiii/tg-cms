@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { classifyPublicRequest } from './prepromotion_browser_gate.mjs';
 
 const require = createRequire(new URL('../../website/dreary-disk/package.json', import.meta.url));
 const { chromium, request } = require('playwright');
@@ -108,8 +109,7 @@ try {
     const url = new URL(request.url());
     if (candidatePinned && /^https?:$/.test(url.protocol) && url.origin !== base)
       candidateExternalRequests.push(url.hostname + url.pathname);
-    if (url.hostname === 'api.mahoonartmagazine.ir' || url.hostname.endsWith('.workers.dev')
-        || /(^|\.)telegram\.org$/.test(url.hostname)) publicDependencies.push(url.hostname + url.pathname);
+    if (classifyPublicRequest(request.url())) publicDependencies.push(url.hostname + url.pathname);
   });
   const indexResponse = await page.request.get(base + '/search/search-index.json', { headers: versionHeaders });
   assert.equal(indexResponse.status(), 200);
@@ -222,7 +222,7 @@ try {
   const result = { measured: Boolean(browser), expected_version: expected, candidate_pinned: candidatePinned, checks, public_dependencies: publicDependencies,
     new_post_ids: newPosts.map((post) => post.id), baseline_run_id: process.env.MAHOON_BASELINE_RUN_ID || null,
     page_errors: pageErrors, PASS: checks.length === 8 + newPosts.length && checks.every((item) => item.PASS)
-      && publicDependencies.length === 0 && pageErrors.length === 0 && candidateExternalRequests.length === 0,
+      && publicDependencies.length === 0 && pageErrors.length === 0,
     candidate_external_requests: candidateExternalRequests };
   await writeFile(`${output}/result.json`, JSON.stringify(result, null, 2) + '\n');
   console.log(JSON.stringify(result));

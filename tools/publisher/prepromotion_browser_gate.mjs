@@ -345,6 +345,7 @@ async function selfTest() {
   }
 }
 
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
 const args = parseArgs(process.argv.slice(2));
 let exitCode;
 if (args.runtimeProbe) {
@@ -371,3 +372,4 @@ if (args.runtimeProbe) {
   }
 }
 process.exitCode = exitCode;
+}

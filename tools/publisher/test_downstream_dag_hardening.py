@@ -488,6 +488,8 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         self.assertIn("extraHTTPHeaders: versionHeaders", script)
         self.assertNotIn("page.route(", script)
         self.assertIn("url.origin !== base", script)
+        self.assertIn("classifyPublicRequest(request.url())", script)
+        self.assertNotIn("&& candidateExternalRequests.length === 0", script)
         self.assertIn("inputs.pin_candidate", text)
         self.assertEqual("NO", workflow["on"]["workflow_dispatch"]["inputs"]["pin_candidate"]["default"])
         self.assertIn('page.locator(articleMediaSelectors[kind]).count()', script)

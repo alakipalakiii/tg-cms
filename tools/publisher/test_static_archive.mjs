@@ -2,6 +2,13 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { classifyPublicRequest } from './prepromotion_browser_gate.mjs';
+
+assert.equal(classifyPublicRequest('https://static.cloudflareinsights.com/beacon.min.js'), null);
+assert.equal(classifyPublicRequest('https://api.mahoonartmagazine.ir/media/example'), 'media_api');
+assert.equal(classifyPublicRequest('https://example.workers.dev/posts'), 'workers_dev_content');
+assert.equal(classifyPublicRequest('https://api.telegram.org/file/example'), 'telegram');
+assert.equal(classifyPublicRequest('https://unapproved.example/search'), 'search_backend');
 
 const require = createRequire(new URL('../../website/dreary-disk/package.json', import.meta.url));
 const { chromium } = require('playwright');
