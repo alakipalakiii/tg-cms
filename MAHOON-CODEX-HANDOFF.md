@@ -1,34 +1,42 @@
-# MAHOON Codex handoff
+# MAHOON finalization handoff
 
 **Status: `MAHOON_PROJECT_FINALIZED_AND_LIVE: BLOCKED`**
 
-## Current durable state
+## Current production state
 
-Read the canonical journal from `origin/main`, not a stale checkout:
+- Cloudflare read-only readback: deployment `54325ccc-494e-448f-bfcd-c07e74564928`, candidate `b3aa78ef-7b15-4d36-a87e-90dec308eb00` at 100%, baseline `cefbdeec-a3a7-4963-a4e9-19937f7829f9` at 0%.
+- Canonical journal: generation 117, active revision 163, transaction `a180efc687b8bac3039d9ee055735c72ad77163192bf93a2680d5f188344dfac`, state `operation_reported`, pending null.
+- Upload / zero-percent / promotion remain APPLIED. Proof SHA and final state commit SHA are null.
+- Last successful check-only reading: run 38590971385 found revision 177 and published revision 81. Recheck after revision 163 is finalized.
 
-- Generation 117, active revision 163, transaction `a180efc687b8bac3039d9ee055735c72ad77163192bf93a2680d5f188344dfac`.
-- State `operation_reported`; upload, zero-percent deployment, and promotion are `APPLIED`; rollback is `NOT_REPORTED`.
-- Proof evidence SHA and state commit SHA are null; pending is null.
-- Promotion result points to deployment `54325ccc-494e-448f-bfcd-c07e74564928`. Current traffic percentages were not freshly read during the last proof attempt.
-- Latest content check-only run 38585147355 reported revision 175 versus published revision 81. Finish or safely reconcile revision 163 before considering revision 175.
+## Root cause and code fix
 
-## Recent hosted runs
+Run 38582922041 logged only `ProductionProofRejected`, without a traceback. The code-level cause is the missing backend context value: `create_production_proof()` validated the build bundle but omitted it from the context, while `RuntimeObservationBackend.collect()` immediately reads `context["build_bundle"]`. If lineage validation reaches the backend, this deterministically raises `KeyError` before sealed-file verification, Cloudflare readback, crawler or browser work; the then-current wrapper reduced it to the exception name. The small sealed artifacts agree on the revision, bundle digest and promotion lineage.
 
-- `38485698374`: pre-promotion browser observation failed. The artifact did not retain `browser.json`.
-- `38578178875`: isolated browser runtime diagnostic passed after the pinned Chromium install. The browser self-test passed; both baseline and candidate `/posts/` responses transferred completely with HTTP 200.
-- `38580846067`: production proof stopped on the local-gate evidence schema mismatch, before a sealed production proof.
-- `38582922041`: local-gate fix passed setup and self-test; proof stopped with `ProductionProofRejected`. No proof hash or page-level evidence artifact was retained. Upload, zero-percent, and promotion jobs were skipped.
-- `38585147355`: read-only check-only reported current revision 175 and published revision 81; journal bootstrap was already initialized.
+Commit `9ff3b9e7ab28a7b3271b545ddb81e3afb2b0a98c` passes the validated bundle. Regression tests require the backend to receive it. Verification: 54 `test_a53_executors` tests and 62 `test_proof_observation_runner` tests passed.
 
-## Pushed fixes
+## Continuation status
 
-- `5017811` normalizes the build's measured local-gate records while requiring the overall and all six individual gates to be measured and passing.
-- `e1b979b` carries sanitized `ObservationRejected` reasons through the proof wrapper and surfaces safe `ProductionProofRejected` messages. This latest diagnostic change has local tests but has not been run in GitHub Actions.
+The one `POST_PROMOTION_FINALIZE` run dispatched was `38594845230`. It passed resume/journal verification, revision resolution, admission reuse and build lineage validation. Upload, zero-percent and promotion jobs were skipped.
 
-## Next safe action
+The dispatch omitted `preproof_source_run_id`. As a result, `resume-preproof-carryforward` was skipped and the workflow reran pre-promotion proof against the live promoted state. The browser self-test passed; the observer correctly rejected the zero-percent expectation (`ObservationRejected — zero-percent deployment readback does not match sealed result`) before crawling. Production proof and final persistence were skipped. Canonical journal remains unchanged at generation 117/revision 163/operation_reported.
 
-The exact production-proof rejection from run `38582922041` is unknown because the run used the older wrapper. If the owner continues, use the existing transaction and the already authorized source references in one bounded `POST_PROMOTION_FINALIZE` run on `main` after commit `e1b979b`. Confirm the APPLIED mutation jobs stay skipped. Inspect the newly surfaced safe reason and uploaded page evidence before deciding any further action. Do not replay upload, zero-percent, promotion, or rollback. Do not publish revision 175 until revision 163 has a durable proof and consistent journal state.
+The explicit one-continuation allowance has been used. No additional dispatch was made.
 
-## Acceptance still needed
+## Next step only if the owner authorizes another continuation
 
-Require a passing production proof and retained sanitized route/browser evidence, fresh live candidate/baseline traffic readback, durable final persistence and revision reconciliation, and full website checks for routes, media/audio, navigation, SEO metadata, and canonical URLs. Until those exist, keep the project blocked.
+Use the existing transaction and all original source IDs; include the existing passing pre-promotion proof source so no zero-percent observer is rerun:
+
+- `mode=POST_PROMOTION_FINALIZE`
+- `ready=YES`
+- `transaction_id=a180efc687b8bac3039d9ee055735c72ad77163192bf93a2680d5f188344dfac`
+- `source_run_id=38569347431`
+- `resume_source_run_id=38569347431`
+- `resume_source_sha=6a1e76a0ec3a710d77e8e9a26e8b60a9501e5585`
+- `preproof_source_run_id=38569347431`
+
+Verify live deployment and journal again first. Do not replay upload, zero-percent or promotion. Continue only through real production proof, retained sanitized evidence, final persistence and reconciliation. Once revision 163 is durable, re-read the latest content revision and use the normal publisher transaction for the latest authorized snapshot. Do not manually edit the journal.
+
+## Remaining acceptance
+
+Final proof/persistence/reconciliation, publication of the latest posts, and complete route/media/navigation/SEO/sitemap/RSS/admin acceptance have not passed. Keep the release blocked.

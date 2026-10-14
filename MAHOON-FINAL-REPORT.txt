@@ -2,49 +2,47 @@ MAHOON_PROJECT_FINALIZED_AND_LIVE: BLOCKED
 
 Date: 2026-10-14
 Repository: https://github.com/alakipalakiii/tg-cms
-Latest pushed implementation commit (before report files): e1b979b596a5be2633fa81054f676bc561aca4dc
+Code fix pushed: 9ff3b9e7ab28a7b3271b545ddb81e3afb2b0a98c
 
-## Verified production journal
+## Authoritative live state
 
-Read from origin/main after the proof and check-only workflows:
-- Generation: 117
-- Active content revision: 163
-- Transaction: a180efc687b8bac3039d9ee055735c72ad77163192bf93a2680d5f188344dfac
-- State: operation_reported
-- Upload: APPLIED
-- Zero-percent deployment: APPLIED
-- Promotion: APPLIED
-- Rollback: NOT_REPORTED
-- Proof evidence SHA-256: null
-- Final state commit SHA: null
-- Pending transaction: none
+Read from Cloudflare with the read-only Wrangler deployment listing after run 38594845230:
+- Worker: mahoon-art-magazine
+- Active deployment: 54325ccc-494e-448f-bfcd-c07e74564928
+- Candidate b3aa78ef-7b15-4d36-a87e-90dec308eb00: 100%
+- Baseline cefbdeec-a3a7-4963-a4e9-19937f7829f9: 0%
+- Deployment created: 2026-10-14T13:13:22.133845Z
 
-The carried-forward promotion result identifies deployment 54325ccc-494e-448f-bfcd-c07e74564928 and is APPLIED. No fresh production traffic-split readback or completed production proof was produced by the finalization runs, so current 100% traffic and site acceptance are not claimed.
+Canonical journal from origin/main after the continuation:
+- Generation 117; active revision 163; transaction a180efc687b8bac3039d9ee055735c72ad77163192bf93a2680d5f188344dfac.
+- State: operation_reported; pending transaction: none.
+- Upload, zero-percent and promotion: APPLIED; promotion attempts: NOT_APPLIED then APPLIED.
+- Proof SHA-256 and final state commit SHA: null.
+- Run 38594845230 did not alter the journal's operation states or repeat any Cloudflare mutation.
 
-## Browser and hosted response evidence
+Direct public health probes returned HTTP 200 for the homepage (130,230 bytes), /posts/ (97,910 bytes), /robots.txt (109 bytes), /sitemap.xml (654,737 bytes), /rss.xml (39,194 bytes), and the /admin shell (165,070 bytes). These are live endpoint probes, not full website acceptance. The workstation's direct content-revision endpoint request returned 403; the latest successful scheduled check-only run 38590971385 reported revision 177 versus last persisted revision 81. The latest revision must be checked again after revision 163 is finalized.
 
-- Run 38485698374 failed in pre-promotion proof with `ObservationRejected — read-only browser observation did not complete (exit 1): Node.js v22.23.3`. It retained no browser.json artifact.
-- Hosted diagnostic run 38578178875 confirmed the clean Ubuntu runner initially had no Chromium executable. After `npx playwright install --with-deps chromium`, Chromium launch and the existing browser self-test passed: Node v22.23.3, Playwright 1.63.0, Chromium 153.0.8010.12.
-- The same hosted diagnostic completed `/posts/` transfers for both versions: baseline cefbdeec-a3a7-4963-a4e9-19937f7829f9 returned HTTP 200 with 99,201 bytes; candidate b3aa78ef-7b15-4d36-a87e-90dec308eb00 returned HTTP 200 with 97,543 bytes. Both curl transfers completed successfully and matched their version headers. Content-Length was absent. This did not reproduce production corruption.
+Hosted run 38578178875 compared baseline and candidate /posts/ responses. Both were HTTP 200, fully transferred, matched their requested version-attribution headers, and had no Content-Length header: baseline 99,201 bytes; candidate 97,543 bytes. This did not reproduce corruption.
 
-## Proof attempts and repairs
+## Production proof diagnosis
 
-- Run 38580846067 passed the Chromium setup and browser self-test, then stopped at `ObservationRejected — sealed local gate map is invalid` before producing production proof. The sealed build stores detailed `{measured, PASS}` results for six local gates; the observer had expected a boolean map. Commit 501781193461b0e231d63f6483828353c6bb78c5 normalizes the measured evidence and keeps all gates required to pass. The observer suite passed 61 tests after this fix.
-- Run 38582922041 used that fix. It passed the browser self-test, and upload, zero-percent, and promotion mutation jobs were skipped. The production-proof job failed with `WORKFLOW_STAGE_BLOCKED: ProductionProofRejected`; its safe detail was suppressed by the then-current wrapper. Its 606-byte artifact contains only the self-test, with no sealed proof or retained page-level evidence.
-- Commit e1b979b596a5be2633fa81054f676bc561aca4dc preserves sanitized `ObservationRejected` reasons through the production-proof wrapper and prints safe `ProductionProofRejected` details. After this commit, the observer suite passed 62 tests, and the focused CLI diagnostic test passed. This diagnostic change has not been exercised in a hosted proof run.
-- Check-only run 38585147355 returned `CHANGED_REVISION_DETECTED_CHECK_ONLY`: current content revision 175, published content revision 81, state present. The run performed no publication. Its journal bootstrap returned `ALREADY_INITIALIZED`; the canonical journal remained generation 117.
+Run 38582922041 logged only `WORKFLOW_STAGE_BLOCKED: ProductionProofRejected`, without a traceback. Its code-level cause is the missing backend context value: `create_production_proof()` validated the build bundle but omitted it from the context, while `RuntimeObservationBackend.collect()` immediately reads `context["build_bundle"]`. If lineage validation reaches the backend, this deterministically raises `KeyError` before sealed-file verification, Cloudflare readback, crawler or browser work; the then-current wrapper reduced it to the exception name. The small sealed artifacts agree on revision 163, the journal build-bundle digest, candidate/baseline IDs, zero-percent result, promotion lineage and deployment ID.
 
-## Outstanding acceptance
+Commit 9ff3b9e adds the validated bundle to that context. Regression coverage asserts the backend receives the sealed bundle. Tests passed:
+- `python -m unittest test_a53_executors -q`: 54 tests.
+- `python -m unittest test_proof_observation_runner -q`: 62 tests.
+- `git diff --check`.
 
-The production-proof failure remains unresolved. No authoritative production proof hash or final state commit exists. Full route/browser acceptance, media and audio checks, SEO/canonical checks, final persistence, latest-revision publication, and fresh traffic-split verification remain incomplete. Do not start revision 175 while revision 163 remains in-flight.
+The 645 MB build artifact's ZIP service did not support byte ranges. A local full-artifact retrieval was stopped; no 4,221-route crawl was used to diagnose the 7-second failure. The subsequent hosted run 38594845230 successfully revalidated the carried-forward build bundle and build lineage.
 
-No Cloudflare upload, zero-percent, promotion, or rollback mutation ran in finalization runs 38580846067 and 38582922041. Production remains recorded as promoted by the original APPLIED result, but the current live split was not freshly verified here.
+## Single continuation result and blocker
 
-## Code and tests
+Run 38594845230 was the one dispatched `POST_PROMOTION_FINALIZE` continuation. Journal verification, revision resolution, resume admission, build validation, build-ready write, upload carryforward and zero-percent carryforward succeeded. Upload, zero-percent and promotion mutation jobs stayed skipped.
 
-- 5017811: normalize the sealed measured local-gate evidence for production proof.
-- e1b979b: preserve and report sanitized production-proof rejection reasons.
-- `python -m unittest test_proof_observation_runner -q`: 62 tests passed.
-- `python -m unittest test_workflow_stage_cli.WorkflowStageCliTests.test_production_proof_rejection_reports_safe_reason -v`: passed.
-- `git diff --check`: passed.
-- Website sources were not changed; the website build was not run.
+I omitted `preproof_source_run_id` from the dispatch. That caused the workflow to rerun the pre-promotion zero-percent observer against the already-promoted 100% deployment instead of carrying forward the existing passing pre-promotion proof from run 38569347431. The browser self-test passed, but `pre-promotion-proof` correctly stopped before crawling with `ObservationRejected — zero-percent deployment readback does not match sealed result`. No production proof, final-state materialization or final persistence ran. The journal remains at generation 117 / revision 163 / operation_reported.
+
+The one continuation authorized by the user has been consumed. A corrected continuation would need `preproof_source_run_id=38569347431` in addition to the same transaction/source inputs; I did not dispatch another run because that would exceed the explicit one-continuation limit.
+
+## Acceptance still outstanding
+
+Revision 163 has no production proof or durable final state. No final reconciliation or latest-content publication occurred. Full parity and acceptance for routes, newly published posts, images, audio, video, navigation, SEO, sitemap/RSS, and admin shell remain unproven. Keep status BLOCKED. Do not start a new transaction or replay APPLIED mutations.
