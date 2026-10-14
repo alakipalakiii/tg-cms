@@ -18,6 +18,12 @@ on:
         required: false
         default: "NO"
         options: ["NO", "YES"]
+      audio_matrix:
+        description: "Isolate audio transport and browser interception with a small read-only matrix"
+        type: choice
+        required: false
+        default: "NO"
+        options: ["NO", "YES"]
 
 permissions:
   contents: read
@@ -60,7 +66,12 @@ jobs:
           MAHOON_EXPECTED_VERSION: ${{ inputs.expected_version }}
           MAHOON_BASELINE_RUN_ID: ${{ inputs.baseline_run_id }}
           MAHOON_PIN_CANDIDATE: ${{ inputs.pin_candidate }}
-        run: node tools/publisher/live_functionality_smoke.mjs
+        run: |
+          if [ '${{ inputs.audio_matrix }}' = 'YES' ]; then
+            node tools/publisher/audio_runtime_diagnostic.mjs
+          else
+            node tools/publisher/live_functionality_smoke.mjs
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
