@@ -45,6 +45,11 @@ on:
         required: false
         default: ""
         type: string
+      preproof_source_run_id:
+        description: "Passing pre-promotion proof run to revalidate and carry forward after an intent-stage failure"
+        required: false
+        default: ""
+        type: string
       resume_source_admission_sha:
         description: "Seal digest of the source run's admission receipt; empty to trust the active journal"
         required: false
@@ -1921,7 +1926,7 @@ jobs:
     # ponytail: the zero-percent proof arrives from the direct result-write, the
     # recovered bridge, or the direct carryforward (when the source zero-percent
     # is already APPLIED and re-exposed under this run's canonical names).
-    if: ${{ always() && (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true' || (needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true')) }}
+    if: ${{ always() && (inputs.preproof_source_run_id == '' || inputs.preproof_source_run_id == null || inputs.preproof_source_run_id == '0') && (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true' || (needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true')) }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     env:
@@ -1998,11 +2003,82 @@ jobs:
             runner-evidence/pre-promotion-proof-browser-diagnostic.json
           if-no-files-found: ignore
 
+  resume-preproof-carryforward:
+    needs: [build-ready-write, resume-zero-carryforward]
+    if: ${{ always() && inputs.mode == 'RESUME_ADMITTED' && inputs.preproof_source_run_id != '' && inputs.preproof_source_run_id != null && inputs.preproof_source_run_id != '0' && needs.build-ready-write.result == 'success' && needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: read, actions: read }
+    outputs:
+      carried: ${{ steps.verify.outputs.carried }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ inputs.resume_source_sha }}", path: code }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-zero-direct-result-${{ github.run_id }}', path: handoff }
+        if: always()
+      - name: Download the prior passing pre-promotion proof
+        uses: actions/download-artifact@v4
+        with:
+          name: a6-preproof-${{ inputs.preproof_source_run_id }}
+          path: handoff
+          run-id: ${{ inputs.preproof_source_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - id: verify
+        env:
+          PYTHONPATH: code/tools/publisher:code/tools:code
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from publisher import artifact_transport as transport
+
+          root = Path("handoff")
+          build = transport.read_artifact(root / "runner-evidence/v1-build-bundle.json", expected_type="build_bundle")
+          refs = transport.references(build)
+          zero_intent = transport.read_artifact(root / "zero-percent-intent.json", expected_type="mutation_intent",
+                                                expected_transaction=build["transaction"],
+                                                expected_source_sha=build["producer"]["source_sha"],
+                                                referenced_artifacts=refs)
+          zero_result = transport.read_artifact(root / "zero-percent-result.json", expected_type="mutation_result",
+                                                expected_transaction=build["transaction"],
+                                                expected_source_sha=build["producer"]["source_sha"],
+                                                referenced_artifacts=transport.references(build, zero_intent))
+          refs = transport.references(build, zero_intent, zero_result)
+          proof = transport.read_artifact(root / "pre-promotion-proof.json",
+                                          expected_type="pre_promotion_proof_evidence",
+                                          expected_transaction=build["transaction"],
+                                          expected_source_sha=build["producer"]["source_sha"],
+                                          referenced_artifacts=refs)
+          identity = proof["payload"]["candidate_identity"]
+          desired = zero_intent["payload"]["desired_state"]
+          readback = zero_result["payload"]["readback_reference"]
+          assert proof["payload"]["PASS"] is True, "carried pre-promotion proof did not pass"
+          assert proof["payload"]["build_bundle_artifact_sha256"] == build["artifact_sha256"]
+          assert proof["payload"]["deploy_zero_percent_result_artifact_sha256"] == zero_result["artifact_sha256"]
+          assert zero_result["payload"]["result_state"] == "APPLIED"
+          assert identity["candidate_version_id"] == desired["candidate_version_id"]
+          assert identity["baseline_version_id"] == desired["baseline_version_id"]
+          assert identity["zero_percent_deployment_id"] == readback["resource_id"]
+          Path("pre-promotion-proof.json").write_bytes((root / "pre-promotion-proof.json").read_bytes())
+          print("CARRIED_PASSING_PREPROOF=YES; BUILD_AND_ZERO_RESULT_LINEAGE=PASS; VERSION_IDENTITY=PASS")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("carried=true\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-preproof-${{ github.run_id }}', path: pre-promotion-proof.json, if-no-files-found: error }
+
   promote-intent-write:
-    needs: [pre-promotion-proof, zero-percent-result-write, zero-create-recovered-result, resume-zero-carryforward]
+    needs: [pre-promotion-proof, resume-preproof-carryforward, zero-percent-result-write, zero-create-recovered-result, resume-zero-carryforward]
     # ponytail: requires a passing pre-promotion proof and a zero-percent proof from
     # the direct result, the recovered bridge, or the carryforward path.
-    if: ${{ always() && needs.pre-promotion-proof.result == 'success' && (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true' || (needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true')) }}
+    if: ${{ always() && (needs.pre-promotion-proof.result == 'success' || needs.resume-preproof-carryforward.outputs.carried == 'true') && (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true' || (needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     outputs:
@@ -2037,7 +2113,7 @@ jobs:
         id: intent
         run: |
           zero_result=handoff/zero-percent-result.json
-          refs=(--reference handoff/pre-promotion-proof.json --reference handoff/zero-percent-intent.json)
+          refs=(--reference handoff/pre-promotion-proof.json --reference handoff/zero-percent-intent.json --reference handoff/runner-evidence/v1-build-bundle.json)
           if [ '${{ needs.zero-create-recovered-result.outputs.recovered }}' = 'true' ]; then
             zero_result=handoff/recovered-zero-result.json
             refs+=(--reference handoff/zero-percent-result.json --reference handoff/zero-recovery-readback.json --reference handoff/zero-recovery-decision.json)

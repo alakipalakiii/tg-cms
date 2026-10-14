@@ -386,6 +386,35 @@ class DownstreamDagHardeningTests(unittest.TestCase):
             self.assertIn("always()", str(evidence_upload.get("if", "")))
             self.assertIn("browser-diagnostic.json", str(evidence_upload.get("with", {})))
 
+    def test_passing_preproof_can_be_carried_forward_with_complete_lineage(self):
+        inputs = self.WORKFLOW["on"]["workflow_dispatch"]["inputs"]
+        self.assertIn("preproof_source_run_id", inputs)
+        self.assertEqual("", inputs["preproof_source_run_id"]["default"])
+
+        carry = self.job("resume-preproof-carryforward")
+        gate = str(carry.get("if", ""))
+        self.assertIn("inputs.preproof_source_run_id", gate)
+        self.assertIn("needs.resume-zero-carryforward.outputs.carried == 'true'", gate)
+        self.assertEqual({"contents": "read", "actions": "read"}, carry["permissions"])
+        commands = "\n".join(str(step.get("run", "")) for step in carry["steps"])
+        self.assertIn('expected_type="pre_promotion_proof_evidence"', commands)
+        self.assertIn('"PASS"] is True', commands)
+        self.assertIn('"build_bundle_artifact_sha256"] == build["artifact_sha256"]', commands)
+        self.assertIn('"deploy_zero_percent_result_artifact_sha256"] == zero_result["artifact_sha256"]', commands)
+        self.assertIn("candidate_version_id", commands)
+        self.assertIn("baseline_version_id", commands)
+        self.assertIn("zero_percent_deployment_id", commands)
+
+        pp_gate = self.gate("pre-promotion-proof")
+        self.assertIn("inputs.preproof_source_run_id == ''", pp_gate)
+        promote = self.job("promote-intent-write")
+        self.assertIn("resume-preproof-carryforward", self.needs("promote-intent-write"))
+        self.assertIn("needs.resume-preproof-carryforward.outputs.carried == 'true'",
+                      str(promote.get("if", "")))
+        intent_command = next(step["run"] for step in promote["steps"]
+                              if step.get("id") == "intent")
+        self.assertIn("--reference handoff/runner-evidence/v1-build-bundle.json", intent_command)
+
 
 if __name__ == "__main__":
     unittest.main()
