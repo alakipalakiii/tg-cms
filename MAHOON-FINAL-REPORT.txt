@@ -35,13 +35,15 @@ Commit 9ff3b9e adds the validated bundle to that context. Regression coverage as
 
 The 645 MB build artifact's ZIP service did not support byte ranges. A local full-artifact retrieval was stopped; no 4,221-route crawl was used to diagnose the 7-second failure. The subsequent hosted run 38594845230 successfully revalidated the carried-forward build bundle and build lineage.
 
-## Single continuation result and blocker
+## Historical continuation result
 
 Run 38594845230 was the one dispatched `POST_PROMOTION_FINALIZE` continuation. Journal verification, revision resolution, resume admission, build validation, build-ready write, upload carryforward and zero-percent carryforward succeeded. Upload, zero-percent and promotion mutation jobs stayed skipped.
 
 I omitted `preproof_source_run_id` from the dispatch. That caused the workflow to rerun the pre-promotion zero-percent observer against the already-promoted 100% deployment instead of carrying forward the existing passing pre-promotion proof from run 38569347431. The browser self-test passed, but `pre-promotion-proof` correctly stopped before crawling with `ObservationRejected — zero-percent deployment readback does not match sealed result`. No production proof, final-state materialization or final persistence ran. The journal remains at generation 117 / revision 163 / operation_reported.
 
-The one continuation authorized by the user has been consumed. A corrected continuation would need `preproof_source_run_id=38569347431` in addition to the same transaction/source inputs; I did not dispatch another run because that would exceed the explicit one-continuation limit.
+The prior turn stopped under the then-active single-run cap. The owner's subsequent finalization mission explicitly superseded that cap. Controlled continuation 38599823193 was dispatched at 2026-10-14T16:38:40Z with all original transaction/source inputs and preproof_source_run_id=38569347431. It is active; do not dispatch a duplicate.
+
+Guard and diagnostic commit: 1ccca7e39c66e1f9883e1197361e3dc3df955221. Before dispatch, canonical journal generation 117 and exact live deployment/candidate 100%/baseline 0% were reverified; source artifact availability and small-artifact seal digests matched. The guard rejects missing/zero/invalid preproof inputs and excludes zero-percent observation in POST_PROMOTION_FINALIZE. Proof CLI failures now emit sanitized structured BLOCKED status; observation failures preserve sanitized route/browser evidence and public screenshots. 235 focused downstream tests and 23 normal publisher boundary/gate tests passed (one existing skip in each suite). The hosted journal/revision/admission/build/upload/zero/preproof carryforward stages passed. Promotion carryforward passed; production proof is active since 2026-10-14T16:48:50Z; pinned Chromium installation and the hosted self-test passed. All three Cloudflare mutation jobs are skipped. No mutation has been replayed.
 
 ## Acceptance still outstanding
 

@@ -1,0 +1,46 @@
+name: MAHOON read-only live functionality
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_version:
+        description: "Authoritatively verified production version"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mahoon-read-only-functionality
+  cancel-in-progress: false
+
+jobs:
+  live-functionality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/dreary-disk/package-lock.json
+      - run: npm ci --prefix website/dreary-disk
+      - name: Install lockfile-pinned Chromium
+        working-directory: website/dreary-disk
+        run: npx playwright install --with-deps chromium
+      - name: Run existing browser self-test
+        run: node tools/publisher/prepromotion_browser_gate.mjs --self-test > browser-self-test.json
+      - name: Check live interactions without mutation or version override
+        env:
+          MAHOON_EXPECTED_VERSION: ${{ inputs.expected_version }}
+        run: node tools/publisher/live_functionality_smoke.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mahoon-live-functionality-${{ github.run_id }}
+          path: |
+            browser-self-test.json
+            runner-evidence/live-functionality/**
+          if-no-files-found: warn

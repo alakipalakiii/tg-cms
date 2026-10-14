@@ -21,7 +21,7 @@ The one `POST_PROMOTION_FINALIZE` run dispatched was `38594845230`. It passed re
 
 The dispatch omitted `preproof_source_run_id`. As a result, `resume-preproof-carryforward` was skipped and the workflow reran pre-promotion proof against the live promoted state. The browser self-test passed; the observer correctly rejected the zero-percent expectation (`ObservationRejected — zero-percent deployment readback does not match sealed result`) before crawling. Production proof and final persistence were skipped. Canonical journal remains unchanged at generation 117/revision 163/operation_reported.
 
-The owner's 2026-10-14 finalization mission supersedes the prior single-run cap and authorizes evidence-based controlled continuations. No new dispatch has occurred in this resumed mission yet.
+The owner's 2026-10-14 finalization mission supersedes the prior single-run cap and authorizes evidence-based controlled continuations. Controlled continuation run `38599823193` was dispatched at 2026-10-14T16:38:40Z from `1ccca7e39c66e1f9883e1197361e3dc3df955221`, with all seven verified inputs below. It is active; do not dispatch a duplicate. Journal/revision/admission/build-lineage/build-ready/upload/zero/preproof carryforward stages passed. The passing preproof was revalidated without running the zero-percent observer; promotion carryforward passed; production proof is active since 2026-10-14T16:48:50Z; pinned Chromium installation and the hosted self-test passed. All three Cloudflare mutation jobs are skipped. A further 23 normal publication boundary/revision/gate tests passed (one existing skip).
 
 ## Active execution checkpoint
 
@@ -39,7 +39,7 @@ Use the existing transaction and all original source IDs:
 
 Verify live deployment and journal again first. Do not replay upload, zero-percent or promotion. Continue only through real production proof, retained sanitized evidence, final persistence and reconciliation. Once revision 163 is durable, re-read the latest content revision and use the normal publisher transaction for the latest authorized snapshot. Do not manually edit the journal.
 
-No mutation or journal edit was performed in this review. Latest authoritative readback remains deployment `54325ccc-494e-448f-bfcd-c07e74564928`, candidate 100%, baseline 0%; journal generation 117. Re-read before dispatch.
+No mutation or journal edit was performed in this review. Pre-dispatch authoritative readback remains deployment `54325ccc-494e-448f-bfcd-c07e74564928`, candidate 100%, baseline 0%; journal generation 117. The source small-artifact seal digests, passing preproof bundle binding, promotion intent/result and deployment identity were independently checked. Full referenced contracts are revalidated in the hosted carryforward jobs. Local body transfers timed out (HTTP 200 partial /posts/); external public rendering returned pages. No production corruption was established; hosted proof is the authority.
 
 ## Remaining acceptance
 

@@ -459,6 +459,22 @@ class DownstreamDagHardeningTests(unittest.TestCase):
             self.assertIn("preproof-status.json" if job_name == "pre-promotion-proof" else "proof-status.json",
                           evidence_upload["with"]["path"])
 
+    def test_live_functionality_diagnostic_is_isolated_and_read_only(self):
+        import pathlib
+        path = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/mahoon-live-functionality.yml"
+        text = path.read_text(encoding="utf-8")
+        workflow = yaml.load(text, Loader=yaml.BaseLoader)
+        self.assertEqual("read", workflow["permissions"]["contents"])
+        self.assertIn("contents: read", text)
+        self.assertIn("group: mahoon-read-only-functionality", text)
+        self.assertIn("node-version: 22", text)
+        self.assertIn("npx playwright install --with-deps chromium", text)
+        self.assertIn("--self-test", text)
+        self.assertIn("inputs.expected_version", text)
+        self.assertIn("if: always()", text)
+        for forbidden in ("contents: write", "secrets.", "download-artifact", "execute-operation", "deploy"):
+            self.assertNotIn(forbidden, text)
+
     def test_production_proof_references_the_full_promotion_authority_chain(self):
         proof = self.job("production-proof")
         observer = next(step for step in proof["steps"]
