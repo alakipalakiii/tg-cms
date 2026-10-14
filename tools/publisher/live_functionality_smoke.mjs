@@ -9,6 +9,10 @@ const expected = process.env.MAHOON_EXPECTED_VERSION;
 assert.match(expected || '', /^[0-9a-f-]{36}$/);
 const candidatePinned = process.env.MAHOON_PIN_CANDIDATE === 'YES';
 const versionHeaders = candidatePinned ? { 'cloudflare-workers-version-overrides': `mahoon-art-magazine="${expected}"` } : {};
+const articleMediaSelectors = {
+  "audio": "#postArticle [data-mahoon-native-player] audio.mahoon-native-player__audio",
+  "video": "#postArticle video"
+};
 const output = 'runner-evidence/live-functionality';
 await mkdir(output, { recursive: true });
 const checks = [];
@@ -16,6 +20,7 @@ const publicDependencies = [];
 const pageErrors = [];
 let newPosts = [];
 let browser, page;
+let failureStage = null;
 
 async function saveProgress(activeCheck) {
   await writeFile(`${output}/result.json`, JSON.stringify({ status: 'RUNNING', measured: Boolean(browser),
@@ -25,11 +30,22 @@ async function saveProgress(activeCheck) {
 }
 
 async function check(name, action) {
+  failureStage = null;
   await saveProgress(name);
   try {
     checks.push({ name, PASS: true, evidence: await action() });
   } catch (error) {
-    checks.push({ name, PASS: false, error_type: error.name,
+    checks.push({ name, PASS: false, error_type: error.name, failure_stage: failureStage,
+      page_state: await page.evaluate(() => ({
+        path: location.pathname, font_status: document.fonts.status,
+        font_available: document.fonts.check('12px MahoonFont'),
+        media: [...document.querySelectorAll('audio,video')].map((node) => ({
+          tag: node.tagName, native_article: Boolean(node.closest('#postArticle')),
+          source_path: node.currentSrc ? new URL(node.currentSrc).pathname : null,
+          ready_state: node.readyState, duration: Number.isFinite(node.duration) ? node.duration : null,
+          current_time: node.currentTime, error_code: node.error?.code || null,
+        })),
+      })).catch(() => null),
       reason: String(error.message).replace(/https?:\/\/\S+/g, '[public URL]')
         .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
         .replace(/\b([\w-]*(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTHORIZATION|API[_-]?KEY)[\w-]*\s*[=:]\s*)\S+/gi, '$1[redacted]').slice(0, 300) });
@@ -38,9 +54,11 @@ async function check(name, action) {
 }
 
 async function navigate(path) {
+  failureStage = 'navigation';
   const response = await page.goto(base + path, { waitUntil: 'domcontentloaded', timeout: 60000 });
   assert.equal(response.status(), 200);
   assert.equal(response.headers()['x-mahoon-worker-version'], expected);
+  failureStage = 'font_loading';
   await page.waitForFunction(() => document.fonts.status === 'loaded'
     && document.fonts.check('12px MahoonFont')
     && getComputedStyle(document.body).fontFamily.includes('MahoonFont'), null, { timeout: 30000 });
@@ -48,15 +66,19 @@ async function navigate(path) {
 }
 
 async function playback(kind) {
-  const element = page.locator(kind).first();
+  const selector = articleMediaSelectors[kind];
+  const element = page.locator(selector).first();
+  failureStage = `${kind}_metadata`;
   await element.evaluate((node) => { node.preload = 'auto'; node.load(); });
   await page.waitForFunction((tag) => {
     const node = document.querySelector(tag);
     return node && node.readyState >= 2 && Number.isFinite(node.duration) && node.duration > 0;
-  }, kind, { timeout: 30000 });
-  if (kind === 'audio') await page.locator('[data-mahoon-native-player] .js-play:visible').first().click();
+  }, selector, { timeout: 30000 });
+  failureStage = `${kind}_play_control`;
+  if (kind === 'audio') await page.locator('#postArticle [data-mahoon-native-player] .js-play:visible').first().click();
   else await element.evaluate((node) => node.play());
-  await page.waitForFunction((tag) => document.querySelector(tag).currentTime > 0.1, kind, { timeout: 10000 });
+  failureStage = `${kind}_play_progress`;
+  await page.waitForFunction((tag) => document.querySelector(tag).currentTime > 0.1, selector, { timeout: 10000 });
   return element.evaluate((node) => { node.pause(); return {
     duration: node.duration, current_time: node.currentTime, source_path: new URL(node.currentSrc).pathname,
   }; });
@@ -166,13 +188,14 @@ try {
       await navigate(path);
       assert.ok((await page.locator('main').innerText()).trim().length > 80);
       const images = page.locator('main img');
+      failureStage = 'image_decode';
       for (const image of await images.all()) {
         await image.scrollIntoViewIfNeeded();
         await image.evaluate((node) => node.decode());
         assert.ok(await image.evaluate((node) => node.naturalWidth > 0 && node.naturalHeight > 0));
       }
       const media = {};
-      for (const kind of ['audio', 'video']) if (await page.locator(kind).count()) media[kind] = await playback(kind);
+      for (const kind of ['audio', 'video']) if (await page.locator(articleMediaSelectors[kind]).count()) media[kind] = await playback(kind);
       await page.screenshot({ path: `${output}/new-post-${post.id}.png`, fullPage: true });
       return { database_id: post.id, path, decoded_images: await images.count(), media };
     });

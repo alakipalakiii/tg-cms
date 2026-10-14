@@ -488,6 +488,9 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         self.assertIn("new URL(route.request().url()).origin === base", script)
         self.assertIn("inputs.pin_candidate", text)
         self.assertEqual("NO", workflow["on"]["workflow_dispatch"]["inputs"]["pin_candidate"]["default"])
+        self.assertIn('page.locator(articleMediaSelectors[kind]).count()', script)
+        self.assertIn('failure_stage: failureStage', script)
+        self.assertIn('source_path: node.currentSrc', script)
 
     def test_production_proof_references_the_full_promotion_authority_chain(self):
         proof = self.job("production-proof")

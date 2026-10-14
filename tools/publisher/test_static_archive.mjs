@@ -88,6 +88,15 @@ try {
   assert.equal(await page.locator('#archiveGrid a').getAttribute('href'), '/post/fixture-21');
   assert.deepEqual(errors, []);
   assert.deepEqual(remoteRequests, []);
+  const diagnostic = await readFile(new URL('./live_functionality_smoke.mjs', import.meta.url), 'utf8');
+  const selectors = JSON.parse(diagnostic.match(/const articleMediaSelectors = (\{[\s\S]*?\n\});/)[1]);
+  await page.setContent('<audio class="mahoon-r4-global-audio"></audio><article id="postArticle"><p>Photo post</p></article>');
+  assert.equal(await page.locator('audio').count(), 1);
+  assert.equal(await page.locator(selectors.audio).count(), 0);
+  await page.setContent('<audio class="mahoon-r4-global-audio"></audio><article id="postArticle"><section data-mahoon-native-player><audio class="mahoon-native-player__audio" data-fixture="native"></audio></section><video data-fixture="post"></video></article>');
+  assert.equal(await page.locator(selectors.audio).count(), 1);
+  assert.equal(await page.locator(selectors.audio).getAttribute('data-fixture'), 'native');
+  assert.equal(await page.locator(selectors.video).getAttribute('data-fixture'), 'post');
   console.log('Static archive browser fixtures passed: pagination, media cards, database IDs, no-match/reset, category, home navigation, invalid index.');
 } finally {
   await browser.close();

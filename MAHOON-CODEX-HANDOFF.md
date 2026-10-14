@@ -2,6 +2,12 @@
 
 Status: MAHOON_PROJECT_FINALIZED_AND_LIVE: BLOCKED — latest-content publication and final functionality acceptance remain.
 
+Active normal PUBLISH/readyYES run38636125070, source018f896, transaction514a84c0e7bfcb53b016e623fb38abace99b4577d03c29d1e534683dd39e5fd7/revision181; generation120/admitted. Do not dispatch a duplicate. Build-validate is active. Read-only functionality tooling6e8b926 can pin a verified zero-percent candidate via pin_candidate=YES (same-origin browser requests and index only); use this before Promotion to validate the repaired client. Final production diagnostic must use the default pin_candidate=NO. All32 diagnostic workflow tests pass. No website/source change was made after the build source018f896; later commits only enhance acceptance diagnostics.
+
+Build-validate passed and fresh revision handoff remained181. Small metadata821406bytes downloaded to Temp/mahoon-build-metadata-38636125070. Bundle92a7c1b289d55cf0f82f704a995754273d03c529b5c6c1f2fad370eec8f5d850 binds snapshot/media/route raw SHA hashes. Raw1849 posts vs1842 prior; additions1914–1920 only, no removed/changed old posts. All seven new JPEGs are successful immutable media;628 required identities exactly equal sorted current records. Bootstrap:602 published+7 new+19 established fallbacks; zero unresolved/hash/mime errors. Route count4238. Observe upload/zero readiness before dispatching the isolated candidate functionality diagnostic.
+
+Upload APPLIED:bc11bf72-e914-498d-8665-b7d98c57ff90. Zero-percent APPLIED:74e449fc-8760-42cf-8973-f6e77e867b90; independently verified baselineb3aa78ef100%, newbc11bf720%. Main pre-promotion-proof is active. Candidate diagnostic38638988621 proved archive/home/category search, load-more20→40, video playback and401 admin boundary PASS, zero public dependencies/JS errors. Audio and all photo articles timed out because its generic audio selector includes the globally present empty auxiliary player. Observer now scopes media to actual #postArticle native players/video, with exact failure_stage and font/media state preserved. Real browser fixture proves empty global audio is excluded and native media selected;32 workflow tests pass. Push and rerun only this focused read-only candidate diagnostic; no mutation replay or new main run.
+
 ## Verified completed revision163
 
 - Transaction: a180efc687b8bac3039d9ee055735c72ad77163192bf93a2680d5f188344dfac.
