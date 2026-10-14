@@ -1735,6 +1735,9 @@ def main(argv: list[str] | None = None) -> int:
         elif isinstance(exc, contracts.ArtifactContractError):
             detail = " ".join(str(exc).split())[:300]
             print("WORKFLOW_STAGE_BLOCKED: ArtifactContractError — " + detail, file=sys.stderr)
+        elif exc.__class__.__name__ == "ProductionProofRejected":
+            detail = " ".join(str(exc).split())[:300]
+            print("WORKFLOW_STAGE_BLOCKED: ProductionProofRejected — " + detail, file=sys.stderr)
         else:
             print("WORKFLOW_STAGE_BLOCKED: " + type(exc).__name__, file=sys.stderr)
         return 2

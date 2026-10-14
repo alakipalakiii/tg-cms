@@ -196,6 +196,11 @@ def create_production_proof(*, build_bundle: object, upload_intent: object,
     try:
         observed = backend.collect(context)
     except Exception as exc:
+        if exc.__class__.__name__ == "ObservationRejected":
+            detail = " ".join(str(exc).split())[:300]
+            raise ProductionProofRejected(
+                f"read-only production proof backend failed: {detail}"
+            ) from exc
         raise ProductionProofRejected("read-only production proof backend failed") from exc
     local_stage, production_stage, production_validation = _observations(
         observed, candidate, promotion_id, bundle,

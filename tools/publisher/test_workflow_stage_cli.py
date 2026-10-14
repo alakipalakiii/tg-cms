@@ -732,6 +732,27 @@ class WorkflowStageCliTests(unittest.TestCase):
         self.assertIn("WORKFLOW_STAGE_BLOCKED: ObservationRejected — sealed proof input is unreadable",
                       stderr.getvalue())
 
+    def test_production_proof_rejection_reports_safe_reason(self):
+        from contextlib import redirect_stdout, redirect_stderr
+        import io
+        from publisher.production_proof_runner import ProductionProofRejected
+        stdout, stderr = io.StringIO(), io.StringIO()
+        missing = str(self.root / "unused.json")
+        args = ["production-proof-observe"]
+        for option in ("build-bundle", "upload-intent", "upload-result", "deploy-intent",
+                       "deploy-result", "pre-promotion-proof", "promote-intent", "promote-result",
+                       "sealed-root", "snapshot", "route-manifest", "media-manifest", "local-gates",
+                       "base-url", "evidence-dir", "output"):
+            args.extend(["--" + option, "https://mahoonartmagazine.ir" if option == "base-url" else missing])
+        with mock.patch.object(cli, "execute_observed_production_proof",
+                               side_effect=ProductionProofRejected("pre-promotion/promote lineage mismatch")), \
+                redirect_stdout(stdout), redirect_stderr(stderr):
+            status = cli.main(args)
+        self.assertEqual(2, status)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("WORKFLOW_STAGE_BLOCKED: ProductionProofRejected — pre-promotion/promote lineage mismatch",
+                      stderr.getvalue())
+
     # ------------------------------------------------------------------
     # Post-run reconciliation decision (Class A skipped / Class B failed)
     # ------------------------------------------------------------------

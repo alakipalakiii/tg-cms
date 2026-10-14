@@ -286,6 +286,17 @@ class ProofObservationTests(unittest.TestCase):
             self.production(fake)
         self.assertEqual(0, fake.calls)
 
+    def test_21c_safe_observation_rejection_reason_survives_proof_wrapper(self):
+        from publisher.production_proof_runner import ProductionProofRejected
+
+        class RejectingBackend:
+            def collect(self, _context):
+                raise runner.ObservationRejected("read-only browser launch failed (exit 1): Chromium missing")
+
+        with self.assertRaises(ProductionProofRejected) as raised:
+            self.production(RejectingBackend())
+        self.assertIn("read-only browser launch failed (exit 1): Chromium missing", str(raised.exception))
+
     def test_22_not_applied_promotion_rejected(self):
         bad = copy.deepcopy(self.f.promote_result); bad["payload"]["result_state"] = "NOT_APPLIED"
         bad = contracts.seal_artifact(bad); paths = dict(self.production_paths()); paths["promote_result"] = self._write_custom("na-promote.json", bad)
