@@ -1428,7 +1428,7 @@ def reconciliation_decision(args) -> dict:
 
         # Persist UNKNOWN through the existing durable path (writes the local
         # journal at the writer's path, then confirms the remote commit).
-        record_result(str(journal_file), args.intent, str(result_path), args.reference,
+        record_result(str(journal_file), args.intent, str(result_path), reference_paths,
                       remote_writer=writer)
 
         create_recovery_readback(

@@ -489,7 +489,7 @@ class WorkflowStageCliTests(unittest.TestCase):
             self.assertIn("actions/runs/38566401139/jobs?per_page=100", gh_api.call_args_list[1].args[1])
             record_args = record.call_args.args
             self.assertEqual((str(journal_path), str(intent_path)), record_args[:2])
-            self.assertEqual(reference_paths, record_args[3])
+            self.assertEqual([str(bundle_path), str(admission_path), *reference_paths], record_args[3])
             self.assertIs(record.call_args.kwargs["remote_writer"], writer)
             self.assertEqual([str(bundle_path), str(admission_path), *reference_paths],
                              readback.call_args.args[2])
