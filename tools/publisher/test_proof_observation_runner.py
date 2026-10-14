@@ -115,7 +115,9 @@ class ProofObservationTests(unittest.TestCase):
         self.media = self.root / "media.json"
         self.media.write_text("{}", encoding="utf-8")
         self.local = self.root / "local.json"
-        self.local.write_text(json.dumps({"gates": {name: True for name in contracts.LOCAL_GATES}}), encoding="utf-8")
+        self.local.write_text(json.dumps({"measured": True, "PASS": True, "gates": {
+            name: {"measured": True, "PASS": True} for name in contracts.LOCAL_GATES
+        }}), encoding="utf-8")
         self.common_patch = patch.object(runner, "_input_files_match")
         self.common_patch.start()
         self.addCleanup(self.common_patch.stop)
@@ -265,6 +267,24 @@ class ProofObservationTests(unittest.TestCase):
 
     def test_21_applied_promotion_enters_production_observation(self):
         fake = FakeBackend(); self.assertEqual("PASS", self.production(fake)["status"]); self.assertEqual(1, fake.calls)
+
+    def test_21a_measured_local_gates_are_normalized_without_losing_acceptance(self):
+        self.production()
+        proof = transport.read_artifact(self.root / "proof-output.json", expected_type="proof_evidence",
+                                        referenced_artifacts=self.refs)
+        local = proof["payload"]["gate_results"]["local"]
+        self.assertTrue(local["PASS"])
+        self.assertEqual({name: True for name in contracts.LOCAL_GATES}, local["gates"])
+
+    def test_21b_failed_local_gate_is_rejected_before_production_observation(self):
+        local_data = json.loads(self.local.read_text(encoding="utf-8"))
+        local_data["gates"][contracts.LOCAL_GATES[0]]["PASS"] = False
+        local_data["PASS"] = False
+        self.local.write_text(json.dumps(local_data), encoding="utf-8")
+        fake = FakeBackend()
+        with self.assertRaises(runner.ObservationRejected):
+            self.production(fake)
+        self.assertEqual(0, fake.calls)
 
     def test_22_not_applied_promotion_rejected(self):
         bad = copy.deepcopy(self.f.promote_result); bad["payload"]["result_state"] = "NOT_APPLIED"

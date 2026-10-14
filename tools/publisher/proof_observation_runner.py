@@ -609,12 +609,18 @@ def execute_production_observation(*, artifact_paths: Mapping[str, str | Path],
     completed = False
     try:
         local_data = json.loads(Path(local_gates_path).read_text(encoding="utf-8"))
-        local_gates = local_data.get("gates")
-        if not isinstance(local_gates, Mapping) or set(local_gates) != set(contracts.LOCAL_GATES) \
-                or any(type(value) is not bool for value in local_gates.values()):
+        if not isinstance(local_data, Mapping):
             raise ObservationRejected("sealed local gate map is invalid")
+        local_gate_results = local_data.get("gates")
+        if (local_data.get("measured") is not True or local_data.get("PASS") is not True
+                or not isinstance(local_gate_results, Mapping)
+                or set(local_gate_results) != set(contracts.LOCAL_GATES)
+                or any(not isinstance(value, Mapping) or value.get("measured") is not True
+                       or value.get("PASS") is not True for value in local_gate_results.values())):
+            raise ObservationRejected("sealed local gate map is invalid")
+        local_gates = {name: local_gate_results[name]["PASS"] is True for name in contracts.LOCAL_GATES}
         local = {"evidence_sha256": build["payload"]["local_gate_evidence_sha256"],
-                 "gates": dict(local_gates)}
+                 "gates": local_gates}
         class RuntimeWithIdentity:
             def collect(self, context):
                 raw = backend.collect(context)
