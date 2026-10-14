@@ -18,18 +18,22 @@
           {
             "attempt_id": "712eb229-c54f-4423-9131-27b48478d122",
             "attempt_number": 1,
-            "evidence": null,
+            "evidence": {
+              "reference": "7694ca8439d500ae95bf5d90c9bccb4acfdfdbb98122c6910fd019e55313a53b",
+              "sha256": "267631aec1126a3f98f9d7b7c9d427ef3008de33ad9e0f4413c512b4ce08c521",
+              "type": "mutation_result_artifact"
+            },
             "intent_artifact_sha256": "e3891cdf1a03718549484578283c94bf9d6febd1288b2de5afa437e193470ceb",
             "intent_at": "2026-10-14T21:14:15.866849+00:00",
             "intent_state": "RECORDED",
-            "result_at": null,
-            "result_digest": null,
-            "result_state": "NOT_REPORTED"
+            "result_at": "2026-10-14T21:16:07.419518+00:00",
+            "result_digest": "ac334b20477cf3197a7fe68cc5438282a06e19f8a675c5acc06e4b7f6122c627",
+            "result_state": "APPLIED"
           }
         ],
         "intent_state": "RECORDED",
         "operation_id": "5fddeef3cd2ab8e9a2b62ca458db8eeec64cb3f6e370bc45df2d724900786b70",
-        "result_state": "NOT_REPORTED"
+        "result_state": "APPLIED"
       },
       "promote": {
         "attempts": [],
@@ -68,7 +72,7 @@
     },
     "proof_evidence_sha256": null,
     "recovery_status": "NONE",
-    "state": "intent_recorded",
+    "state": "operation_reported",
     "state_commit_sha": null,
     "transitions": [
       {
@@ -95,16 +99,21 @@
         "from": "operation_reported",
         "timestamp": "2026-10-14T21:14:15.866868+00:00",
         "to": "intent_recorded"
+      },
+      {
+        "from": "intent_recorded",
+        "timestamp": "2026-10-14T21:16:07.419538+00:00",
+        "to": "operation_reported"
       }
     ],
     "trigger_sources": [
       "workflow_dispatch"
     ],
-    "updated_at": "2026-10-14T21:14:15.866870+00:00",
+    "updated_at": "2026-10-14T21:16:07.419541+00:00",
     "worker": "mahoon-art-magazine"
   },
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 124,
+  "generation": 125,
   "history": [
     {
       "build_bundle_sha256": null,
