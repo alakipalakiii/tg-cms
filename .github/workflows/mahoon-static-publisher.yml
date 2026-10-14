@@ -690,6 +690,27 @@ jobs:
               and valid_sha(promote_attempts[1].get("intent_artifact_sha256"))
               and promote_attempts[1].get("result_digest") is None
           )
+          post_promotion_reported = (
+              post_finalize and in_flight and active["state"] == "operation_reported"
+              and active["recovery_status"] == "NONE"
+              and promote["intent_state"] == "RECORDED"
+              and promote["result_state"] == "APPLIED"
+              and len(promote_attempts) == 2
+              and promote_attempts[0].get("attempt_number") == 1
+              and promote_attempts[0].get("intent_state") == "RECORDED"
+              and promote_attempts[0].get("result_state") == "NOT_APPLIED"
+              and valid_sha(promote_attempts[0].get("intent_artifact_sha256"))
+              and valid_sha(promote_attempts[0].get("result_digest"))
+              and promote_attempts[1].get("attempt_number") == 2
+              and promote_attempts[1].get("intent_state") == "RECORDED"
+              and promote_attempts[1].get("result_state") == "APPLIED"
+              and valid_sha(promote_attempts[1].get("intent_artifact_sha256"))
+              and valid_sha(promote_attempts[1].get("result_digest"))
+              and isinstance(promote_attempts[1].get("evidence"), dict)
+              and promote_attempts[1]["evidence"].get("type") == "mutation_result_artifact"
+              and valid_sha(promote_attempts[1]["evidence"].get("reference"))
+              and valid_sha(promote_attempts[1]["evidence"].get("sha256"))
+          )
           reconciled_promote_retry = (
               in_flight and active["state"] == "operation_reported"
               and active["recovery_status"] == "RECONCILED_NOT_APPLIED"
@@ -706,7 +727,8 @@ jobs:
               "recovery is not a single reconciled-not-applied promotion"
           if in_flight:
               if post_finalize:
-                  assert post_promotion_pending, "journal is not the exact pending APPLIED-promotion finalization state"
+                  assert post_promotion_pending or post_promotion_reported, \
+                      "journal is not the exact pending or already-APPLIED promotion finalization state"
               else:
                   assert active["state"] == "operation_reported", \
                       f"active state is {active['state']}, not operation_reported"
@@ -723,11 +745,13 @@ jobs:
                       f"operation {name} attempt evidence is incomplete"
               for name in ("promote", "rollback"):
                   op = operations[name]
-                  if name == "promote" and (reconciled_promote_retry or post_promotion_pending):
+                  if name == "promote" and (reconciled_promote_retry or post_promotion_pending
+                                             or post_promotion_reported):
                       continue
                   assert op["attempts"] == [] and op["intent_state"] == "NOT_STARTED" \
                       and op["result_state"] == "NOT_REPORTED", f"operation {name} has progress"
-              resume_kind = ("POST_PROMOTION_FINALIZATION_PENDING" if post_promotion_pending else
+              resume_kind = ("POST_PROMOTION_FINALIZATION_RETRY_PENDING" if post_promotion_reported else
+                             "POST_PROMOTION_FINALIZATION_PENDING" if post_promotion_pending else
                              "IN_FLIGHT_RECONCILED_PROMOTE_RETRY" if reconciled_promote_retry else
                              "IN_FLIGHT_APPLIED")
           else:
@@ -2014,6 +2038,8 @@ jobs:
       - name: Install lockfile-pinned Playwright Chromium
         working-directory: diagnostics/website/dreary-disk
         run: npx playwright install --with-deps chromium
+      - name: Run the existing browser gate self-test
+        run: mkdir -p runner-evidence && node diagnostics/tools/publisher/prepromotion_browser_gate.mjs --self-test > runner-evidence/pre-promotion-browser-self-test.json
       - name: Observe and seal combined pre-promotion proof
         env:
           PYTHONPATH: diagnostics/tools:code/tools/publisher:code/tools:code
@@ -2050,6 +2076,7 @@ jobs:
             pre-promotion-proof.json
             runner-evidence/pre-promotion-proof/**
             runner-evidence/pre-promotion-proof-browser-diagnostic.json
+            runner-evidence/pre-promotion-browser-self-test.json
           if-no-files-found: ignore
 
   resume-preproof-carryforward:
@@ -2334,7 +2361,7 @@ jobs:
           EXPECTED_SOURCE_RUN_ID: ${{ inputs.resume_source_run_id }}
           EXPECTED_TRANSACTION_ID: ${{ inputs.transaction_id }}
         run: |
-          python - <<'PY'
+          already_applied="$(python - <<'PY'
           import json, os
           from pathlib import Path
           from publisher import artifact_transport as transport
@@ -2344,7 +2371,7 @@ jobs:
           journal = json.loads(Path("state/publisher-state/production-transaction-journal.json").read_text(encoding="utf-8"))
           active = journal["active"]
           assert active is not None and active["logical_transaction_id"] == os.environ["EXPECTED_TRANSACTION_ID"]
-          assert active["state"] == "intent_recorded" and active["recovery_status"] == "NONE"
+          assert active["recovery_status"] == "NONE"
           bundle = transport.read_artifact(root / "runner-evidence/v1-build-bundle.json", expected_type="build_bundle",
                                            expected_source_sha=os.environ["EXPECTED_SOURCE_SHA"])
           tx = bundle["transaction"]
@@ -2368,11 +2395,28 @@ jobs:
                                            expected_transaction=tx, expected_source_sha=os.environ["EXPECTED_SOURCE_SHA"],
                                            referenced_artifacts=refs)
           promotion = active["operations"]["promote"]
-          attempt = promotion["attempts"][-1]
-          assert len(promotion["attempts"]) == 2 and attempt["attempt_number"] == 2
-          assert promotion["intent_state"] == "RECORDED" and promotion["result_state"] == "NOT_REPORTED"
-          assert attempt["intent_state"] == "RECORDED" and attempt["result_state"] == "NOT_REPORTED"
-          assert attempt["result_digest"] is None
+          attempts = promotion["attempts"]
+          assert len(attempts) == 2
+          attempt = attempts[1]
+          def valid_sha(value):
+              return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+          assert attempts[0]["attempt_number"] == 1 and attempts[0]["intent_state"] == "RECORDED"
+          assert attempts[0]["result_state"] == "NOT_APPLIED"
+          assert valid_sha(attempts[0].get("intent_artifact_sha256")) and valid_sha(attempts[0].get("result_digest"))
+          assert attempts[1]["attempt_number"] == 2 and attempts[1]["intent_state"] == "RECORDED"
+          pending = (active["state"] == "intent_recorded" and promotion["result_state"] == "NOT_REPORTED"
+                     and attempt["result_state"] == "NOT_REPORTED" and attempt["result_digest"] is None)
+          evidence = attempt.get("evidence")
+          already_applied = (
+              active["state"] == "operation_reported" and promotion["result_state"] == "APPLIED"
+              and attempt["result_state"] == "APPLIED"
+              and valid_sha(attempt.get("result_digest"))
+              and isinstance(evidence, dict) and evidence.get("type") == "mutation_result_artifact"
+              and evidence.get("reference") == result["artifact_sha256"]
+              and evidence.get("sha256") == result["payload"].get("evidence_sha256")
+          )
+          assert active["recovery_status"] == "NONE" and promotion["intent_state"] == "RECORDED"
+          assert pending or already_applied, "journal is not pending or already recorded with this APPLIED result"
           assert intent["producer"]["workflow_run_id"] == os.environ["EXPECTED_SOURCE_RUN_ID"]
           assert result["producer"]["workflow_run_id"] == os.environ["EXPECTED_SOURCE_RUN_ID"]
           assert intent["payload"]["operation_id"] == promotion["operation_id"]
@@ -2383,16 +2427,25 @@ jobs:
           assert proof["payload"]["PASS"] is True
           assert zero_result["payload"]["result_state"] == "APPLIED"
           validate_effective_applied_result(result, intent, referenced_artifacts=refs)
-          print("PROMOTION_CARRY_FORWARD=APPLIED; JOURNAL_LATEST_ATTEMPT=MATCH; SOURCE_ARTIFACTS=SEALED")
+          print("true" if already_applied else "false")
           PY
-          python code/tools/publisher/workflow_stage_cli.py record-result \
-            --intent handoff/promote-intent.json --result handoff/promote-result.json \
-            --journal state/publisher-state/production-transaction-journal.json --repository state --branch main \
-            --reference handoff/runner-evidence/v1-build-bundle.json \
-            --reference handoff/pre-promotion-proof.json \
-            --reference handoff/zero-percent-intent.json \
-            --reference handoff/zero-percent-result.json > record.json
-          python -c "import json,os; d=json.load(open('record.json')); assert d['status']=='APPLIED'; open(os.environ['GITHUB_OUTPUT'],'a').write('carried=true\\nresult_state=APPLIED\\n')"
+          )"
+          if [ "$already_applied" != "true" ]; then
+            python code/tools/publisher/workflow_stage_cli.py record-result \
+              --intent handoff/promote-intent.json --result handoff/promote-result.json \
+              --journal state/publisher-state/production-transaction-journal.json --repository state --branch main \
+              --reference handoff/runner-evidence/v1-build-bundle.json \
+              --reference handoff/pre-promotion-proof.json \
+              --reference handoff/zero-percent-intent.json \
+              --reference handoff/zero-percent-result.json > record.json
+            python -c "import json; assert json.load(open('record.json'))['status']=='APPLIED'"
+          fi
+          python -c "import os; open(os.environ['GITHUB_OUTPUT'],'a').write('carried=true\\nresult_state=APPLIED\\n')"
+          if [ "$already_applied" = "true" ]; then
+            echo "PROMOTION_CARRY_FORWARD=ALREADY_APPLIED; JOURNAL_LATEST_ATTEMPT=MATCH; SOURCE_ARTIFACTS=SEALED"
+          else
+            echo "PROMOTION_CARRY_FORWARD=APPLIED; JOURNAL_LATEST_ATTEMPT=MATCH; SOURCE_ARTIFACTS=SEALED"
+          fi
       - uses: actions/upload-artifact@v4
         with: { name: 'a6-promote-intent-${{ github.run_id }}', path: handoff/promote-intent.json, if-no-files-found: error }
       - uses: actions/upload-artifact@v4
@@ -2584,6 +2637,8 @@ jobs:
       - name: Install lockfile-pinned Playwright Chromium
         working-directory: diagnostics/website/dreary-disk
         run: npx playwright install --with-deps chromium
+      - name: Run the existing browser gate self-test
+        run: mkdir -p runner-evidence && node diagnostics/tools/publisher/prepromotion_browser_gate.mjs --self-test > runner-evidence/production-browser-self-test.json
       - name: Observe and seal combined production proof
         env:
           PYTHONPATH: diagnostics/tools:code/tools/publisher:code/tools:code
@@ -2594,7 +2649,7 @@ jobs:
           upload_result="$workspace/handoff/upload-result.json"
           zero_result="$workspace/handoff/zero-percent-result.json"
           promote_result="$workspace/handoff/promote-result.json"
-          refs=(--reference "$workspace/handoff/upload-intent.json" --reference "$workspace/handoff/zero-percent-intent.json" --reference "$workspace/handoff/promote-intent.json"
+          refs=(--reference "$workspace/handoff/admission.json" --reference "$workspace/handoff/upload-intent.json" --reference "$workspace/handoff/zero-percent-intent.json" --reference "$workspace/handoff/promote-intent.json"
                 --reference "$workspace/handoff/upload-result.json" --reference "$workspace/handoff/zero-percent-result.json" --reference "$workspace/handoff/promote-result.json")
           if [ '${{ needs.upload-create-recovered-result.outputs.recovered }}' = 'true' ]; then
             upload_result="$workspace/handoff/recovered-upload-result.json"
@@ -2640,6 +2695,7 @@ jobs:
             production-proof.json
             runner-evidence/production-proof/**
             runner-evidence/production-proof-browser-diagnostic.json
+            runner-evidence/production-browser-self-test.json
           if-no-files-found: ignore
 
   final-state-materialization:

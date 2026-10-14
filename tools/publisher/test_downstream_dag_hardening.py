@@ -317,6 +317,9 @@ class DownstreamDagHardeningTests(unittest.TestCase):
         self.assertIn("EXPECTED_SOURCE_RUN_ID", str(carry))
         self.assertIn('promotion["result_state"] == "NOT_REPORTED"', commands)
         self.assertIn('attempt["result_digest"] is None', commands)
+        self.assertIn('active["state"] == "operation_reported"', commands)
+        self.assertIn('evidence.get("reference") == result["artifact_sha256"]', commands)
+        self.assertIn('if [ "$already_applied" != "true" ]; then', commands)
         self.assertIn("record-result", commands)
         self.assertIn("carried=true", commands)
         self.assertNotIn("execute-operation", commands)
@@ -438,9 +441,18 @@ class DownstreamDagHardeningTests(unittest.TestCase):
             self.assertIn("npx playwright install --with-deps chromium", install["run"])
             self.assertLess(next(i for i, step in enumerate(steps) if step.get("run", "").startswith("npm ci ")),
                             steps.index(install))
+            self_test = next((step for step in steps
+                              if step.get("name") == "Run the existing browser gate self-test"), None)
+            self.assertIsNotNone(self_test, f"{job_name} must smoke-test Chromium before crawling")
+            self.assertIn("--self-test", self_test["run"])
+            observer = next(i for i, step in enumerate(steps)
+                            if str(step.get("name", "")).startswith("Observe and seal combined"))
+            self.assertLess(steps.index(install), steps.index(self_test))
+            self.assertLess(steps.index(self_test), observer)
             evidence_upload = next(step for step in steps if step.get("uses") == "actions/upload-artifact@v4")
             self.assertIn("always()", str(evidence_upload.get("if", "")))
             self.assertIn("browser-diagnostic.json", str(evidence_upload.get("with", {})))
+            self.assertIn("browser-self-test.json", str(evidence_upload.get("with", {})))
 
     def test_passing_preproof_can_be_carried_forward_with_complete_lineage(self):
         inputs = self.WORKFLOW["on"]["workflow_dispatch"]["inputs"]

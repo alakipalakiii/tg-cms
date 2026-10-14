@@ -305,6 +305,8 @@ class A6WorkflowContractTests(unittest.TestCase):
                 self.assertIn('"$workspace/handoff/runner-build/published-route-manifest.json"',
                               observe["run"])
                 self.assertIn('"$workspace/runner-evidence/', observe["run"])
+                if name == "production-proof":
+                    self.assertIn('--reference "$workspace/handoff/admission.json"', observe["run"])
         promote = next(step for step in self.jobs["cloudflare-promote-operation"]["steps"]
                        if step.get("name") == "Execute exact authorized promotion")
         self.assertEqual("code/tools/publisher:code/tools:code", promote["env"]["PYTHONPATH"])
@@ -557,6 +559,21 @@ class A6WorkflowContractTests(unittest.TestCase):
             self.assertIn("RESUME_JOURNAL=POST_PROMOTION_FINALIZATION_PENDING; REVISION=122",
                           accepted_finalization.stdout)
 
+            post_finalize_applied = copy.deepcopy(post_finalize)
+            post_finalize_applied["active"]["state"] = "operation_reported"
+            applied_promotion = post_finalize_applied["active"]["operations"]["promote"]
+            applied_promotion["result_state"] = "APPLIED"
+            applied_promotion["attempts"][1].update({
+                "result_state": "APPLIED", "result_digest": "c" * 64,
+                "evidence": {"type": "mutation_result_artifact", "reference": "d" * 64,
+                             "sha256": "e" * 64},
+            })
+            accepted_applied_retry = run(post_finalize_applied,
+                                         REQUESTED_MODE="POST_PROMOTION_FINALIZE")
+            self.assertEqual(0, accepted_applied_retry.returncode, accepted_applied_retry.stderr)
+            self.assertIn("RESUME_JOURNAL=POST_PROMOTION_FINALIZATION_RETRY_PENDING; REVISION=122",
+                          accepted_applied_retry.stdout)
+
             cases = []
             changed = copy.deepcopy(fixture); changed["active"]["operations"]["deploy_zero_percent"]["result_state"] = "UNKNOWN"; cases.append(("unknown zero result", changed, {}))
             changed = copy.deepcopy(fixture); changed["active"]["operations"]["promote"]["attempts"] = [{}]; cases.append(("promotion attempt", changed, {}))
@@ -566,6 +583,7 @@ class A6WorkflowContractTests(unittest.TestCase):
             changed = copy.deepcopy(post_finalize); changed["active"]["operations"]["promote"]["attempts"][1]["result_digest"] = "c" * 64; cases.append(("post-finalization attempt already has a result", changed, {"REQUESTED_MODE": "POST_PROMOTION_FINALIZE"}))
             changed = copy.deepcopy(post_finalize); changed["active"]["operations"]["promote"]["attempts"].append(copy.deepcopy(changed["active"]["operations"]["promote"]["attempts"][-1])); cases.append(("post-finalization has extra attempt", changed, {"REQUESTED_MODE": "POST_PROMOTION_FINALIZE"}))
             changed = copy.deepcopy(post_finalize); changed["active"]["state"] = "operation_reported"; cases.append(("post-finalization wrong state", changed, {"REQUESTED_MODE": "POST_PROMOTION_FINALIZE"}))
+            changed = copy.deepcopy(post_finalize_applied); changed["active"]["operations"]["promote"]["attempts"][1]["evidence"]["reference"] = "invalid"; cases.append(("post-finalization applied result lacks exact artifact evidence", changed, {"REQUESTED_MODE": "POST_PROMOTION_FINALIZE"}))
             changed = copy.deepcopy(fixture); changed["active"]["operations"]["upload_version"]["attempts"][0]["result_digest"] = "invalid"; cases.append(("invalid upload evidence", changed, {}))
             cases.append(("source IDs differ", copy.deepcopy(fixture), {"SOURCE_RUN_ID": "38320622522", "RESUME_SOURCE_RUN_ID": "38320622523"}))
             cases.append(("missing source ID", copy.deepcopy(fixture), {"RESUME_SOURCE_RUN_ID": ""}))
