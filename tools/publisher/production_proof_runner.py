@@ -190,7 +190,7 @@ def create_production_proof(*, build_bundle: object, upload_intent: object,
     promotion_id = promote_r["payload"]["readback_reference"]["resource_id"]
     context = {
         "transaction": dict(tx), "source_sha": source_sha,
-        "build_bundle_sha256": bundle_sha,
+        "build_bundle": bundle, "build_bundle_sha256": bundle_sha,
         "candidate_identity": dict(candidate), "promotion_deployment_id": promotion_id,
     }
     try:

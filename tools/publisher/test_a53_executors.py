@@ -165,6 +165,8 @@ class ProductionProofExecutorTests(unittest.TestCase):
             def collect(inner, context):
                 inner.calls += 1
                 self.assertEqual("dep-promoted", context["promotion_deployment_id"])
+                self.assertEqual(self.f.bundle["artifact_sha256"],
+                                 context["build_bundle"]["artifact_sha256"])
                 return observations(self.f)
             def mutate(inner, *_args):
                 raise AssertionError("read-only proof backend must not mutate")
