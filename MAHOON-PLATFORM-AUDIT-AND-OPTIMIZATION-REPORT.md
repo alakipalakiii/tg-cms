@@ -124,3 +124,30 @@ Production website still revision185 at this checkpoint. Website code pushed thr
 - Source authorization is part of SEC-01:an authenticated Telegram delivery alone does not authorize an arbitrary bot user to publish. Prepared guard permits the verified configured channel plus existing admins. Recent23 source rows match neither STORAGE_CHAT_ID nor configured admin IDs, so the media storage destination is not substituted as the authoritative channel. Resolve @mahoonartmagazine via authenticated getChat and compare current source privately before activation.
 - The API correction was also surgically applied to the exact read-back live module in a private prepared file; all workerd/local D1 tests PASS on that version as well. Base source SHA256 a0d53ba90599742076845aa156e40969590b4ef3180152fc4420e66b1764cbd1; prepared source26a6045550f9245e22fc307a8ca9d4e38af996ed38263a2480b5226bdc43475d. This file remains outside Git and is not deployed; live-only logic is retained.
 - Owner credential request is pending. No token was requested in chat, extracted from a Worker, exposed through a migration endpoint, rotated or committed. Independent website work continues while API activation waits on secure Bot API access.
+
+## Restore and adjacent boundary regression — 09:22 UTC / 12:52 Tehran
+
+P1 RESTORE-01:both the live API dedicated restore and bot /restore set is_published=0, contradicting the current explicit AGENTS.md requirement deleted_at=NULL/is_published=1. A local D1 regression reproduced0 vs required1. Prepared correction changes both assignments and the admin confirmation/success copy; no other state transition is changed. The existing live bulk-restore behavior is preserved. No production restore/delete/edit was executed.
+
+Extended regression passes on both compiled repository code and the surgically patched actual live module:read-only SEO returns200 with no admin-only fields and leaves view_count0; public PATCH cannot restore a deleted row; dedicated admin restore uses stable ID and publishes; /delete shows preview without mutation, /delete confirm soft-deletes, /restore publishes without changing ID/slug. Current prepared live-module source SHA256 `64de6dfa0b96c4f4f2059745fcea1f73f380356b9454920b73babda222b64633`, superseding the earlier prepared digest. Website build after admin-copy correction PASS in3.40seconds. The new copy is prepared for coordinated rollout with the API and is not included in the already-running revision188 bundle.
+
+## UI/UX journey evidence and retained design
+
+1. Open homepage at1440/768/390px:official logo/font, RTL header, editorial feature, stable grid/carousels and footer retained; no horizontal page overflow. Current screenshot files are home-desktop.png/home-tablet.png/home-mobile.png in38708829025.
+2. Keyboard/mobile navigation:Enter opens the menu; old production Escape does not close it. Prepared script closes it and restores focus; actual script is exercised in the browser fixture. No arbitrary menu redesign.
+3. Search from homepage/archive/category:numeric database ID flow passes current smoke; actual Persian variant failure captured in search-persian-variant.png from38710415271. Correction uses existing taxonomy normalization. Empty-state screenshot/search results remain readable; explicit accessible names and polite count updates added without visual changes.
+4. Read articles and media:38705359244 opened seven recent actual articles, decoded images and advanced native audio/video. Newer188 content acceptance remains pending the running release. Historical unsupported media fallback is distinguished from working native playback.
+5. Administration:current public login shell and unauthenticated401 checked; destructive operations excluded from production. Dedicated restore/PATCH/two-step bot deletion are tested only against local D1. Corrected confirmation discloses publication intent per AGENTS.md.
+
+Visual screenshots alone do not certify contrast, screen-reader speech, touch hardware or codec support on physical iOS/Android. No formal WCAG conformance claim is made. No official brand asset, Persian font, layout identity, content ID or existing channel message has been replaced.
+
+## Rejected changes and optional improvements
+
+- No competing Telegram ingestion, test channel post, forced content revision or artificial publication transaction.
+- No speculative redesign, logo/font replacement, new media player or dependency migration. Current lab performance does not justify adding a cache layer or removing established components.
+- No blind npm audit fix:runtime reachability and adapter-major compatibility matter; static ASSETS serving and passthrough images are retained. Dependency maintenance is a separately scoped P2/P3 item until an exposed attack path is demonstrated.
+- No deletion/renumbering of911 historical duplicate rows. Existing presentation deduplication is preserved; prepared atomic ingestion prevents future replay duplicates.
+- No removal of analytics v4/v5 or the dynamic Astro path based only on duplication; callers and operational use still exist.
+- Optional P3:physical-device/screen-reader/DevTools trace audit and broader contrast sampling. These are evidence limits, not claims of a specific user-facing defect.
+
+Current phase status remains IN PROGRESS/BLOCKED on coordinated API credential access, with independent website publication still running. Do not return phase PASS from these prepared fixes.

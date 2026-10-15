@@ -60,7 +60,7 @@ const source = await readFile(entry, 'utf8');
 assert.ok(source.indexOf('telegramWebhookRejection(request, env.TELEGRAM_WEBHOOK_SECRET)')
   < source.indexOf('const update = await request.json();'));
 const ingestion = new Miniflare({ modules: true, script: compiled.outputFiles[0].text, compatibilityDate: '2026-01-01',
-  bindings: { TELEGRAM_WEBHOOK_SECRET: 'fixture-secret', TELEGRAM_SOURCE_CHAT_ID: '-1000000000001', BOT_ADMIN_IDS: '123' }, d1Databases: ['DB'],
+  bindings: { TELEGRAM_WEBHOOK_SECRET: 'fixture-secret', TELEGRAM_SOURCE_CHAT_ID: '-1000000000001', BOT_ADMIN_IDS: '123', ADMIN_TOKEN: 'fixture-admin' }, d1Databases: ['DB'],
   outboundService: () => { throw new Error('OFFLINE_NETWORK_BLOCKED'); } });
 try {
   const db = await ingestion.getD1Database('DB');
@@ -78,6 +78,10 @@ try {
   let row = await db.prepare('SELECT * FROM posts').first();
   const stableId = row.id, stableSlug = row.slug;
   assert.equal(row.photo_file_id, 'fixture-file'); assert.equal(row.created_at, '2023-11-14 22:13:20');
+  const seo = await ingestion.dispatchFetch('https://offline.invalid/seo/post/' + encodeURIComponent(stableSlug));
+  assert.equal(seo.status, 200);
+  for (const key of ['admin_note', 'chat_id', 'chat_title', 'deleted_at', 'telegram_message_id']) assert.ok(!(key in (await seo.clone().json()).post));
+  assert.equal((await db.prepare('SELECT view_count FROM posts WHERE id=?').bind(stableId).first()).view_count, 0);
   await new Promise((resolve) => setTimeout(resolve, 15));
   assert.equal((await deliver({ channel_post: photo })).duplicate, true);
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM posts').first()).n, 1, 'Telegram replay must not insert another row');
@@ -98,6 +102,20 @@ try {
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM posts').first()).n, 1);
   row = await db.prepare('SELECT * FROM posts').first();
   assert.equal(row.deleted_at, '2026-01-01'); assert.equal(row.is_published, 0);
+  assert.equal((await ingestion.dispatchFetch('https://offline.invalid/admin/posts/' + stableId, { method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': 'fixture-admin' }, body: JSON.stringify({ deleted_at: null, is_published: 1, text: 'Cannot restore via PATCH' }) })).status, 404);
+  assert.equal((await ingestion.dispatchFetch('https://offline.invalid/admin/posts/' + stableId + '/restore',
+    { method: 'POST', headers: { 'X-Admin-Token': 'fixture-admin' } })).status, 200);
+  row = await db.prepare('SELECT * FROM posts WHERE id=?').bind(stableId).first();
+  assert.equal(row.deleted_at, null); assert.equal(row.is_published, 1, 'Dedicated restore must publish, per AGENTS.md');
+  const command = (text) => deliver({ message: { message_id: 100, chat: { id: 123, type: 'private' }, from: { id: 123 }, text } });
+  assert.equal((await command('/delete ' + stableId)).action, 'delete_preview');
+  assert.equal((await db.prepare('SELECT deleted_at FROM posts WHERE id=?').bind(stableId).first()).deleted_at, null);
+  await command('/delete confirm ' + stableId);
+  assert.ok((await db.prepare('SELECT deleted_at FROM posts WHERE id=?').bind(stableId).first()).deleted_at);
+  await command('/restore ' + stableId);
+  row = await db.prepare('SELECT * FROM posts WHERE id=?').bind(stableId).first();
+  assert.equal(row.deleted_at, null); assert.equal(row.is_published, 1); assert.equal(row.id, stableId); assert.equal(row.slug, stableSlug);
   for (const [position, kind] of ['audio', 'voice', 'video', 'document'].entries()) {
     assert.equal((await deliver({ channel_post: { message_id: 20 + position, date: 1700000000 + position,
       chat: photo.chat, caption: 'Fixture #صوتی', [kind]: { file_id: 'fixture-' + kind, file_unique_id: 'unique-' + kind, duration: 10 } } })).saved, true);
@@ -114,4 +132,8 @@ try {
     headers: { 'Content-Type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': 'fixture-secret' },
     body: JSON.stringify(update) })).status, 503);
 } finally { await missingSource.dispose(); }
+const admin = await readFile(new URL('../../website/dreary-disk/src/pages/admin.astro', import.meta.url), 'utf8');
+const restoreCopy = admin.slice(admin.indexOf('async function restoreDeletedPost'), admin.indexOf('function formatAdminNumber'));
+assert.ok(restoreCopy.includes('برای انتشار'));
+assert.ok(!restoreCopy.includes('پیش‌نویس خصوصی'));
 console.log('Telegram boundary and local D1: authentication, source authorization, refresh, sequential/concurrent replay, edits, stable IDs/slugs, deleted-post preservation, photo/audio/voice/video/document; no production writes/network.');

@@ -16,6 +16,7 @@ The live Worker has BOT_TOKEN and ADMIN_TOKEN secret bindings, but no TELEGRAM_W
 - Authenticated empty updates remain200/saved=false; existing extraction, stable IDs and management logic are unchanged.
 - Content from other Telegram chats is ignored unless it is from an existing configured admin. TELEGRAM_SOURCE_CHAT_ID must be resolved from the official channel through Bot API getChat; STORAGE_CHAT_ID is a separate media destination and must not be assumed to be the source.
 - An atomic INSERT SELECT WHERE NOT EXISTS suppresses replays by (telegram_message_id,chat_id), including previously deleted messages. Existing historical rows are preserved. Edits still update by stable database ID and retain the slug.
+- Dedicated API and bot restore now use deleted_at=NULL/is_published=1, as required by AGENTS.md. The admin confirmation copy explicitly warns that restoration enables publication. This copy must be deployed in coordination with the corrected API; do not leave a draft-only promise against a publishing restore endpoint. No real production restore is used as a test.
 - The authenticated webhook-refresh helper passes the configured secret to setWebhook and keeps drop_pending_updates=false and all four existing update types. It never returns the secret.
 - `node tools/publisher/test_telegram_boundary.mjs` checks the compiled repository API in real local workerd, including refresh with a fake Bot API. No real database, Telegram request or post mutation is used.
 
