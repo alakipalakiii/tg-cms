@@ -1,5 +1,9 @@
 # Current safe-continuation handoff — 2026-10-15
 
+## Latest owner handoff: reviewed one-click CMD, NOT EXECUTED
+
+Owner explicitly confirmed no manual registration was run. **C:/Users/mehdi karani/Desktop/MAHOON-ADMIN-ONE-CLICK.cmd** is ready; identical private copy in security-activation. It pins reviewed complete-admin-registration.ps1 SHA256 **2fd8559b7d9b105fcdb41249176359f73b838566aa7db7b8ccd2c07eeae3abdc** before hidden local ADMIN input in fresh NoProfile Windows PowerShell5.1. No BOT_TOKEN, credential file/log/Clipboard/argument, execution-policy bypass or auto-retry. Two fixed provider HTTPS origins, exact candidate version/readiness/source fingerprint, preserved settings, no redirect, logging-policy precheck, local mutex and exclusive flushed one-POST intent; acknowledged POST plus additional readback required. Final console/Clipboard contains only safe SUCCESS/STOPPED and fixed reason.26 offline scenarios plus3 real launcher fixtures PASS with fake credentials/network/Clipboard; the real registration launcher was not run. Read the current rollout section for details. Candidate0%/baseline100% independently reconfirmed17:11:26UTC, same c3762000 deployment, no owner POST intent/receipt. Production/webhook/content unchanged in this preparation. Wait for the owner's result, inspect the private receipt/intent, and review it before activation; never infer activation or SEC-01 PASS from registration SUCCESS. The prior manual command below is superseded by the CMD.
+
 ## New security activation checkpoint — 17:03 UTC
 
 - Source commit **a0550348ddd0ee79c2b6300cd117acbd5cdf3029** FF pushed from5f3691a: protected readiness now attributes the exact provider version; focused assertion and repository/exact-live/standalone/historical-compatibility workerd-D1 tests PASS.
