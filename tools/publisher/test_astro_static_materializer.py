@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -15,6 +17,37 @@ from publisher import astro_static_materializer as materializer
 
 
 class AstroStaticMaterializerTests(unittest.TestCase):
+    def test_repeated_media_uses_the_verified_immutable_digest_without_rereading_blob(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            out = root / 'site'; out.mkdir()
+            data = b'fixture' * 10000
+            digest = hashlib.sha256(data).hexdigest()
+            public = '/media/' + digest + '.jpg'
+            blob = root / (digest + '.jpg'); blob.write_bytes(data)
+            manifest_path = root / 'manifest.json'
+            manifest_path.write_text(json.dumps({'records': [{'source_identifier': 'fixture', 'sha256': digest,
+                'immutable_path': public, 'fallback': False, 'detected_mime': 'image/jpeg',
+                'expected_media_type': 'photo', 'post_ids': [1]}]}), encoding='utf-8')
+            index = root / 'index.json'; index.write_text('{"entries":[]}', encoding='utf-8')
+            resolver = materializer.PublishedMediaResolver()
+            resolver.manifest, resolver.index_path, resolver.store = manifest_path, index, root
+            cache, manifest, reads = {}, {}, []
+            original = Path.read_bytes
+            def read(path):
+                if path == blob: reads.append(path)
+                return original(path)
+            html = '<img src="https://api.mahoonartmagazine.ir/media/fixture">'
+            with patch.object(Path, 'read_bytes', read):
+                for _ in range(10):
+                    self.assertEqual('<img src="' + public + '">', materializer._materialize_media(
+                        html, out, manifest, cache, threading.Lock(), resolver))
+            self.assertEqual(len(reads), 1)
+            self.assertEqual(manifest[public]['mahoon_sha256'], digest)
+            self.assertEqual(manifest[public]['cloudflare_hash'], digest[:32])
+            self.assertEqual(manifest[public]['size'], len(data))
+            self.assertEqual((out / public.lstrip('/')).read_bytes(), data)
+
     def test_static_archive_preserves_public_config_and_replaces_api_runtime(self):
         html = ('<script id="archiveConfig" type="application/json">'
                 '{"apiBase":"https://api.mahoonartmagazine.ir","mode":"category","category":"book",'

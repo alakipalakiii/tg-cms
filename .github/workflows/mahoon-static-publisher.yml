@@ -283,7 +283,7 @@ jobs:
       source_sha: ${{ steps.meta.outputs.source_sha }}
     env:
       PUBLISHER_MODE: BUILD_AND_ZERO_PERCENT
-      CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       MAHOON_WRANGLER: npx wrangler@4.83.0
       MAHOON_PUBLISH_READY: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true' && 'YES' || inputs.ready }}
@@ -350,7 +350,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       MAHOON_WRANGLER: npx wrangler@4.83.0
     outputs:
@@ -426,7 +426,7 @@ jobs:
       transaction_id: ${{ steps.meta.outputs.transaction_id }}
       source_sha: ${{ steps.meta.outputs.source_sha }}
     env:
-      CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       MAHOON_WRANGLER: npx wrangler@4.83.0
       MAHOON_PUBLISH_READY: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true' && 'YES' || inputs.ready }}
@@ -1390,7 +1390,7 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
           MAHOON_WRANGLER: npx wrangler@4.83.0
-          CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: >-
           python code/tools/publisher/workflow_stage_cli.py execute-operation
           --intent handoff/upload-intent.json
@@ -1855,7 +1855,7 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
           MAHOON_WRANGLER: npx wrangler@4.83.0
-          CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           upload_result=handoff/upload-result.json
           refs=(--reference handoff/upload-intent.json)
@@ -2065,7 +2065,7 @@ jobs:
         env:
           PYTHONPATH: diagnostics/tools:code/tools/publisher:code/tools:code
           MAHOON_WRANGLER: npx wrangler@4.83.0
-          CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           workspace="$GITHUB_WORKSPACE"
           zero_result="$workspace/handoff/zero-percent-result.json"
@@ -2265,7 +2265,7 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
           MAHOON_WRANGLER: npx wrangler@4.83.0
-          CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           refs=(--reference handoff/runner-evidence/v1-build-bundle.json --reference handoff/pre-promotion-proof.json --reference handoff/zero-percent-intent.json)
           if [ '${{ needs.promote-intent-write.outputs.zero_recovered }}' = 'true' ]; then
@@ -2672,7 +2672,7 @@ jobs:
         env:
           PYTHONPATH: diagnostics/tools:code/tools/publisher:code/tools:code
           MAHOON_WRANGLER: npx wrangler@4.83.0
-          CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           workspace="$GITHUB_WORKSPACE"
           upload_result="$workspace/handoff/upload-result.json"
@@ -3066,7 +3066,7 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
           MAHOON_WRANGLER: npx wrangler@4.83.0
-          CLOUDFLARE_ACCOUNT_ID: "773d2dc31655b158d088296a14af5834"
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           promote_result=handoff/promote-result.json
           refs=(--reference handoff/promote-intent.json --reference handoff/production-proof.json)

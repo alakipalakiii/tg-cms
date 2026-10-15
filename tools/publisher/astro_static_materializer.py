@@ -260,11 +260,11 @@ def _materialize_media(
         target.parent.mkdir(parents=True, exist_ok=True)
         if not target.exists():
             shutil.copy2(blob, target)
-        data = blob.read_bytes()
+        # The resolver already verified this immutable blob's SHA; reuse it for repeated references.
         manifest[public] = {
             "mahoon_sha256": str(resolution["sha256"]),
-            "cloudflare_hash": hashlib.sha256(data).hexdigest()[:32],
-            "size": len(data),
+            "cloudflare_hash": str(resolution["sha256"])[:32],
+            "size": blob.stat().st_size,
             "mime": resolution.get("mime"),
             "source": source,
             "readiness": "PASS",

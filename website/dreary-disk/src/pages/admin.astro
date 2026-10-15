@@ -4057,7 +4057,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
         const confirmed = await confirmAction({
           title: "بازگردانی مطلب",
-          message: `پست حذف‌شده با کد ثبت #${id} بازیابی و برای انتشار فعال شود؟ این عملیات مطلب را دوباره در سایت قابل نمایش می‌کند.`,
+          message: `پست حذف‌شده با کد ثبت #${id} بازیابی شود؟ با تأیید، اجازهٔ نمایش دوبارهٔ مطلب در سایت را می‌دهی.`,
           confirmText: "بازگردانی"
         });
 
@@ -4066,12 +4066,13 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         setButtonLoading(button, true, "در حال بازگردانی...");
 
         try {
-          await api(`/admin/posts/${id}/restore`, {
+          const restored = await api(`/admin/posts/${id}/restore`, {
             method: "POST",
             body: JSON.stringify({})
           });
 
-          showMessage(editorMessage, `پست #${id} بازیابی و برای انتشار فعال شد.`, "ok");
+          showMessage(editorMessage, restored.post?.is_published === 1
+            ? `پست #${id} بازیابی و برای انتشار فعال شد.` : `پست #${id} بازیابی شد.`, "ok");
           await loadDeletedPosts();
           await loadPosts();
         } catch (error) {

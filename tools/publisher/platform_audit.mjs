@@ -12,7 +12,7 @@ const { chromium, request } = require('playwright');
 function validateProbe(path, method, data) {
   const url = new URL(path, api);
   assert.equal(url.origin, api);
-  const read = method === 'GET' && ['/health', '/public/posts-v1', '/public/stats-v1'].includes(url.pathname);
+  const read = method === 'GET' && ['/health', '/public/posts-v1', '/public/stats-v1', '/admin/telegram/webhook-info'].includes(url.pathname);
   const emptyUpdate = method === 'POST' && ['/telegram', '/__mahoon_audit_invalid_route'].includes(url.pathname)
     && data && Object.keys(data).length === 0;
   assert.ok(read || emptyUpdate, 'Audit probe must be a public read or an empty update');
@@ -66,6 +66,8 @@ if (process.argv.includes('--self-test')) {
   }
   try {
     browser = await chromium.launch({ headless: true });
+    result.runtime = { node: process.version, playwright: require('playwright/package.json').version,
+      chromium: browser.version(), source_sha: process.env.GITHUB_SHA || null };
     boundary = await request.newContext({ timeout: 20000 });
     result.measured = true;
     for (const [label, width, height] of [['desktop', 1440, 1000], ['tablet', 768, 1024], ['mobile', 390, 844]]) {
@@ -161,7 +163,7 @@ if (process.argv.includes('--self-test')) {
       return { enter_opens: true, escape_closes: await page.locator('.site-menu-toggle').getAttribute('aria-expanded') === 'false' };
     });
     for (const [path, method, data] of [['/health', 'GET'], ['/public/posts-v1?limit=10&offset=0', 'GET'],
-      ['/public/stats-v1', 'GET'], ['/telegram', 'POST', {}], ['/__mahoon_audit_invalid_route', 'POST', {}]]) {
+      ['/public/stats-v1', 'GET'], ['/admin/telegram/webhook-info', 'GET'], ['/telegram', 'POST', {}], ['/__mahoon_audit_invalid_route', 'POST', {}]]) {
       await check(`api_${method}_${path.split('?')[0]}`, async () => {
         const response = await boundary.fetch(validateProbe(path, method, data), { method, ...(data ? { data } : {}) });
         const body = await response.json();
@@ -179,7 +181,7 @@ if (process.argv.includes('--self-test')) {
           }
         }
         result.api_probes.push(observation);
-        if (method === 'GET') assert.equal(response.status(), 200);
+        if (method === 'GET') assert.equal(response.status(), path.startsWith('/admin/') ? 401 : 200);
         else { assert.ok([200, 401, 403, 404, 405].includes(response.status())); if (response.status() === 200) assert.equal(body.saved, false); }
         return observation;
       });

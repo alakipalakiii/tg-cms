@@ -37,7 +37,7 @@ import test_workflow_stage_cli as stage_cli_tests
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/mahoon-static-publisher.yml"
-A6_ACCEPTED_WORKFLOW_SHA = "e63b1b011b9442ac7d66aad5e50b822e220cacd799c05441132f9d1472968597"
+A6_ACCEPTED_WORKFLOW_SHA = "f673623186de878fc92f2f937976c30c99a4f25a5438abba8548ba6d5f3b073d"
 
 
 def _run_case(case_type, method: str) -> None:
@@ -315,8 +315,10 @@ class A7SyntheticAcceptanceTests(unittest.TestCase):
                 self.assertNotIn("CLOUDFLARE_API_TOKEN", text, name)
 
     def test_28_accepted_workflow_graph_hash_triggers_and_dependencies_are_frozen(self):
-        raw = WORKFLOW.read_bytes()
+        raw = WORKFLOW.read_bytes().replace(b"\r\n", b"\n")
         self.assertEqual(A6_ACCEPTED_WORKFLOW_SHA, hashlib.sha256(raw).hexdigest())
+        self.assertNotRegex(raw.decode("utf-8"), r'CLOUDFLARE_ACCOUNT_ID: "[0-9a-f]{32}"')
+        self.assertIn(b"CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}", raw)
         workflow = yaml.load(raw, Loader=yaml.BaseLoader)
         self.assertIn("workflow_dispatch", workflow["on"])
         self.assertEqual([{"cron": "17,47 * * * *"}], workflow["on"]["schedule"])

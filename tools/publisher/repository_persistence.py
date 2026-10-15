@@ -39,7 +39,7 @@ def _sha256(value: object) -> bool:
 def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
     try:
         result = subprocess.run(
-            ["git", *args], cwd=root, check=False, capture_output=True, text=True,
+            ["git", *args], cwd=root, check=False, capture_output=True, text=True, encoding="utf-8",
         )
     except OSError as exc:
         raise RepositoryPersistenceError("git executable is unavailable") from exc

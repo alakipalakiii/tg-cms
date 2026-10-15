@@ -61,7 +61,7 @@ class PublishDagGateTests(unittest.TestCase):
         # RESUME: resume-admission success + ADMITTED + build-validate success.
         self.assertRegex(
             gate,
-            r"inputs\.mode == 'RESUME_ADMITTED' && needs\.build-validate\.result == 'success'"
+            r"\(inputs\.mode == 'RESUME_ADMITTED' \|\| inputs\.mode == 'POST_PROMOTION_FINALIZE'\) && needs\.build-validate\.result == 'success'"
             r" && needs\.resume-admission\.result == 'success' && needs\.resume-admission\.outputs\.decision == 'ADMITTED'",
         )
 

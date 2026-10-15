@@ -123,7 +123,7 @@ Production website still revision185 at this checkpoint. Website code pushed thr
 - Additional P1 INGEST-01:read-only D1 aggregates show10 repeated valid (chat_id,telegram_message_id) groups and911 extra historical rows. Local actual-workerd/D1 test reproduced a second row from sequential redelivery before correction. Prepared atomic INSERT SELECT WHERE NOT EXISTS now passes sequential/concurrent replay tests, edit stable ID/slug/tag projection, soft-delete preservation, all five media types and authorized admin content. Historical posts are not deleted, merged or renumbered.
 - Source authorization is part of SEC-01:an authenticated Telegram delivery alone does not authorize an arbitrary bot user to publish. Prepared guard permits the verified configured channel plus existing admins. Recent23 source rows match neither STORAGE_CHAT_ID nor configured admin IDs, so the media storage destination is not substituted as the authoritative channel. Resolve @mahoonartmagazine via authenticated getChat and compare current source privately before activation.
 - The API correction was also surgically applied to the exact read-back live module in a private prepared file; all workerd/local D1 tests PASS on that version as well. Base source SHA256 a0d53ba90599742076845aa156e40969590b4ef3180152fc4420e66b1764cbd1; prepared source26a6045550f9245e22fc307a8ca9d4e38af996ed38263a2480b5226bdc43475d. This file remains outside Git and is not deployed; live-only logic is retained.
-- Owner credential request is pending. No token was requested in chat, extracted from a Worker, exposed through a migration endpoint, rotated or committed. Independent website work continues while API activation waits on secure Bot API access.
+- Owner subsequently declined providing a local credential; API activation is held under that explicit instruction. No token was requested in chat, extracted from a Worker, exposed through a migration endpoint, rotated or committed. Independent website work continues while API activation waits on secure Bot API access.
 
 ## Restore and adjacent boundary regression — 09:22 UTC / 12:52 Tehran
 
@@ -150,4 +150,70 @@ Visual screenshots alone do not certify contrast, screen-reader speech, touch ha
 - No removal of analytics v4/v5 or the dynamic Astro path based only on duplication; callers and operational use still exist.
 - Optional P3:physical-device/screen-reader/DevTools trace audit and broader contrast sampling. These are evidence limits, not claims of a specific user-facing defect.
 
-Current phase status remains IN PROGRESS/BLOCKED on coordinated API credential access, with independent website publication still running. Do not return phase PASS from these prepared fixes.
+Historical checkpoint only: the revision188 build later stopped at the revision fence, before any Cloudflare operation. The current checkpoint below supersedes its running status.
+
+
+## Owner safety decision and reviewed deployment checkpoint — 2026-10-15, 09:52 UTC / 13:22 Tehran
+
+The owner declined supplying BOT_TOKEN and explicitly requires uninterrupted Telegram ingestion. Authoritative binding names, settings, current live module and public request boundaries have been inspected without exposing secret values. BOT_TOKEN/ADMIN_TOKEN are present as Worker secrets, but neither is locally available; there is no webhook-secret binding. No supported authenticated getWebhookInfo/getChat/setWebhook call can be made from this environment with those opaque bindings. The prepared API auth/source/replay/restore changes remain **NOT DEPLOYED**. Do not rotate a token, alter the active webhook, export a secret, add an authentication bypass or request the same credential again. These are the precise remaining activation/access limits; independent website work continues.
+
+### Exact 33-file review
+
+The owner's 33 files are the complete diff from b29f04b4f2db29ae8ca8ced16696fc3a3e989cf8 to e02f70c0cfed72892f25b1e90066395c4cbb440b. They are reviewed separately from the current audit's additions. Workflow/source/test diffs, caller contracts and generated-state structure/digests were inspected. Review does not certify every historical content record by eye.
+
+| File | Reviewed contract / result |
+|---|---|
+| `.github/workflows/mahoon-finalization-preflight.yml` | Triggers, executable SHA, read/write credential separation, artifact lineage, fail-closed job conditions and retained diagnostics checked. |
+| `.github/workflows/mahoon-live-functionality.yml` | Triggers, executable SHA, read/write credential separation, artifact lineage, fail-closed job conditions and retained diagnostics checked. |
+| `.github/workflows/mahoon-post-run-reconciler.yml` | Triggers, executable SHA, read/write credential separation, artifact lineage, fail-closed job conditions and retained diagnostics checked. |
+| `.github/workflows/mahoon-static-publisher.yml` | Triggers, executable SHA, read/write credential separation, artifact lineage, fail-closed job conditions and retained diagnostics checked. |
+| `MAHOON-CODEX-HANDOFF.md` | Historical claims checked against accepted revision185 evidence; not substituted for fresh production checks. |
+| `MAHOON-FINAL-REPORT.txt` | Historical claims checked against accepted revision185 evidence; not substituted for fresh production checks. |
+| `publisher-state/current-accepted-route-manifest.json` | Generated evidence: parsed structure, lineage/counts and accepted-state digest; current journal separately revalidated. |
+| `publisher-state/immutable-media-index.json` | Generated evidence: parsed structure, lineage/counts and accepted-state digest; current journal separately revalidated. |
+| `publisher-state/production-content-fingerprint.json` | Generated evidence: parsed structure, lineage/counts and accepted-state digest; current journal separately revalidated. |
+| `publisher-state/production-media-manifest.json` | Generated evidence: parsed structure, lineage/counts and accepted-state digest; current journal separately revalidated. |
+| `publisher-state/production-transaction-journal.json` | Generated evidence: parsed structure, lineage/counts and accepted-state digest; current journal separately revalidated. |
+| `publisher-state/published-route-manifest.json` | Generated evidence: parsed structure, lineage/counts and accepted-state digest; current journal separately revalidated. |
+| `publisher-state/published-static-state.json` | Generated evidence: parsed structure, lineage/counts and accepted-state digest; current journal separately revalidated. |
+| `tools/publisher/astro_static_materializer.py` | Static scripts/config preserve search/pagination/category semantics and remove public content-origin dependencies; admin path retained. |
+| `tools/publisher/audio_runtime_diagnostic.mjs` | Read-only browser selectors, playback/transport, request version attribution and saved observations; no production content writes. |
+| `tools/publisher/final_state_materializer.py` | Deterministic relative-path inventory; photo aliases require sealed bytes, unique peer and matching rendered article. Negative tests retain rejection. |
+| `tools/publisher/live_functionality_smoke.mjs` | Read-only browser selectors, playback/transport, request version attribution and saved observations; no production content writes. |
+| `tools/publisher/prepromotion_browser_gate.mjs` | Chromium runtime/self-test, launch versus page/visual failure attribution, fonts/screenshots/version and zero-origin checks retained. |
+| `tools/publisher/production_proof_runner.py` | Sealed build/lineage preflight, backend collection, per-page failure evidence and unchanged acceptance gates checked. |
+| `tools/publisher/proof_observation_runner.py` | Sealed build/lineage preflight, backend collection, per-page failure evidence and unchanged acceptance gates checked. |
+| `tools/publisher/test_a53_executors.py` | Regression/negative cases checked against corresponding runtime contract; full-suite results below. |
+| `tools/publisher/test_a6_workflow_contract.py` | Regression/negative cases checked against corresponding runtime contract; full-suite results below. |
+| `tools/publisher/test_a7_synthetic_acceptance.py` | Regression/negative cases checked against corresponding runtime contract; full-suite results below. |
+| `tools/publisher/test_astro_static_materializer.py` | Regression/negative cases checked against corresponding runtime contract; full-suite results below. |
+| `tools/publisher/test_downstream_dag_hardening.py` | Regression/negative cases checked against corresponding runtime contract; full-suite results below. |
+| `tools/publisher/test_final_state_materializer.py` | Regression/negative cases checked against corresponding runtime contract; full-suite results below. |
+| `tools/publisher/test_proof_observation_runner.py` | Regression/negative cases checked against corresponding runtime contract; full-suite results below. |
+| `tools/publisher/test_static_archive.mjs` | Regression/negative cases checked against corresponding runtime contract; full-suite results below. |
+| `tools/publisher/test_static_version_control.py` | Regression/negative cases checked against corresponding runtime contract; full-suite results below. |
+| `tools/publisher/test_workflow_stage_cli.py` | Regression/negative cases checked against corresponding runtime contract; full-suite results below. |
+| `tools/publisher/workflow_stage_cli.py` | Existing guarded journal transitions, exact artifact references and diagnostic failure handling; no mutation replay path added. |
+| `website/dreary-disk/public/mahoon-static-archive.js` | Immutable same-origin index, database IDs, category/pagination/media/search and failure recovery; real Chromium fixture passed. |
+| `website/dreary-disk/src/pages/post/[slug].astro` | SSR meta uses read-only slug SEO endpoint; locked numeric ID routes preserved. Dynamic numeric-only fallback is outside current static-serving acceptance. |
+
+
+Findings from the review/current execution: (1) two stale test contracts were repaired without removing DAG success/identity/ADMITTED guards; workflow hashing normalizes Git LF/Windows CRLF. (2) nine hardcoded account assignments now use the **existing** repository variable; its exact equality was checked privately before replacement. Frozen reviewed workflow SHA256 is f673623186de878fc92f2f937976c30c99a4f25a5438abba8548ba6d5f3b073d. (3) admin restore success now reports the actual returned publication state, compatible with the held backend rollout. No change to ID/delete/restore endpoints, journal safety or traffic acceptance requirements.
+
+### Failed publication and canonical retirement, without replay
+
+Run38710568217 admitted real revision188 and built until09:25:23UTC. The post-build fence rejected PUBLIC_REVISION_CHANGED_DURING_BUILD:190 (revision changed09:24:47UTC). No build handoff, upload, zero-percent or promotion occurred. The existing generic retire-stale-admitted protocol was used with exact transaction, revision, generation140 and journal digest; it pushed canonical commit9ebbb339c59f793306635bbd2cec1931c576d3b0. Its Windows post-push readback raised UnicodeDecodeError on an unquoted Persian filename. The transition was **not repeated**. Independent raw-byte and corrected-client reads confirm generation141, active=null, pending=null, the188 history entry blocked, and every mutation NOT_STARTED with no attempts. Journal digest f91a4c6b1dd63772986ba8908e2e92db5432fdd4c2c5e70824ffee70eafdccca. Production remains accepted revision185/version1c92b5b0-0426-4f8f-8328-ee741569149b100%, deploymentcf817382-242d-4d2e-9b40-969c7a9c1332.
+
+The root Windows persistence defect is corrected once in the shared Git subprocess with explicit UTF-8. A real local Git bare-remote/Persian-path regression reproduced the failure before correction and verifies successful retirement post-push readback afterward. This changes decoding, not journal transitions or retry policy.
+
+### Measured materializer repair
+
+Repeated references unnecessarily re-read/re-hashed a blob already SHA-verified by the existing immutable resolver. Reuse the verified SHA and file size; initial resolver verification and final sealed inventory remain. A regression failed at11 reads versus1 before correction and passes with1. A separate100-reference/2,097,144-byte fixture, three samples, reduced101 reads to1 and median component time0.1915624s to0.0381758s. HTML SHA7f1130ed77cdff175ca413d9b7e51b71ef116ac0c057c8b0140140a7ebfc14b6 and manifest SHAfbae04b7d271af71c4200bf6fe4f7752f9d24955d9e04972414cbac5b43f05db are identical. This is a local component benchmark, not a claim to have eliminated the17-minute hosted build.
+
+### Regression receipts at this checkpoint
+
+- Full local publisher discovery:904 tests in493.038s; two failures (stale frozen workflow hash/CRLF and old RESUME-only expectation), three skips. Both failing contracts were corrected and rerun in a79-test batch:78PASS/1skip. Further workflow-variable regression and hosted full-suite result pending below; do not call the earlier full run green.
+- Website build after compatible admin copy:PASS4.41s. Static archive real Chromium fixture, platform probe safety self-check and actual local workerd/D1 auth/source/replay/edit/restore/SEO regression:PASS. No real channel post or production admin mutation.
+- Failed publication artifacts and exact retirement readback retained privately under publication-38710568217. No645MB build download or expensive remote crawl was used to investigate the fence/encoding errors.
+
+Current status: **IN PROGRESS; final PASS withheld**. API security activation remains held by the owner's explicit access/safety decision. Next independent step: isolated Ubuntu/Node22 pinned-Chromium safety suite, then a fresh normal transaction only after current journal/live/revision/concurrency checks. Never weaken the moving-revision fence or repeat APPLIED operations.

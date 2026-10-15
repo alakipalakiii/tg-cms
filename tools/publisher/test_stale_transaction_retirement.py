@@ -30,7 +30,7 @@ SUPERSEDED_DIGEST = "5023ca1e6804fc9f1c0b8fdeee29af3a84529b4212e26aa73c19947ccc4
 
 
 def git(root, *args, check=True):
-    result = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
+    result = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8")
     if check and result.returncode:
         raise AssertionError(result.stderr)
     return result.stdout.strip()
@@ -220,6 +220,21 @@ class StaleRetirementV2Tests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="mahoon-retire-v2-")
         self.addCleanup(self.temp.cleanup)
         self.repo = Revision118RetirementRepository(Path(self.temp.name))
+
+    def test_unquoted_persian_tree_paths_do_not_break_post_push_readback(self):
+        name = "ف.txt"
+        (self.repo.root / name).write_text("public fixture", encoding="utf-8")
+        git(self.repo.root, "config", "core.quotePath", "false")
+        git(self.repo.root, "add", "--", name)
+        git(self.repo.root, "commit", "-m", "unicode tree fixture")
+        git(self.repo.root, "push", "origin", "main")
+        self.assertIn(name, persistence._git(self.repo.root, "ls-tree", "-r", "--name-only", "-z", "HEAD").stdout)
+        generation, digest = self.repo.gen_and_digest()
+        result = self.repo.writer().retire_stale_admitted_v2(
+            TX118, 118, expected_generation=generation, expected_digest=digest)
+        self.assertEqual("RETIRED_BLOCKED", result["status"])
+        self.assertIsNone(self.repo.journal()["active"])
+        self.assertEqual(result["remote_head"], git(self.repo.root, "rev-parse", "origin/main"))
 
     def _argv(self, **overrides):
         base = {"repository": str(self.repo.root), "journal": str(self.repo.root / JOURNAL),

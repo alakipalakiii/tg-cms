@@ -2,6 +2,8 @@
 
 Status: prepared and tested; **not deployed**. Do not deploy repository API wholesale.
 
+Owner decision, 2026-10-15: keep the active Telegram connection uninterrupted; no local BOT_TOKEN will be supplied now. Existing binding names, live source and public boundaries were inspected without exposing values. Existing Worker secrets cannot be read by the local deployment client. No supported authenticated Bot API call is available from this environment to inspect/register the matching secret or resolve the channel. Activation is held; do not request the token again, rotate it, change the active webhook, add an authentication bypass or send a real test post. Independent website work continues.
+
 ## Evidence
 
 The authoritative live API module SHA256 is `a0d53ba90599742076845aa156e40969590b4ef3180152fc4420e66b1764cbd1`.
@@ -16,7 +18,7 @@ The live Worker has BOT_TOKEN and ADMIN_TOKEN secret bindings, but no TELEGRAM_W
 - Authenticated empty updates remain200/saved=false; existing extraction, stable IDs and management logic are unchanged.
 - Content from other Telegram chats is ignored unless it is from an existing configured admin. TELEGRAM_SOURCE_CHAT_ID must be resolved from the official channel through Bot API getChat; STORAGE_CHAT_ID is a separate media destination and must not be assumed to be the source.
 - An atomic INSERT SELECT WHERE NOT EXISTS suppresses replays by (telegram_message_id,chat_id), including previously deleted messages. Existing historical rows are preserved. Edits still update by stable database ID and retain the slug.
-- Dedicated API and bot restore now use deleted_at=NULL/is_published=1, as required by AGENTS.md. The admin confirmation copy explicitly warns that restoration enables publication. This copy must be deployed in coordination with the corrected API; do not leave a draft-only promise against a publishing restore endpoint. No real production restore is used as a test.
+- Prepared dedicated API and bot restore use deleted_at=NULL/is_published=1, as required by AGENTS.md. The admin confirmation grants publication permission; its success message reads the returned is_published state, so it remains compatible with the current draft-restoring API and the prepared correction. No real production restore is used as a test.
 - The authenticated webhook-refresh helper passes the configured secret to setWebhook and keeps drop_pending_updates=false and all four existing update types. It never returns the secret.
 - `node tools/publisher/test_telegram_boundary.mjs` checks the compiled repository API in real local workerd, including refresh with a fake Bot API. No real database, Telegram request or post mutation is used.
 
