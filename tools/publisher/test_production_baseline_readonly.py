@@ -12,7 +12,7 @@ from production_baseline_readonly import WORKER_NAME, reconcile
 import yaml
 
 
-ACCOUNT = "773d2dc31655b158d088296a14af5834"
+ACCOUNT = "a" * 32
 HOST = "mahoonartmagazine.ir"
 TOKEN = "read-only-test-token"
 STATE = {"current_version_type": "STATIC", "current_version": "v-current", "deployment_id": "d-current"}
@@ -47,6 +47,10 @@ class BaselineTests(unittest.TestCase):
         self.assertTrue(all("Bearer " not in path and supplied == token for path, supplied in calls))
         self.assertTrue(all(not path.startswith(("POST ", "PUT ", "PATCH ", "DELETE ")) for path, _ in calls))
         self.assertFalse(any("CLOUDFLARE_API_TOKEN" in str(v) or "Authorization" in str(v) for v in result.values()))
+        self.assertNotIn("account_id", result)
+        if account:
+            self.assertNotIn(account, json.dumps(result))
+        self.assertNotIn(TOKEN, json.dumps(result))
         return result, calls
 
     def test_exact_production_baseline_passes(self):

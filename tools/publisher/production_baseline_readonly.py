@@ -37,7 +37,6 @@ def _request(path, token):
 
 def reconcile(state, account_id, hostname, token, getter, worker_name=WORKER_NAME):
     evidence = {
-        "account_id": account_id or "",
         "worker_name": worker_name,
         "hostname": hostname or "",
         "persisted_deployment_id": None,
