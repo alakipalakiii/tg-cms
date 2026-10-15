@@ -217,3 +217,12 @@ Repeated references unnecessarily re-read/re-hashed a blob already SHA-verified 
 - Failed publication artifacts and exact retirement readback retained privately under publication-38710568217. No645MB build download or expensive remote crawl was used to investigate the fence/encoding errors.
 
 Current status: **IN PROGRESS; final PASS withheld**. API security activation remains held by the owner's explicit access/safety decision. Next independent step: isolated Ubuntu/Node22 pinned-Chromium safety suite, then a fresh normal transaction only after current journal/live/revision/concurrency checks. Never weaken the moving-revision fence or repeat APPLIED operations.
+
+
+## Hosted safety-suite correction — run38716243022
+
+Source30400efba14fd07dd3206d47ddc0ca1035226ac2; Ubuntu/Node22, pinned Chromium installation successful. Full discovery905 tests in60.297s, failures2/errors9/skips1. Exact causes: WorkflowStageCliTests created intents under the real inherited GITHUB_RUN_ID/ATTEMPT, then executed them under its fixed synthetic identity; the existing production identity guard correctly rejected them (nine errors plus one composed acceptance failure). The test setUp now consistently pins only the fixture's local-synthetic/1 identity and restores the caller environment afterward. Cross-run rejection tests remain. The concurrent-bootstrap fixture could create byte-identical commits in the same second on Linux; the competing fixture now has deterministic distinct Git author/committer dates, exercising an actual non-fast-forward race. No runtime validation, journal transition or production guard was relaxed. Reproduction with inherited run38716243022/attempt7 and the affected modules is recorded separately after execution.
+
+This workflow also executes the existing no-op journal bootstrap and read-only public revision resolution; its safety-tests-only job has no Cloudflare credentials or mutation path. The job's printed LIVE_REVISION_LOOKUPS=0 describes its own local tests, not the whole workflow. Canonical generation141 remains unchanged. No new production publication was dispatched from this failed safety run.
+
+Affected hosted-identity/bootstrap/acceptance modules rerun locally with inherited run38716243022/attempt7:119/119PASS in142.786s. The synthetic fixture still rejects an intentionally different executing run. Prepared exact-live-module workerd/D1 regression also rerun PASS; production API remains unchanged.

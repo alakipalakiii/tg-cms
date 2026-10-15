@@ -329,7 +329,10 @@ class RemoteBootstrapTests(unittest.TestCase):
 
     def test_31_identical_concurrent_initialization_reconciles_as_already(self):
         def initialize(_racer, writer):
-            self.assertEqual("INITIALIZED", writer.bootstrap()["status"])
+            # Same-second commits would be identical, so force a distinct competing commit identity.
+            with mock.patch.dict(os.environ, {"GIT_AUTHOR_DATE": "2001-01-01T00:00:00+00:00",
+                                              "GIT_COMMITTER_DATE": "2001-01-01T00:00:00+00:00"}):
+                self.assertEqual("INITIALIZED", writer.bootstrap()["status"])
         with self._race_with(initialize):
             result = self.git.writer().bootstrap()
         self.assertEqual("ALREADY_INITIALIZED", result["status"])

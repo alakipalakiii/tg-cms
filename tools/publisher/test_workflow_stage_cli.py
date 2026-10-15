@@ -63,6 +63,9 @@ def readback(desired, *, precondition=None, resource="candidate-v1", kind="versi
 
 class WorkflowStageCliTests(unittest.TestCase):
     def setUp(self):
+        identity = mock.patch.dict(os.environ, {"GITHUB_RUN_ID": "local-synthetic", "GITHUB_RUN_ATTEMPT": "1"})
+        identity.start()
+        self.addCleanup(identity.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.journal_path = self.root / "journal.json"
@@ -115,6 +118,8 @@ class WorkflowStageCliTests(unittest.TestCase):
 
     def test_valid_upload_intent_is_sealed_and_derived_from_artifacts(self):
         value = transport.read_artifact(self.upload_intent_path, expected_type="mutation_intent")
+        self.assertEqual("local-synthetic", value["producer"]["workflow_run_id"])
+        self.assertEqual(1, value["producer"]["run_attempt"])
         self.assertEqual(TX, value["transaction"])
         self.assertEqual(c.operation_id_for(TX["logical_transaction_id"], "upload_version"),
                          value["payload"]["operation_id"])
