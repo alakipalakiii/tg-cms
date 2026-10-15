@@ -1,8 +1,8 @@
 # MAHOON Platform Audit and Optimization
 
-**Status: BLOCKED — coordinated API security activation is held under the owner’s explicit instruction. Website revision190 is durably completed and independently accepted. No platform-phase PASS claimed.**
+**Status: BLOCKED — coordinated API security activation is held; latest detected content192 is newer than durably completed190. Website190 passed its full acceptance. No platform-phase PASS or latest-content-completion claim.**
 
-Updated 2026-10-15, 15:04 Asia/Tehran / 11:34 UTC. This is a new audit phase. The previous revision185 publication remains successfully finalized; its report is historical acceptance, not a substitute for current tests. Later checkpoints supersede the initial observations below.
+Updated 2026-10-15, 15:10 Asia/Tehran / 11:40 UTC. This is a new audit phase. The previous revision185 publication remains successfully finalized; its report is historical acceptance, not a substitute for current tests. Later checkpoints supersede the initial observations below.
 
 ## Current execution summary
 
@@ -283,18 +283,18 @@ Corrected read-only run38727489912:12/12PASS on unpinned serving5413751a-cf7e-4f
 
 GET-only reconciliation38727494130 independently reports baseline/Worker/domain/deployment/allocation PASS against the completed state. Its legacy helper unnecessarily included the account identifier in the output artifact, contrary to repository metadata rules. P2 DIAG-PRIVACY:removed the output field, kept account validation and internal GET paths intact, and replaced a real identifier in its test fixture with a synthetic value. A new assertion reproduced the exposure before correction; all19 baseline/negative/workflow tests pass after correction. A clean hosted reconciliation receipt will replace this optional raw receipt; required publication/journal/proof artifacts are preserved.
 
-Independent canonical verification:all six Git state blobs exactly match final-persistence SHA256 and byte lengths;613 indexed media identities; journal151 digestad1eb9bb352718ca644a8dcc9edaf0e4330892ded422e6e7781102a74c2d0e3e, revision190completed, active/pendingnull, upload/zero/promotion each one APPLIED attempt, rollback0. Latest content remains190. This completes website publication; the overall platform phase remains blocked on the explicitly held API trust-boundary activation.
+Independent canonical verification:all six Git state blobs exactly match final-persistence SHA256 and byte lengths;613 indexed media identities; journal151 digestad1eb9bb352718ca644a8dcc9edaf0e4330892ded422e6e7781102a74c2d0e3e, revision190completed, active/pendingnull, upload/zero/promotion each one APPLIED attempt, rollback0. At that readback latest content was190; it later advanced to192 as recorded below. This completes the190 website transaction; the overall platform phase remains blocked on the explicitly held API trust-boundary activation.
 
 
 ## Final checkpoint — 2026-10-15, 15:04 Tehran / 11:34 UTC
 
-**Website publication190: completed. Platform audit: BLOCKED on safe API activation.**
+**Website publication190: completed. Platform audit: BLOCKED on safe API activation and recurring freshness; newest192 has not been published.**
 
 - Sanitized authoritative GET-only reconciliation38727878134:PASS (Worker, official domain mapping, deployment,100/0allocation and persisted state); rawSHA25640b240807519704a23919a83c7dcc170586479b12c06d9707cab3ba7a66cc3c6. Verified it contains neither an account_id field nor the configured account value. Superseded optional raw receipt from38727494130 was removed after private retention and clean replacement. Required publication/journal/proof artifacts were not removed or modified. No history rewrite.
 - Production190 has4245/4245 final200 routes,4242 HTML,3704 ID/slug article routes,943 unique search IDs,606 verified immutable media objects,613 index identities. Canonical/SEO/JSON-LD/sitemap omissions, orphan posts, pagination overlap, media HTTP/MIME/version failures and version-attribution failures all0. Sitemap/RSS/robots and admin shell are included in the current crawler/11-gate proof.19 historical unavailable-source fallbacks remain explicit accepted maintenance,0 unresolved media; no such fallback for the three new posts.
 - Fresh independent browser38727489912:12/12PASS, including actual new posts1921–1923 and native MP3/OGG/MP4 playback progress. Fresh platform38726004896:all search/keyboard/status/responsive checks PASS,0 JS/forbidden dependencies. Exact final tablet homepage and new audio1923 screenshots were opened after download. Full905-test safety run38717022249 has0failures/errors,1 optional historical-artifact skip; later diagnostic changes have focused real-Chromium regressions, actual hosted acceptance and19/19 baseline tests. Overlapping suites are not summed.
 - Final API deployment independently remains375258db-cb64-4154-a685-ee380f1e87a3/versionea717386-6580-4d39-93a0-6c224deae34e100%. No API code/binding/secret/webhook/token/channel content was changed. The connection was preserved by withholding the coordinated backend correction; no uninterrupted-service uptime claim beyond observed evidence is made.
-- Source/mutation journal safety remains intact:one APPLIED attempt each for upload/zero/promotion,rollback0; journal151 completed190,active/pendingnull,proof and six persisted Git blobs match exactly. Last detected revision190 equals persisted190 at the cutoff. Normal publication38717369912 SUCCESS; post-run reconciler38727286924 correctly skipped a closed successful run. No resume, new transaction or expensive rerun is pending.
+- Source/mutation journal safety remains intact:one APPLIED attempt each for upload/zero/promotion,rollback0; journal151 completed190,active/pendingnull,proof and six persisted Git blobs match exactly. Revision190 equaled persisted190 immediately after completion; the final readback below subsequently detected192. Normal publication38717369912 SUCCESS; post-run reconciler38727286924 correctly skipped a closed successful run. No resume/replay or journal repair is pending for190. Newer192 is separate outstanding content; no192 transaction has been admitted.
 
 ### Exact remaining blocker and safe continuation
 
@@ -323,3 +323,12 @@ INGEST-01 replay and RESTORE-01 backend semantics remain prepared within that he
 Final report/handoff-only commit is supplied with the delivery; it changes no runtime or journal state. Durable evidence is in the named GitHub runs and canonical state. Private small artifacts/checkpoints are under C:/Users/mehdi karani/AppData/Local/Temp/mahoon-platform-audit-20261015. No large build download, fake proof, manual journal edit, forced push or improvised rollback.
 
 Remaining optional work:P2 planned dependency maintenance with adapter compatibility;P3 physical iOS/Android codecs, screen-reader/contrast sampling, field INP and DevTools traces. These were not certified. No speculative redesign, brand/font replacement, new ingestion pipeline or destructive production test was introduced.
+
+
+## Final freshness correction — newer content after completed190
+
+At the last readback, latest public revision is **192**, changed2026-10-15T11:30:18+00:00 /15:00:18 Tehran, after the190 production proof/persistence completed. Scheduled detection38727921763 started11:31:17UTC and emitted sealed revision-resolution artifacteaf4a38b60fe4412b954407ee92da24c8b65fec90cd8c9c58948a6d42115d60c:CHANGED,latest192,published190. Its nonzero CHECK_ONLY result records the difference; it did not admit/upload/promote anything. Fresh final read confirms journal151,active/pendingnull and the same healthy190 deployment100%. This supersedes earlier point-in-time statements that190 was latest.
+
+The independent190 acceptance covers snapshot1852posts and actual new IDs1921–1923, not changes introduced by192. Do not infer192's exact post/edited-record identities from the revision number alone. Current platform freshness is therefore **not PASS**. The finite code-repair publication190 completed; the continuing feed exposes the existing CHECK_ONLY/open-breaker delivery limitation again. No additional full release was dispatched just to chase a moving cutoff during report writing. API trust-boundary activation remains held under the owner instruction; unattended publishing is not reopened on unverified incoming updates. This outstanding192 content and the prepared backend rollout are explicitly retained as unresolved work, not silently marked complete.
+
+Next continuation must start from current canonical/live/revision readbacks. Never resume or replay190. Any future publication uses a genuinely fresh normal transaction with all unchanged acceptance gates, and any schedule/API security change follows the documented production-safety rules. No background continuation is scheduled or claimed.

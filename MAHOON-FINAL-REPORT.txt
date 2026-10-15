@@ -1,5 +1,5 @@
 CURRENT PLATFORM AUDIT UPDATE — 2026-10-15
-Website revision190 durably finalized; overall platform audit BLOCKED on coordinated Telegram security activation under owner instruction. See MAHOON-PLATFORM-AUDIT-AND-OPTIMIZATION-REPORT.md for current findings/access limits. The earlier recovery/publication report below remains historical acceptance.
+Website revision190 durably finalized; latest detected192 remains unpublished. Overall platform audit BLOCKED on coordinated Telegram security activation and continuing content freshness. See MAHOON-PLATFORM-AUDIT-AND-OPTIMIZATION-REPORT.md for current findings/access limits. The earlier recovery/publication report below remains historical acceptance.
 
 MAHOON_PROJECT_FINALIZED_AND_LIVE: PASS
 Updated: 2026-10-15 04:00:21 Asia/Tehran (2026-10-15T00:30:21.783123+00:00 UTC)
@@ -110,9 +110,12 @@ No manual journal edit, force push, improvised rollback, secret change, fabricat
 PLATFORM AUDIT / LATEST PUBLICATION190
 Executable source45c4d3f39cbcbf7ad7198602fde359e12edcc2d1; normal run38717369912 SUCCESS.
 Serving version5413751a-cf7e-4f90-aa55-562c520f0054100%; baseline1c92b5b0-0426-4f8f-8328-ee741569149b0%; deployment449be33f-3cc1-4312-890f-f3df67718c1f.
-Latest detected/persisted revision190; journal151,completed,active/pendingnull. State commite3abee4dab87410eecd064e48ae0965e8f295141; canonical completion88a9cd68795c357c2cc29d8cd88a916e2c6dfd09.
+Persisted revision190; later latest detected192 (11:30:18UTC). Journal151,completed190,active/pendingnull; no192 transaction admitted. State commite3abee4dab87410eecd064e48ae0965e8f295141; canonical completion88a9cd68795c357c2cc29d8cd88a916e2c6dfd09.
 4245routes/1852snapshotposts/943dedup entries/606unique immutable media objects/613index identities;19 established historical fallbacks;0unresolved media. Actual new posts1921–1923 published with media.
 All11 authoritative production gates PASS; independent browser38727489912 12/12PASS with MP3/OGG/MP4 playback progress; platform38726004896 search/a11y/responsive PASS; sanitized GET-only reconciliation38727878134 PASS.
 Production proof artifactd58ad376c576469dd4aa08f496837a4375d1c363e69c38bc8cd254ed6a57bdab; six persisted state blobs match sealed hashes/lengths exactly.
 905-test hosted safety38717022249:0failures/errors,1optional historical-artifact skip. Later diagnostic fixes have focused regression and hosted acceptance; final diagnostic code61a33bef65183f2eabe696a9ef9fa8b768a07a62.
 API security/source/replay/restore fixes prepared/tested but NOT DEPLOYED. Active API deployment/version unchanged; no token rotation, secret/webhook change or test channel message. Opaque existing credentials cannot perform coordinated Bot API secret/channel verification; owner explicitly holds activation. Existing schedule policy unchanged; automatic future freshness not claimed. Overall platform phase is BLOCKED, not PASS.
+
+FINAL FRESHNESS CORRECTION
+After190 completed, latest content advanced to192 at2026-10-15T11:30:18UTC. Scheduled CHECK_ONLY38727921763 detectedCHANGED/192vs190 without admitting or mutating. Revision receipt artifacteaf4a38b60fe4412b954407ee92da24c8b65fec90cd8c9c58948a6d42115d60c. Current deployment/journal still exactly match completed190; newer192 has not been published. Do not claim latest-content completion or overall platform PASS. No background work is scheduled; no old mutation may be replayed.
