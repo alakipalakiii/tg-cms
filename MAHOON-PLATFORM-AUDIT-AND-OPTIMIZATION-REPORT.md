@@ -1,6 +1,16 @@
 # MAHOON Platform Audit and Optimization
 
-**MAHOON_PLATFORM_AUDIT_AND_OPTIMIZATION: PARTIAL / BLOCKED — website revision192 is durably completed; SEC-01 remains unmitigated on normal traffic. The reviewed API security candidate is STAGED AT 0%, NOT ACTIVATED, awaiting existing ADMIN authentication.**
+**MAHOON_PLATFORM_AUDIT_AND_OPTIMIZATION: PARTIAL / BLOCKED — website revision192 is durably completed; SEC-01 remains unmitigated on normal traffic. The reviewed API security candidate is STAGED AT 0%, NOT ACTIVATED. One owner registration POST has UNKNOWN outcome; reconciliation is required before any promotion or further registration.**
+
+### Current incident: owner registration result UNKNOWN; no retry
+
+Owner reported STOPPED | POST_OUTCOME_UNKNOWN_DO_NOT_RETRY_CLIPBOARD_UNAVAILABLE after one local action. The immutable intent17:23:20.4897555UTC and sanitized receipt prove authenticated candidate/source/readiness succeeded before one POST attempt. No acknowledgement/readback was observed. This is **UNKNOWN**, not proof of failed/non-applied registration. Original intent and receipt were preserved byte-for-byte; their digests and the reconciliation audit are private. The initial client omitted safe HTTP-status/exception diagnostics; exact transport/server cause cannot be recovered from its generic output. That diagnostic gap is acknowledged, not replaced with a guessed cause.
+
+Independent Cloudflare read17:26:31UTC: unchanged API deploymentc3762000, baselineea717386100%/candidate708ba3380%; health GET is healthy. No traffic/code/secret mutation, registration retry, rollback or content publication occurred during reconciliation. Narrow adaptive Worker analytics recorded one successful invocation/two subrequests at17:23:19; custom-domain HTTP query had no matching POST record. Sampling/coverage prevents treating absence as proof of non-application. Worker settings contain no observability configuration. Clipboard failure was investigated separately: copying the safe STOPPED status succeeded in isolated Windows PowerShell5.1; original cause remains unknown and no Clipboard content was read.
+
+Prepared a **GET-only** local handoff, Desktop MAHOON-READONLY-CHECK.cmd, pinning readonly-admin-check.ps1 SHA256ff63c70655314a33d4cb9a27149586efafcd5243903c68005d9fa50305d618c4. It has no registration call/endpoint, preserves the original intent/receipt, checks exact candidate/source/settings hash, captures safe HTTP/exception/pending/error metadata and displays/copies only fixed safe status.14 offline Windows PowerShell5.1 cases PASS, fake credential/network/Clipboard only. Authentication must be owner-local again because no credential was retained. The read-only action was requested; do not run the old registration CMD again.
+
+Telegram WebhookInfo does not expose secret_token. A successful GET can establish settings continuity but cannot certify the earlier registration acknowledgement or secret match. No SEC-01 PASS, promotion or POST retry is authorized by that result alone. Review the additional evidence before the next supported reconciliation decision. Website192/journal161/CHECK_ONLY/circuit breaker remain unchanged.
 
 ### Owner-requested one-click preparation — no registration executed
 
