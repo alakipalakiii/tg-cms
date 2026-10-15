@@ -1,7 +1,62 @@
 {
-  "active": null,
+  "active": {
+    "build_bundle_sha256": null,
+    "content_revision": 188,
+    "created_at": "2026-10-15T09:07:39.662106+00:00",
+    "execution_attempts": [
+      {
+        "attempt_id": "1",
+        "run_id": "38710568217",
+        "source": "workflow_dispatch",
+        "timestamp": "2026-10-15T09:07:39.662106+00:00"
+      }
+    ],
+    "logical_transaction_id": "784befea489b1ff145a5c67c590931744971d7e5d3ca5db579869989aa6c18f5",
+    "operations": {
+      "deploy_zero_percent": {
+        "attempts": [],
+        "intent_state": "NOT_STARTED",
+        "operation_id": "34c1e058074d80482a76dc59177244df62e2dc893f2b95b6997b4f2ee9bb968b",
+        "result_state": "NOT_REPORTED"
+      },
+      "promote": {
+        "attempts": [],
+        "intent_state": "NOT_STARTED",
+        "operation_id": "f82e579c9c8fd3b50a53ca41d513a43c1a4e6175e04b41eeb985e4c0af90c9e7",
+        "result_state": "NOT_REPORTED"
+      },
+      "rollback": {
+        "attempts": [],
+        "intent_state": "NOT_STARTED",
+        "operation_id": "3ca0bee7b14ed44c81dee79d0fdc79006c8df721c99edbc62a81d8755a0d7a27",
+        "result_state": "NOT_REPORTED"
+      },
+      "upload_version": {
+        "attempts": [],
+        "intent_state": "NOT_STARTED",
+        "operation_id": "a5e78e9c2e002fe26f15ec45c8309fe6fc3d9337cef9cd208b085fe05284cf66",
+        "result_state": "NOT_REPORTED"
+      }
+    },
+    "proof_evidence_sha256": null,
+    "recovery_status": "NONE",
+    "state": "admitted",
+    "state_commit_sha": null,
+    "transitions": [
+      {
+        "from": null,
+        "timestamp": "2026-10-15T09:07:39.662106+00:00",
+        "to": "admitted"
+      }
+    ],
+    "trigger_sources": [
+      "workflow_dispatch"
+    ],
+    "updated_at": "2026-10-15T09:07:39.662106+00:00",
+    "worker": "mahoon-art-magazine"
+  },
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 139,
+  "generation": 140,
   "history": [
     {
       "build_bundle_sha256": null,
