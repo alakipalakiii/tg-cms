@@ -2247,33 +2247,49 @@ async function mahoonTelegramBotApiV1(env, method, payload = null) {
 }
 
 function mahoonTelegramPublicWebhookUrlV1(request, currentUrl) {
-  const publicOrigin = new URL(request.url).origin;
-
   try {
-    const current = new URL(String(currentUrl || ""));
-    return publicOrigin + current.pathname + current.search;
-  } catch {
-    return publicOrigin + "/telegram";
+    const current = new URL(currentUrl);
+    if (current.protocol !== "https:" || current.origin !== new URL(request.url).origin
+        || current.username || current.password || current.hash) return null;
+    return currentUrl;
+  } catch { return null; }
+}
+
+async function mahoonTelegramWebhookReadinessV1(request, env, info) {
+  const result = { contract: "MAHOON_WEBHOOK_READINESS_V1", ready: false, source_verified: false };
+  if (!/^[A-Za-z0-9_-]{1,256}$/.test(env.TELEGRAM_WEBHOOK_SECRET || "")
+      || !/^-100[0-9]+$/.test(env.TELEGRAM_SOURCE_CHAT_ID || "")) {
+    return { ...result, reason: "Configuration unavailable" };
   }
+  if (!mahoonTelegramPublicWebhookUrlV1(request, info?.url) || info.has_custom_certificate
+      || (info.allowed_updates !== undefined && (!Array.isArray(info.allowed_updates)
+        || !info.allowed_updates.every((value) => typeof value === "string")))
+      || (info.max_connections !== undefined && (!Number.isInteger(info.max_connections)
+        || info.max_connections < 1 || info.max_connections > 100))) {
+    return { ...result, reason: "Existing webhook requires review" };
+  }
+  const chat = await mahoonTelegramBotApiV1(env, "getChat", { chat_id: "@mahoonartmagazine" });
+  if (chat.result?.type !== "channel" || !/^-100[0-9]+$/.test(String(chat.result?.id))
+      || String(chat.result?.username || "").toLowerCase() !== "mahoonartmagazine") {
+    return { ...result, reason: "Source verification failed" };
+  }
+  const verified = { ...result, verified_channel_id: String(chat.result.id) };
+  if (verified.verified_channel_id !== env.TELEGRAM_SOURCE_CHAT_ID) {
+    return { ...verified, reason: "Source configuration mismatch" };
+  }
+  return { ...verified, ready: true, source_verified: true };
 }
 
 async function mahoonTelegramWebhookInfoV1(request, env) {
   if (!mahoonTelegramWebhookIsAdminV1(request, env)) {
     return mahoonTelegramWebhookJsonV1({ ok: false, error: "Unauthorized" }, 401);
   }
-
   try {
     const info = await mahoonTelegramBotApiV1(env, "getWebhookInfo");
-
-    return mahoonTelegramWebhookJsonV1({
-      ok: true,
-      webhook: info.result || null
-    });
-  } catch (error) {
-    return mahoonTelegramWebhookJsonV1({
-      ok: false,
-      error: String(error?.message || error)
-    }, 500);
+    const readiness = await mahoonTelegramWebhookReadinessV1(request, env, info.result);
+    return mahoonTelegramWebhookJsonV1({ ok: true, webhook: info.result || null, readiness });
+  } catch {
+    return mahoonTelegramWebhookJsonV1({ ok: false, error: "Telegram inspection failed" }, 502);
   }
 }
 
@@ -2281,46 +2297,29 @@ async function mahoonTelegramWebhookRefreshV1(request, env) {
   if (!mahoonTelegramWebhookIsAdminV1(request, env)) {
     return mahoonTelegramWebhookJsonV1({ ok: false, error: "Unauthorized" }, 401);
   }
-
-  if (!/^[A-Za-z0-9_-]{1,256}$/.test(env.TELEGRAM_WEBHOOK_SECRET || "")) {
-    return mahoonTelegramWebhookJsonV1({ ok: false, error: "Webhook unavailable" }, 503);
-  }
-
   try {
     const before = await mahoonTelegramBotApiV1(env, "getWebhookInfo");
-    const currentUrl = before?.result?.url || "";
-    const nextUrl = mahoonTelegramPublicWebhookUrlV1(request, currentUrl);
-
-    const allowedUpdates = [
-      "message",
-      "edited_message",
-      "channel_post",
-      "edited_channel_post"
-    ];
-
-    const setResult = await mahoonTelegramBotApiV1(env, "setWebhook", {
-      url: nextUrl,
-      secret_token: env.TELEGRAM_WEBHOOK_SECRET,
-      allowed_updates: allowedUpdates,
-      drop_pending_updates: false
-    });
-
+    const readiness = await mahoonTelegramWebhookReadinessV1(request, env, before.result);
+    if (!readiness.ready) {
+      return mahoonTelegramWebhookJsonV1({ ok: false, readiness }, 503);
+    }
+    const payload = { url: before.result.url, secret_token: env.TELEGRAM_WEBHOOK_SECRET,
+      drop_pending_updates: false };
+    for (const key of ["allowed_updates", "max_connections"]) {
+      if (before.result[key] !== undefined) payload[key] = before.result[key];
+    }
+    const setResult = await mahoonTelegramBotApiV1(env, "setWebhook", payload);
     const after = await mahoonTelegramBotApiV1(env, "getWebhookInfo");
-
-    return mahoonTelegramWebhookJsonV1({
-      ok: true,
-      refreshed: true,
-      webhook_url: nextUrl,
-      allowed_updates: allowedUpdates,
-      telegram_set_result: setResult.result,
-      before: before.result || null,
-      after: after.result || null
-    });
-  } catch (error) {
-    return mahoonTelegramWebhookJsonV1({
-      ok: false,
-      error: String(error?.message || error)
-    }, 500);
+    if (setResult.result !== true || after.result?.url !== before.result.url
+        || ["allowed_updates", "max_connections"].some((key) => before.result[key] !== undefined
+          && JSON.stringify(before.result[key]) !== JSON.stringify(after.result?.[key]))) {
+      return mahoonTelegramWebhookJsonV1({ ok: false, error: "Registration requires reconciliation" }, 502);
+    }
+    return mahoonTelegramWebhookJsonV1({ ok: true, refreshed: true, readiness,
+      telegram_set_result: true, before: before.result, after: after.result });
+  } catch {
+    // Registration may already have succeeded; never automatically retry an ambiguous result.
+    return mahoonTelegramWebhookJsonV1({ ok: false, error: "Telegram operation requires reconciliation" }, 502);
   }
 }
 

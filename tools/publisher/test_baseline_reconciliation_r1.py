@@ -15,7 +15,7 @@ import yaml
 import baseline_reconciliation_r1 as r1
 
 
-ACCOUNT = "773d2dc31655b158d088296a14af5834"
+ACCOUNT = "b" * 32
 HOST = "mahoonartmagazine.ir"
 OLD = r1.OLD_DEPLOYMENT
 NEW = r1.ACCEPTED_DEPLOYMENT

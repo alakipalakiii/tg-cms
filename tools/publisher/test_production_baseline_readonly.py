@@ -171,6 +171,18 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("ref: main", source)
         self.assertIn("if: always()", source)
 
+    def test_legacy_cutover_uses_repo_account_and_blocks_missing_config_before_network(self):
+        workflow = yaml.load((WORKFLOW.parent / "mahoon-cutover-preflight.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        job = workflow["jobs"]["read-token-preflight"]
+        self.assertTrue(job["env"]["CF_ACCOUNT_ID"] == "${{ vars.CLOUDFLARE_ACCOUNT_ID }}", "Account must come from the configured repository variable")
+        source = job["steps"][0]["run"].split("python3 - <<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+        environment = {"CF_ACCOUNT_ID": "", "CF_WORKER_NAME": WORKER_NAME,
+                       "CF_EXPECTED_HOSTNAME": HOST, "CLOUDFLARE_API_TOKEN": TOKEN}
+        with patch.dict("os.environ", environment, clear=True), patch("urllib.request.urlopen") as network:
+            with self.assertRaisesRegex(SystemExit, "CF_ACCOUNT_ID is missing"):
+                exec(compile(source, "offline-cutover-fixture", "exec"), {})
+            network.assert_not_called()
+
     def test_helper_only_issues_get_requests_and_no_state_writes(self):
         source = (Path(__file__).resolve().parent / "production_baseline_readonly.py").read_text(encoding="utf-8")
         self.assertIn('method="GET"', source)

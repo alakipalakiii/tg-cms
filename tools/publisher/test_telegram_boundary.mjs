@@ -37,25 +37,122 @@ for (const secret of [undefined, '', 'invalid secret', 'fixture-secret']) {
   } finally { await mf.dispose(); }
 }
 let webhookPayload;
+const webhookInfo = { url: 'https://offline.invalid/telegram?keep=encoded%20value', max_connections: 7,
+  allowed_updates: ['message', 'edited_message', 'channel_post', 'edited_channel_post', 'callback_query'] };
+let currentWebhookInfo = webhookInfo;
+let currentChat = { id: -1000000000001, username: 'mahoonartmagazine', type: 'channel' };
+let registrationCalls = 0;
+let setAcknowledged = true, afterRegistration = null, botFailure = false;
 const refresh = new Miniflare({ modules: true, script: fixture, compatibilityDate: '2026-01-01',
-  bindings: { TELEGRAM_WEBHOOK_SECRET: 'fixture-secret', ADMIN_TOKEN: 'fixture-admin', BOT_TOKEN: 'fixture-token' },
+  bindings: { TELEGRAM_WEBHOOK_SECRET: 'fixture-secret', TELEGRAM_SOURCE_CHAT_ID: '-1000000000001',
+    ADMIN_TOKEN: 'fixture-admin', BOT_TOKEN: 'fixture-token' },
   outboundService: async (request) => {
+    if (botFailure) throw new Error('https://api.telegram.org/botfixture-token/private-error');
+    if (new URL(request.url).pathname.endsWith('/getChat')) {
+      assert.deepEqual(await request.json(), { chat_id: '@mahoonartmagazine' });
+      return Response.json({ ok: true, result: currentChat });
+    }
     if (new URL(request.url).pathname.endsWith('/setWebhook')) {
+      registrationCalls++;
       webhookPayload = await request.json();
-      return Response.json({ ok: true, result: true });
+      return Response.json({ ok: true, result: setAcknowledged });
     }
     assert.ok(new URL(request.url).pathname.endsWith('/getWebhookInfo'));
-    return Response.json({ ok: true, result: { url: 'https://offline.invalid/telegram' } });
+    return Response.json({ ok: true, result: afterRegistration && registrationCalls > afterRegistration.count ? afterRegistration.info : currentWebhookInfo });
   } });
 try {
+  const info = await refresh.dispatchFetch('https://offline.invalid/admin/telegram/webhook-info',
+    { headers: { 'X-Admin-Token': 'fixture-admin' } });
+  const readiness = (await info.json()).readiness;
+  assert.equal(readiness?.contract, 'MAHOON_WEBHOOK_READINESS_V1');
+  assert.equal(readiness.ready, true); assert.equal(readiness.source_verified, true);
+  assert.equal(readiness.verified_channel_id, '-1000000000001');
   const response = await refresh.dispatchFetch('https://offline.invalid/admin/telegram/webhook-refresh',
     { method: 'POST', headers: { 'X-Admin-Token': 'fixture-admin' } });
   assert.equal(response.status, 200);
   assert.equal(webhookPayload.secret_token, 'fixture-secret');
   assert.equal(webhookPayload.drop_pending_updates, false);
-  assert.deepEqual(webhookPayload.allowed_updates, ['message', 'edited_message', 'channel_post', 'edited_channel_post']);
+  assert.equal(webhookPayload.url, webhookInfo.url);
+  assert.equal(webhookPayload.max_connections, webhookInfo.max_connections);
+  assert.deepEqual(webhookPayload.allowed_updates, webhookInfo.allowed_updates);
   assert.ok(!(await response.text()).includes('fixture-secret'));
+  for (const update of [undefined, []]) {
+    currentWebhookInfo = { ...webhookInfo }; delete currentWebhookInfo.allowed_updates;
+    if (update) currentWebhookInfo.allowed_updates = update;
+    const result = await refresh.dispatchFetch('https://offline.invalid/admin/telegram/webhook-refresh',
+      { method: 'POST', headers: { 'X-Admin-Token': 'fixture-admin' } });
+    assert.equal(result.status, 200);
+    if (update) assert.deepEqual(webhookPayload.allowed_updates, []);
+    else assert.ok(!Object.hasOwn(webhookPayload, 'allowed_updates'));
+  }
+  for (const changed of [{ url: '' }, { url: 'http://offline.invalid/telegram' },
+    { url: 'https://other.invalid/telegram' }, { url: 'https://user:pass@offline.invalid/telegram' },
+    { url: 'https://offline.invalid/telegram#fragment' }, { has_custom_certificate: true },
+    { allowed_updates: 'invalid' }, { max_connections: 0 }]) {
+    currentWebhookInfo = { ...webhookInfo, ...changed };
+    const count = registrationCalls;
+    const result = await refresh.dispatchFetch('https://offline.invalid/admin/telegram/webhook-refresh',
+      { method: 'POST', headers: { 'X-Admin-Token': 'fixture-admin' } });
+    assert.equal(result.status, 503); assert.equal(registrationCalls, count);
+  }
+  currentWebhookInfo = webhookInfo;
+  for (const changed of [{ id: -1000000000002 }, { username: 'other' }, { type: 'private' }]) {
+    const previous = currentChat; currentChat = { ...previous, ...changed };
+    const count = registrationCalls;
+    const result = await refresh.dispatchFetch('https://offline.invalid/admin/telegram/webhook-refresh',
+      { method: 'POST', headers: { 'X-Admin-Token': 'fixture-admin' } });
+    assert.equal(result.status, 503); assert.equal(registrationCalls, count);
+    const evidence = (await result.json()).readiness;
+    if (changed.id) assert.equal(evidence.verified_channel_id, String(changed.id));
+    else assert.ok(!Object.hasOwn(evidence, 'verified_channel_id'));
+    currentChat = previous;
+  }
+  currentWebhookInfo = webhookInfo;
+  for (const field of [{ url: 'https://offline.invalid/changed' }, { allowed_updates: [] }, { max_connections: 8 }]) {
+    afterRegistration = { count: registrationCalls, info: { ...webhookInfo, ...field } };
+    const result = await refresh.dispatchFetch('https://offline.invalid/admin/telegram/webhook-refresh',
+      { method: 'POST', headers: { 'X-Admin-Token': 'fixture-admin' } });
+    assert.equal(result.status, 502); assert.equal(registrationCalls, afterRegistration.count + 1);
+    assert.ok(!(await result.text()).includes('fixture-secret'));
+  }
+  afterRegistration = null; setAcknowledged = false;
+  assert.equal((await refresh.dispatchFetch('https://offline.invalid/admin/telegram/webhook-refresh',
+    { method: 'POST', headers: { 'X-Admin-Token': 'fixture-admin' } })).status, 502);
+  setAcknowledged = true; botFailure = true;
+  for (const path of ['webhook-info', 'webhook-refresh']) {
+    const count = registrationCalls;
+    const result = await refresh.dispatchFetch('https://offline.invalid/admin/telegram/' + path,
+      { method: path.endsWith('refresh') ? 'POST' : 'GET', headers: { 'X-Admin-Token': 'fixture-admin' } });
+    assert.equal(result.status, 502); assert.equal(registrationCalls, count);
+    assert.ok(!(await result.text()).includes('fixture-token'));
+  }
+  botFailure = false;
+  for (const path of ['webhook-info', 'webhook-refresh']) {
+    const count = registrationCalls;
+    const result = await refresh.dispatchFetch('https://offline.invalid/admin/telegram/' + path,
+      { method: path.endsWith('refresh') ? 'POST' : 'GET' });
+    assert.equal(result.status, 401); assert.equal(registrationCalls, count);
+  }
 } finally { await refresh.dispose(); }
+for (const config of [{}, { TELEGRAM_WEBHOOK_SECRET: 'fixture-secret' },
+  { TELEGRAM_WEBHOOK_SECRET: 'invalid secret', TELEGRAM_SOURCE_CHAT_ID: '-1000000000001' }]) {
+  let mutations = 0;
+  const unavailable = new Miniflare({ modules: true, script: fixture, compatibilityDate: '2026-01-01',
+    bindings: { ADMIN_TOKEN: 'fixture-admin', BOT_TOKEN: 'fixture-token', ...config },
+    outboundService: (request) => {
+      if (new URL(request.url).pathname.endsWith('/setWebhook')) mutations++;
+      assert.ok(new URL(request.url).pathname.endsWith('/getWebhookInfo'));
+      return Response.json({ ok: true, result: webhookInfo });
+    } });
+  try {
+    const inspected = await unavailable.dispatchFetch('https://offline.invalid/admin/telegram/webhook-info',
+      { headers: { 'X-Admin-Token': 'fixture-admin' } });
+    assert.equal(inspected.status, 200); assert.equal((await inspected.json()).readiness.ready, false);
+    assert.equal((await unavailable.dispatchFetch('https://offline.invalid/admin/telegram/webhook-refresh',
+      { method: 'POST', headers: { 'X-Admin-Token': 'fixture-admin' } })).status, 503);
+    assert.equal(mutations, 0);
+  } finally { await unavailable.dispose(); }
+}
 const source = await readFile(entry, 'utf8');
 assert.ok(source.indexOf('telegramWebhookRejection(request, env.TELEGRAM_WEBHOOK_SECRET)')
   < source.indexOf('const update = await request.json();'));
