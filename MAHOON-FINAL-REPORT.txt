@@ -1,3 +1,24 @@
+CURRENT FINAL ACCEPTANCE203 — 2026-10-16 01:17:17 +0330 (Asia/Tehran)
+SEC-01: PASS. Website publication203: COMPLETED. Latest detected203 = published203 at final read.
+Website: https://mahoonartmagazine.ir/post/1928
+Site version1004374c-4b46-458d-be0f-a39537f9550a at100%; deployment77d11197-5303-448e-9fb2-c485f982f0fe.
+API version708ba338-168e-4f69-aa57-ce5a012e7432 at100%; deployment7103967e-93f5-47e9-81df-42e7447b5943.
+Official Telegram1693 -> D1 post1928 at19:38:26UTC after activation; exact text/source/time/no-media match; exactly one row.
+All1928 D1 rows unchanged at final check. No lost/deleted/duplicated new updates observed. Unsigned/invalid webhook401; public APIs200/admin401.
+Normal fresh publisher38797221369 SUCCESS; independent unpinned browser38811222919 SUCCESS/13-of-13.4258-of-4258 routes200;1857 public records;948 unique search IDs;608 media objects/615 resolved identities/19 preserved historical fallbacks/0 unresolved.
+Fingerprint09ddc09bf78734d13e08ddde8035366465c0d2fa44962ea232b66bec33fa331a.
+Source d4cd02764cb60eca7c0e9a71465e40d621d5be80; API patch source a0550348ddd0ee79c2b6300cd117acbd5cdf3029.
+Preproof da02ce46266ad9c36985e9404f4d7f62b6ac007b83d13d882edfa2a1f395d5a4.
+Production proof9ebb1e955d3fffa2314f9695f97ae371cf24703d3908cd1adb921f1f8649d502/all11 gates PASS.
+Persistence3f24a553d605aecba46cee5614d1c0e6f09a2941c8312e09323f70a200d43072; state commit7cfc3840d08364cb5564cec91cd4ae739150f55c; journal closing8e58efcad8523d0a050e8d090964f754d5c37287.
+Journal171 validates; revision203 completed/active=null/pending=null. Six remote state blobs match SHA256/size;12 sealed artifacts independently validated.
+Upload/zero/promotion one APPLIED attempt each; rollback0. No repeated publication, webhook registration, token extraction/rotation, pending-update deletion or database restore this acceptance.
+Scheduled policy CHECK_ONLY/circuit breaker OPEN remain unchanged. Authenticated Telegram ingestion is automatic; static future publication requires another gated transaction.
+No security activation owner action remains. Optional dependency/device/accessibility/field-performance maintenance remains separate. No destructive live management testing was performed; exact-bundle workerd/D1 replay/restore/bot fixtures PASS.
+Canonical details: MAHOON-PLATFORM-AUDIT-AND-OPTIMIZATION-REPORT.md; MAHOON-CODEX-HANDOFF.md; workers/api/WEBHOOK-SECURITY-ROLLOUT.md.
+
+HISTORICAL REPORTS BELOW — CURRENT VALUES ABOVE SUPERSEDE THEIR OLD BLOCKED/PENDING/REVISION VALUES
+
 CURRENT PLATFORM AUDIT UPDATE — 2026-10-15
 Website revision190 durably finalized; latest detected192 remains unpublished. Overall platform audit BLOCKED on coordinated Telegram security activation and continuing content freshness. See MAHOON-PLATFORM-AUDIT-AND-OPTIMIZATION-REPORT.md for current findings/access limits. The earlier recovery/publication report below remains historical acceptance.
 
