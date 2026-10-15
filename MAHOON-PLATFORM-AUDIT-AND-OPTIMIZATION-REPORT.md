@@ -2,13 +2,62 @@
 
 **Status: IN PROGRESS. No phase PASS claimed.**
 
-Updated 2026-10-15T12:14:03.860627+03:30 Asia/Tehran. This is a new audit phase. The previous revision185 publication remains successfully finalized; its report is historical acceptance, not a substitute for current tests.
+Updated 2026-10-15, 14:53 Asia/Tehran / 11:23 UTC. This is a new audit phase. The previous revision185 publication remains successfully finalized; its report is historical acceptance, not a substitute for current tests. Later checkpoints supersede the initial observations below.
+
+## Current execution summary
+
+- Hosted safety run38717022249 on source45c4d3f39cbcbf7ad7198602fde359e12edcc2d1:905 tests in67.449s, no failures/errors, one skip; locked website build PASS5.82s. Node22.23.3/Playwright1.63.0/Chromium153.0.8010.12. The skip requires two optional immutable historical artifact inputs; Linux materializer and browser fixtures executed.
+- Read-only platform run38717057790:health/posts/stats200; protected webhook-info401; unsigned empty updates still200/saved=false. Exact raw result SHA256 e72d7119999c0a645c649d7818ca88cac1c03d7c3c1dbe7664e4d4c294e4695e. No secret values, real channel messages or production writes. Its failure is the already-confirmed old-production Persian search variant defect, not a new browser/runtime failure. Current production also retains the old missing accessible status/Escape behavior.
+- Public API now includes actual posts1921,1922,1923; all absent from the old static index. Numeric article1923 returns404 with expected version1c92b5b0-0426-4f8f-8328-ee741569149b. New audio1923 created09:24:26UTC; live revision190 changed09:24:47UTC. Ingestion remains active; the static delivery gap is independently demonstrated.
+- One normal publication38717369912 was dispatched10:02:20UTC after successful hosted tests and fresh Git/journal/Cloudflare/concurrency/revision checks. It admitted revision190, transaction533326ce77323b7bdb19c03aa3d43a6129fa979ff1006eda0034cf62321d06f8, generation142. Build passed10:16:25UTC; pre-promotion proof passed10:45:12UTC. Upload/zero/promotion each APPLIED once; current authoritative deployment449be33f-3cc1-4312-890f-f3df67718c1f serves version5413751a-cf7e-4f90-aa55-562c520f0054100%, baseline1c92b5b0-0426-4f8f-8328-ee741569149b0%. Journal149, operation_reported; production proof started10:48:14UTC and is still running. Final persistence is pending. No production-completion claim, new transaction or APPLIED replay.
+- API security/source/replay/restore correction remains prepared and NOT DEPLOYED under the owner's explicit uninterrupted-ingestion/access instruction. No BOT_TOKEN was supplied, rotated or exposed; no webhook setting was changed. Website/admin copy is compatible with the current API response.
+
+| Finding | Current disposition |
+|---|---|
+| SEC-01 P0 | Confirmed inbound authentication/source weakness; real workerd/D1 correction passes; coordinated activation held because matching Bot API registration/channel verification cannot be performed with opaque existing bindings. |
+| INGEST-01 P1 | Atomic replay suppression prepared/tested; no historical duplicate deletion or ID changes; API rollout held with the verified live-module correction. |
+| RESTORE-01 P1 | Dedicated API/bot publication semantics prepared/tested; current API unchanged; website success message reports returned state. |
+| VISIBILITY-01 P1 | Posts1921–1923 now present; revision190 durably completed. Future unattended publication remains held until the inbound trust boundary is safely resolved. Schedule/hashtag ingestion unchanged. |
+| SEARCH-01 / A11Y-01 P2 | Independently verified live in38726004896:all three character variants260 results, status/polite count, Escape closes, no unnamed sampled controls. |
+| PERSIST-01 P1 | Shared Git UTF-8 decoding repair, real Persian-path/red-green regression and exact retirement readback completed. |
+| BUILD-PERF-01 P2 | Repeated verified-media hashing eliminated; identical fixture outputs and measured component improvement; final seal/gates retained. |
+| DOC-01 P2 | Actual architecture/source authority and safe deployment documentation corrected; exact33-file review recorded below. |
+
+### Independent post-promotion observations
+
+Run38726004896 on the unpinned serving version:PASS; result SHA25633e9675a3252a4c58d351ac9f79561f003efeedf6d76f7f10c2b6948046a3f94. Three cold-context samples per viewport, fonts loaded, no overflow/JS errors/forbidden content dependencies. Latest API IDs1921–1923 all present in static index; protected webhook-info401, public reads200. Telegram empty-update200 remains the explicitly held SEC-01 issue, not a repaired security claim.
+
+| Viewport | Before median TTFB/LCP ms; max CLS | After median TTFB/LCP ms; max CLS |
+|---|---|---|
+| Desktop1440 |105.3 /324;0.00256|92.2 /276;0.00108|
+| Tablet768 |88.5 /308;0.00209|80.8 /244;0.00209|
+| Mobile390 |89.8 /272;0.05316|66.2 /216;0.00216|
+
+These laboratory samples use different runner/cache/network circumstances; they do not establish a causal frontend speed improvement or field INP. The controlled media-hashing fixture below is the measured optimization claim. Opened the exact preproof new audio1923 and mobile homepage screenshots; established logo/font/RTL/native-player layout retained.
+
+Run38725998368 independently passed archive/load-more, numeric-ID/home/category search/navigation, old OGG and MP4 playback, admin401/mobile navigation and new photo1921/1922 decoding. New audio1923 failed at image_decode:the diagnostic attempted scrollIntoViewIfNeeded on hidden modal/sticky player covers before playback. Its actual MP3 returned206, finite228.858776s/readyState4/no media error. A local real-Chromium fixture reproduced that exact hidden-image timeout; the diagnostic now scrolls only visible images while still decoding/checking dimensions of **every** image. Deliberately broken hidden image still rejects. This is a diagnostic correction, not a site/player change; corrected hosted new-audio playback acceptance remains pending. No full publication retry is required for this test correction.
+
+### Durable revision190 completion — 11:25 UTC / 14:55 Tehran
+
+Run38717369912 concluded SUCCESS. Production proof completed11:24:21UTC with all11 authoritative gates PASS, matching deployment449be33f-3cc1-4312-890f-f3df67718c1f/version5413751a-cf7e-4f90-aa55-562c520f0054100%/baseline1c92b5b0-0426-4f8f-8328-ee741569149b0%. Proof artifact d58ad376c576469dd4aa08f496837a4375d1c363e69c38bc8cd254ed6a57bdab; raw proof file SHA256757973067f21c0b8af9c6f504931d375f64249f21c7c56f613644c495aab06ea. Zero-origin counts all0 across7 public pages; visual/font/version checks pass.
+
+Final persistence reports COMPLETED, artifactda54593107f0ca4f9cb83b16d0a17694c63fa8e5f761a14c8665ef76ddd45551. Six state files committed ate3abee4dab87410eecd064e48ae0965e8f295141; canonical completion88a9cd68795c357c2cc29d8cd88a916e2c6dfd09, journal generation151, active=null/pending=null, revision190 completed/recoveryNONE. Post-run reconciler38727286924 was correctly skipped by its successful-run condition; no orphan mutation exists. A fresh GET-only baseline reconciliation and corrected independent new-audio check are pending next.
+
+Expected snapshot1852 posts,943 deduplicated search records,4245 routes,606 unique immutable media objects. Required media identities632:609 previously published,4 new identities,19 historical fallbacks,0 unresolved/hash mismatches/invalid payloads. Latest public revision was independently re-read190 after persistence; no fabricated revision or new publication is needed. Small metadata, proof/screenshots and persistence artifacts retained privately; the651MB build artifact was not downloaded locally.
+
+## Dependency reachability conclusion
+
+The16 npm audit entries remain affected dependencies, not16 established public exploits or a clean dependency bill. Actual public dispatcher imports only asset/media-proof/version handling. Build-time source review found no untrusted HTML attribute-name spreads, custom transition animation input or request-derived persist directive; the existing audio persist name is constant. ClientRouter alone does not meet those injection preconditions. Astro root base lacks the non-root-base authorization prerequisite. The Cloudflare adapter is explicitly excluded from the cited prerendered-error Host SSRF advisory. Passthrough media plus verified JPEG/PNG/GIF/WebP/OGG/MP3/MP4 signatures provides no untrusted AVIF/Sharp or SVG-sanitizer route.
+
+Wrangler/Miniflare/vite-plugin/undici/ws/http-cache-semantics are local build/deployment tooling, with no exposed Node development/WebSocket/proxy service. YAML/TOML/CSS/source-map inputs are checked-in configuration; no public parser/negative-size input path was identified for js-yaml/smol-toml/postcss/source-map-js/nanoid. Devalue is not invoked by the static public request dispatcher. This is reachability triage, not exhaustive third-party fuzzing. Keep dependency maintenance P2; no blind update or major adapter migration during the active transaction.
+
+Primary sources: [spread props](https://github.com/withastro/astro/security/advisories/GHSA-jrpj-wcv7-9fh9), [Host SSRF](https://github.com/withastro/astro/security/advisories/GHSA-2pvr-wf23-7pc7), [transition animation](https://github.com/withastro/astro/security/advisories/GHSA-4g3v-8h47-v7g6), [island transition directives](https://github.com/withastro/astro/security/advisories/GHSA-7pw4-f3q4-r2p2), [base-path authorization](https://github.com/withastro/astro/security/advisories/GHSA-376h-93r7-7g6f).
 
 ## Mission and safety
 
 Preserve existing Telegram hashtag ingestion, official logo/font, static rendering, stable database IDs, admin boundaries and the accepted publication journal. No test channel messages, Telegram edits/deletes, destructive admin tests, secret rotation, manual journal edits or mutation replays. Do not change scheduling solely because the static publisher uses CHECK_ONLY.
 
-## Current readbacks
+## Initial readbacks (historical checkpoints)
 
 - origin/main and source at start: e02f70c0cfed72892f25b1e90066395c4cbb440b.
 - Website deployment cf817382-242d-4d2e-9b40-969c7a9c1332; version1c92b5b0-0426-4f8f-8328-ee741569149b100%, baselinebc11bf72-e914-498d-8665-b7d98c57ff900%.

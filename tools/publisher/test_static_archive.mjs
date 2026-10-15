@@ -115,6 +115,16 @@ try {
   await page.locator('[data-mahoon-native-player]').evaluate((node) => document.body.append(node));
   assert.equal(await page.locator('#postArticle audio').count(), 0);
   assert.equal(await page.locator(selectors.audio).getAttribute('data-fixture'), 'native');
+  const imageCheck = diagnostic.match(/      const images = page\.locator\('main img'\);([\s\S]*?)      const media = \{\};/)[0]
+    .replace('      const media = {};', '      return images.count();');
+  const decodeImages = new (Object.getPrototypeOf(async function () {}).constructor)('page', 'assert', 'let failureStage;\n' + imageCheck);
+  await page.setContent(`<main><img src="${origin}/fixture.svg"><div hidden><img src="${origin}/fixture.svg"></div>
+    <div style="visibility:hidden"><img src="${origin}/fixture.svg"></div></main>`);
+  page.setDefaultTimeout(500);
+  assert.equal(await decodeImages(page, assert), 3, 'Hidden player covers must decode without a visible-only scroll action');
+  await page.locator('main div[hidden] img').evaluate((node) => { node.src = 'data:image/png;base64,invalid'; });
+  await assert.rejects(() => decodeImages(page, assert), /cannot be decoded|EncodingError/);
+  page.setDefaultTimeout(30000);
   const layout = await readFile(new URL('../../website/dreary-disk/src/layouts/BaseLayout.astro', import.meta.url), 'utf8');
   const menuScript = [...layout.matchAll(/<script is:inline>([\s\S]*?)<\/script>/g)]
     .map((match) => match[1]).find((script) => script.includes('document.querySelector(".site-menu-toggle")'));

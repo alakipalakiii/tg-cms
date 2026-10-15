@@ -219,7 +219,7 @@ try {
       const images = page.locator('main img');
       failureStage = 'image_decode';
       for (const image of await images.all()) {
-        await image.scrollIntoViewIfNeeded();
+        if (await image.isVisible()) await image.scrollIntoViewIfNeeded();
         await image.evaluate((node) => node.decode());
         assert.ok(await image.evaluate((node) => node.naturalWidth > 0 && node.naturalHeight > 0));
       }
