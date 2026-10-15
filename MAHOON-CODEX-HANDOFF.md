@@ -1,4 +1,57 @@
-## Automatic publishing activation — 2026-10-16, IN PROGRESS
+# Automatic publishing — FINAL ACCEPTANCE, 2026-10-16 Asia/Tehran
+
+**AUTO_PUBLISH_STATUS: ENABLED_AWAITING_FIRST_REAL_CHANGE. SEC-01: PASS, unchanged.** Automatic publication is armed and its real enabled idle path is verified. The latest observed legitimate snapshot remains203, already published; no changed-content promotion was manufactured. This section supersedes the historical IN PROGRESS/CHECK_ONLY/OPEN notes below.
+
+## Actual operating state
+
+- Repository variable **PUBLISHER_MODE_SCHEDULED=PUBLISH**, provider acknowledgement and independent GET agree at2026-10-15 22:42:47UTC.
+- **MAHOON static publisher**, workflow353485398, active on default branch main; native GitHub cron **17,47 * * * *** (every30 minutes, UTC). GitHub scheduling can be delayed/dropped under load ([official behavior](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)); this is an ordinary scheduled queue, without an instantaneous-publication guarantee.
+- Cloudflare heartbeat cron **[]**, one acknowledged PUT22:37:40UTC plus independent readback. The heartbeat Worker settings and opaque GITHUB_ACTIONS_TOKEN binding remain identical. API/site Workers were not redeployed. Native scheduling is the single configured recurring publisher trigger; authenticated manual AUTO_TICK remains available for diagnostics.
+- Circuit breaker **CLOSED**, supported **A6_VERIFIED_PRODUCTION_RECOVERY_V1**, incident **36727673538**. Corrective source **d6fb715f7e669e4a285145076651a29e77f3fde9**; canonical recovery commit **f5648e465fa994a5dc919a4168447f9330936f54**. Recovery evidence SHA256 **f13b0f6c9e4f96cd917b622b862089b33ca3fd005373a62a5149bfa695280961**. No manual journal edit or mutation replay.
+- Latest detected **203 = published203**,1857 public records, fingerprint09ddc09bf78734d13e08ddde8035366465c0d2fa44962ea232b66bec33fa331a. Bounded provider/revision readback22:45UTC; independent final Git/run reconciliation22:47:08UTC (2026-10-16 02:17:08Tehran). Journal **171**, active/pending=null, canonical raw SHA256 **89264208611538de1022e62db7340eaf22e4bcc3b5c9bb90c1ba271a18124b07**, unchanged through both idle runs.
+
+## Actual runs and tests
+
+| Evidence | Run | Result |
+|---|---|---|
+| Full Ubuntu/Node22/pinned-Chromium safety acceptance |[38817995303](https://github.com/alakipalakiii/tg-cms/actions/runs/38817995303)|SUCCESS;921 tests/65.566s,0failures/errors,1 optional historical-artifact skip; locked build PASS|
+| Real OPEN AUTO_TICK |[38818437955](https://github.com/alakipalakiii/tg-cms/actions/runs/38818437955)|SUCCESS;UNCHANGED203, no admission/build/mutation|
+| Actual native schedule with OPEN policy |[38818777712](https://github.com/alakipalakiii/tg-cms/actions/runs/38818777712)|SUCCESS;event=schedule, current source verified|
+| **Enabled PUBLISH AUTO_TICK** |[38818999022](https://github.com/alakipalakiii/tg-cms/actions/runs/38818999022)|**SUCCESS**;publish_allowed=true,UNCHANGED203,breakerCLOSED unchanged|
+| Fresh unpinned browser acceptance |[38818089977](https://github.com/alakipalakiii/tg-cms/actions/runs/38818089977)|SUCCESS;9/9 interactions,0JS errors,0forbidden public dependencies|
+| Hosted authenticated provider baseline GETs |[38818100783](https://github.com/alakipalakiii/tg-cms/actions/runs/38818100783)|SUCCESS;Worker/domain/deployment/100% allocation match|
+| Accepted full203 publication/proof/persistence |[38797221369](https://github.com/alakipalakiii/tg-cms/actions/runs/38797221369)|COMPLETED;12 sealed lineage artifacts and6 exact remote state blobs revalidated|
+
+Enabled idle executed only scheduled-policy-preflight, no-op journal-bootstrap, revision-resolve and scheduled-circuit-breaker. All admission/build/upload/zero-percent/proof/promotion/persistence jobs were skipped; check-only was skipped because PUBLISH admission was actually armed. Sealed revision203=published203 and breaker observation{changed:false,failure:null,state:CLOSED} agree with live state. No website deployment or journal generation changed. Source for this smoke is f5648e465fa994a5dc919a4168447f9330936f54, containing only the audited breaker transition after corrective source d6fb715.
+
+The initial OPEN dispatch38818004770 was cancelled **while pending** by GitHub's single-pending concurrency rule when the independent baseline job was queued; provider jobs=[] proves zero execution, and canonical journal stayed unchanged. The later38818437955 is a fresh bounded read-only smoke after that queue cleared. No release or uncertain mutation was retried.
+
+## Production preserved and independently checked
+
+| Service | Serving version100% | Deployment |
+|---|---|---|
+| Website |1004374c-4b46-458d-be0f-a39537f9550a|77d11197-5303-448e-9fb2-c485f982f0fe|
+| Telegram API |708ba338-168e-4f69-aa57-ce5a012e7432|7103967e-93f5-47e9-81df-42e7447b5943|
+
+Website baseline edc447fa-fddd-46d8-b792-553cc46277ae remains0%; API baseline ea717386-6580-4d39-93a0-6c224deae34e remains0%. These equal the independently refreshed starting deployments. Current203 proof validates4258 routes/4255HTML/3714 article routes and608 immutable media objects,615 resolved identities,19 explicit historical fallbacks,0 unresolved media; same immutable serving version and exact state blob hashes are confirmed. Production proof seal9ebb1e955d3fffa2314f9695f97ae371cf24703d3908cd1adb921f1f8649d502; final persistence3f24a553d605aecba46cee5614d1c0e6f09a2941c8312e09323f70a200d43072. Full route/media acceptance uses that revalidated sealed203 proof; this continuation also collected fresh browser observations.
+
+Fresh unpinned browser9/9 covers latest DB1928 navigation/stable-ID archive search, home/category search, archive20→40, mobile menu, admin401/login boundary, and actual native OGG/MP4 playback progress. Browser result rawSHA256 **9ff0593770eef5d360e7211aaf6edffb522cb6904646e276856a5ff398265476**. Final local GET-only probes22:46UTC:health/public/posts-v1/public/stats-v1=200, protected admin/health=401. A preliminary probe used unsupported /posts?limit=1 and received404; it was corrected to the documented public/posts-v1 route. That probe mistake is preserved privately and did not cause a production change.
+
+Exact deployed164465-byte API module SHA2565b454ff4f52deb9dd5a84368b9fc5ecf15948334f25f1a959b09f90b883c4a1b passed real local workerd/D1 source/auth/replay/edit/stable-ID/media/delete/restore regression again; hosted browser job also ran the repository boundary fixture. API version, source authorization and original opaque credentials remain intact. SEC-01's already proven genuine postactivation continuity remains accepted; no Telegram webhook POST, re-registration, token extraction/rotation, fabricated channel/update, D1 restore/schema/content write or real destructive admin/bot command occurred in this automation mission. Website public delivery remains static without per-visitor D1/API dependence.
+
+## Operation and remaining limits
+
+The owner now posts normally to the official channel. The existing authenticated API ingests authorized content; a recurring tick resolves one immutable main SHA, compares revision, admits one bounded snapshot only when changed and safe, and traverses the existing A6 build/media/routes/SEO/browser/remote/production proof, final persistence and journal reconciliation. Multiple arrivals coalesce; active/uncertain transactions prevent new automatic admission; global cancel-in-progress=false protects a running mutation. An unchanged tick performs lightweight revision detection with no full export/build/crawl.
+
+Ordinary publication needs no Codex session, CMD, dispatch or manual approval. Expected latency is the next30-minute slot plus provider queueing and the accepted full pipeline (last203 run about1h50m). The strict moving-revision/build fences and all original acceptance requirements remain. A qualifying failure opens the canonical breaker and surfaces a red GitHub Actions status with retained diagnostics; later ticks become read only. Evidence-backed readback/reconciliation is required before any recovery; APPLIED/UNKNOWN operations are never blindly repeated. Use the documented recover-a6 contract after fixing the actual cause and validating hosted tests, clear/completed journal, sealed proof/persistence, raw canonical Git blobs and live baseline parity. No autonomous breaker-close/retry loop was added.
+
+**First future changed-content unattended promotion is awaiting natural authorized content.** Isolated changed/unchanged/coalesced/same-revision-duplicate/edit/delete/media/concurrency/cancellation/stale-source/failed-gate/UNKNOWN/interrupted-persistence/recovery cases pass; they are not labeled a real future promotion. No owner credential or other activation action remains. Optional dependency/device/accessibility/performance maintenance and the19 historical unavailable-source fallbacks remain separate; destructive live commands and physical-device codecs are outside this acceptance.
+
+Validated code and canonical recovery commits are listed above; the subsequent report-only fast-forward commit is the final delivery receipt. Private receipts/raw canonical recovery checkout are under C:/Users/mehdi karani/AppData/Local/Temp/mahoon-auto-publish-20261016; durable run artifacts/logs, canonical journal and six publisher state blobs are retained. The raw Git blob verification uses an immutable sparse checkout with core.autocrlf=false; Windows CRLF conversion is not treated as content or production corruption.
+
+---
+
+## Historical implementation checkpoint — 2026-10-16, before activation
 
 The owner explicitly authorized unattended publication through the existing A6 safety protocol. SEC-01 remains accepted on the unchanged API version. Automatic publication is **not enabled at this source checkpoint**: repository policy is CHECK_ONLY and incident36727673538 breaker remains OPEN.
 
