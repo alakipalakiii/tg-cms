@@ -14,8 +14,20 @@
     "logical_transaction_id": "f6fac6f63483028ee997e65aa87eadfc4c80b932eb93ddea727752f89207f381",
     "operations": {
       "deploy_zero_percent": {
-        "attempts": [],
-        "intent_state": "NOT_STARTED",
+        "attempts": [
+          {
+            "attempt_id": "14a46adb-92af-409b-b2dd-2353bcb44057",
+            "attempt_number": 1,
+            "evidence": null,
+            "intent_artifact_sha256": "7b8f4b4e1b72239ca97507a2fbca7a5d188351087d028fbd51a9d4ed3002d2a0",
+            "intent_at": "2026-10-15T20:12:36.431206+00:00",
+            "intent_state": "RECORDED",
+            "result_at": null,
+            "result_digest": null,
+            "result_state": "NOT_REPORTED"
+          }
+        ],
+        "intent_state": "RECORDED",
         "operation_id": "e02fc2962244a451723d6a396511420aae0495edb3513536ed6a79e1fd63f6e5",
         "result_state": "NOT_REPORTED"
       },
@@ -56,7 +68,7 @@
     },
     "proof_evidence_sha256": null,
     "recovery_status": "NONE",
-    "state": "operation_reported",
+    "state": "intent_recorded",
     "state_commit_sha": null,
     "transitions": [
       {
@@ -78,16 +90,21 @@
         "from": "intent_recorded",
         "timestamp": "2026-10-15T20:11:18.569707+00:00",
         "to": "operation_reported"
+      },
+      {
+        "from": "operation_reported",
+        "timestamp": "2026-10-15T20:12:36.431227+00:00",
+        "to": "intent_recorded"
       }
     ],
     "trigger_sources": [
       "workflow_dispatch"
     ],
-    "updated_at": "2026-10-15T20:11:18.569710+00:00",
+    "updated_at": "2026-10-15T20:12:36.431230+00:00",
     "worker": "mahoon-art-magazine"
   },
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 165,
+  "generation": 166,
   "history": [
     {
       "build_bundle_sha256": null,
