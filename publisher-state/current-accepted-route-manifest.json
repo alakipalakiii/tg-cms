@@ -4241,7 +4241,7 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4221,
+  "baseline_route_count": 4238,
   "snapshot_derived_route_count": 4153,
   "snapshot_post_route_count": 3698,
   "snapshot_tag_route_count": 360,
@@ -7961,11 +7961,7 @@
     "/post/۷-تکنیک-ژاپنی-برای-مقابله-با-تنبلی-1783486077683"
   ],
   "new_snapshot_routes_missing_from_candidate": [],
-  "new_snapshot_tag_routes": [
-    "/tag/%D8%A7%D8%A8%D9%88%D8%A7%D9%84%D9%85%D8%B4%D8%A7%D8%BA%D9%84",
-    "/tag/%D8%A8%D9%84_%D9%87%D9%88%DA%A9%D8%B2",
-    "/tag/%D8%B3%D9%88%DB%8C_%D8%AE%D8%A7%D9%86%D9%87_%D8%B3%D9%88%D8%A7%D9%86"
-  ],
+  "new_snapshot_tag_routes": [],
   "new_snapshot_tag_routes_missing_from_candidate": [],
   "new_snapshot_pagination_routes": [],
   "new_snapshot_pagination_routes_missing_from_candidate": [],
@@ -8054,21 +8050,6 @@
     "/search",
     "/sitemap.xml"
   ],
-  "new_snapshot_routes": [
-    "/post/1914",
-    "/post/1915",
-    "/post/1916",
-    "/post/1917",
-    "/post/1918",
-    "/post/1919",
-    "/post/1920",
-    "/post/او-هرگاه-در-دیگران-مزیتی-میدید،-1791966738067",
-    "/post/تنهاییدانستن،-هستهٔ-1791991818027",
-    "/post/تو-نمیتونی-الان-بری-1791999018058",
-    "/post/تو-واقعا-از-من-نفرت-داری؟-1791988217961",
-    "/post/لویزاگه-میتونستی-تمام-زندگیت-رو-از-اول-تا-آخرش-ببینی-چیزی-رو-عوض-میکرد-1791959418010",
-    "/post/من-نمیتونم-باهات-ازدواج-کنم-1791988338093",
-    "/post/همانگونه-که-یک-نیمه-ی-در،-1791966617993"
-  ],
+  "new_snapshot_routes": [],
   "new_control_routes": []
 }
