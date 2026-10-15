@@ -1,3 +1,19 @@
+# Current platform-audit handoff — 2026-10-15
+
+Website190 completed; overall platform phase BLOCKED only on the documented held API rollout. Read MAHOON-PLATFORM-AUDIT-AND-OPTIMIZATION-REPORT.md first. Owner declined local BOT_TOKEN; do not ask again, rotate it, alter webhook, deploy a fail-closed guard without registration, expose secrets or create a real test post. Continue only when supported Bot API registration/channel verification access or owner-performed steps are actually available.
+
+- Journal151,active/pendingnull; transaction533326ce77323b7bdb19c03aa3d43a6129fa979ff1006eda0034cf62321d06f8 completed190. Do not resume/replay163/181/185/190 or the retired188.
+- Site5413751a-cf7e-4f90-aa55-562c520f0054100%; baseline1c92b5b0-0426-4f8f-8328-ee741569149b0%; deployment449be33f-3cc1-4312-890f-f3df67718c1f.
+- Source45c4d3f39cbcbf7ad7198602fde359e12edcc2d1; statee3abee4dab87410eecd064e48ae0965e8f295141; journal completion88a9cd68795c357c2cc29d8cd88a916e2c6dfd09; diagnostic fixes through61a33bef65183f2eabe696a9ef9fa8b768a07a62. Final delivery commit changes documents only.
+- Run38717369912 SUCCESS,11production gates; independent38727489912 12/12PASS; platform38726004896 PASS; sanitized authoritative reconciliation38727878134 PASS;905-test safety38717022249 no failures/errors,1optional historical-artifact skip.
+- Current snapshot1852posts/943dedup entries/4245routes/606objects/613index identities; actual1921–1923 accepted. Last content190=persisted190. Refresh readbacks before any future work.
+- API tg-cms-api remains its Sept12 deployment375258db-cb64-4154-a685-ee380f1e87a3/versionea717386-6580-4d39-93a0-6c224deae34e100%. Repo source is not the authoritative live module. Prepared exact-module source and local D1 tests are private; coordinated source/settings/D1-backup/staged rollout rules in workers/api/WEBHOOK-SECURITY-ROLLOUT.md.
+- No background work/automation newly scheduled. Existing CHECK_ONLY/open breaker unchanged. Do not reopen unattended publishing while the inbound trust boundary remains unresolved. No current journal repair is pending.
+- Small private artifacts and final receipts:C:/Users/mehdi karani/AppData/Local/Temp/mahoon-platform-audit-20261015. Generated graphify-out is untracked cache, not production authority.
+
+---
+Historical accepted revision185 handoff follows; the current capsule above supersedes its current-state values.
+
 # MAHOON finalized and live
 
 **MAHOON_PROJECT_FINALIZED_AND_LIVE: PASS**

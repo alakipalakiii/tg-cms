@@ -1,15 +1,15 @@
 # MAHOON Platform Audit and Optimization
 
-**Status: IN PROGRESS. No phase PASS claimed.**
+**Status: BLOCKED — coordinated API security activation is held under the owner’s explicit instruction. Website revision190 is durably completed and independently accepted. No platform-phase PASS claimed.**
 
-Updated 2026-10-15, 14:53 Asia/Tehran / 11:23 UTC. This is a new audit phase. The previous revision185 publication remains successfully finalized; its report is historical acceptance, not a substitute for current tests. Later checkpoints supersede the initial observations below.
+Updated 2026-10-15, 15:04 Asia/Tehran / 11:34 UTC. This is a new audit phase. The previous revision185 publication remains successfully finalized; its report is historical acceptance, not a substitute for current tests. Later checkpoints supersede the initial observations below.
 
 ## Current execution summary
 
 - Hosted safety run38717022249 on source45c4d3f39cbcbf7ad7198602fde359e12edcc2d1:905 tests in67.449s, no failures/errors, one skip; locked website build PASS5.82s. Node22.23.3/Playwright1.63.0/Chromium153.0.8010.12. The skip requires two optional immutable historical artifact inputs; Linux materializer and browser fixtures executed.
 - Read-only platform run38717057790:health/posts/stats200; protected webhook-info401; unsigned empty updates still200/saved=false. Exact raw result SHA256 e72d7119999c0a645c649d7818ca88cac1c03d7c3c1dbe7664e4d4c294e4695e. No secret values, real channel messages or production writes. Its failure is the already-confirmed old-production Persian search variant defect, not a new browser/runtime failure. Current production also retains the old missing accessible status/Escape behavior.
-- Public API now includes actual posts1921,1922,1923; all absent from the old static index. Numeric article1923 returns404 with expected version1c92b5b0-0426-4f8f-8328-ee741569149b. New audio1923 created09:24:26UTC; live revision190 changed09:24:47UTC. Ingestion remains active; the static delivery gap is independently demonstrated.
-- One normal publication38717369912 was dispatched10:02:20UTC after successful hosted tests and fresh Git/journal/Cloudflare/concurrency/revision checks. It admitted revision190, transaction533326ce77323b7bdb19c03aa3d43a6129fa979ff1006eda0034cf62321d06f8, generation142. Build passed10:16:25UTC; pre-promotion proof passed10:45:12UTC. Upload/zero/promotion each APPLIED once; current authoritative deployment449be33f-3cc1-4312-890f-f3df67718c1f serves version5413751a-cf7e-4f90-aa55-562c520f0054100%, baseline1c92b5b0-0426-4f8f-8328-ee741569149b0%. Journal149, operation_reported; production proof started10:48:14UTC and is still running. Final persistence is pending. No production-completion claim, new transaction or APPLIED replay.
+- Pre-release public API included actual posts1921,1922,1923; all were absent from the old static index. Numeric article1923 returns404 with expected version1c92b5b0-0426-4f8f-8328-ee741569149b. New audio1923 created09:24:26UTC; live revision190 changed09:24:47UTC. Ingestion remains active; the static delivery gap is independently demonstrated.
+- Normal publication38717369912 completed SUCCESS. Executable source45c4d3f39cbcbf7ad7198602fde359e12edcc2d1; revision190; transaction533326ce77323b7bdb19c03aa3d43a6129fa979ff1006eda0034cf62321d06f8. Journal151, active=null/pending=null. Serving5413751a-cf7e-4f90-aa55-562c520f0054100%, deployment449be33f-3cc1-4312-890f-f3df67718c1f, baseline1c92b5b0-0426-4f8f-8328-ee741569149b0%. All11 production gates and final persistence PASS. No APPLIED operation repeated.
 - API security/source/replay/restore correction remains prepared and NOT DEPLOYED under the owner's explicit uninterrupted-ingestion/access instruction. No BOT_TOKEN was supplied, rotated or exposed; no webhook setting was changed. Website/admin copy is compatible with the current API response.
 
 | Finding | Current disposition |
@@ -35,13 +35,13 @@ Run38726004896 on the unpinned serving version:PASS; result SHA25633e9675a3252a4
 
 These laboratory samples use different runner/cache/network circumstances; they do not establish a causal frontend speed improvement or field INP. The controlled media-hashing fixture below is the measured optimization claim. Opened the exact preproof new audio1923 and mobile homepage screenshots; established logo/font/RTL/native-player layout retained.
 
-Run38725998368 independently passed archive/load-more, numeric-ID/home/category search/navigation, old OGG and MP4 playback, admin401/mobile navigation and new photo1921/1922 decoding. New audio1923 failed at image_decode:the diagnostic attempted scrollIntoViewIfNeeded on hidden modal/sticky player covers before playback. Its actual MP3 returned206, finite228.858776s/readyState4/no media error. A local real-Chromium fixture reproduced that exact hidden-image timeout; the diagnostic now scrolls only visible images while still decoding/checking dimensions of **every** image. Deliberately broken hidden image still rejects. This is a diagnostic correction, not a site/player change; corrected hosted new-audio playback acceptance remains pending. No full publication retry is required for this test correction.
+Run38725998368 independently passed archive/load-more, numeric-ID/home/category search/navigation, old OGG and MP4 playback, admin401/mobile navigation and new photo1921/1922 decoding. New audio1923 failed at image_decode:the diagnostic attempted scrollIntoViewIfNeeded on hidden modal/sticky player covers before playback. Its actual MP3 returned206, finite228.858776s/readyState4/no media error. A local real-Chromium fixture reproduced that exact hidden-image timeout; the diagnostic now scrolls only visible images while still decoding/checking dimensions of **every** image. Deliberately broken hidden image still rejects. This is a diagnostic correction, not a site/player change; corrected hosted new-audio playback subsequently passed in38727489912. No full publication retry is required for this test correction.
 
 ### Durable revision190 completion — 11:25 UTC / 14:55 Tehran
 
 Run38717369912 concluded SUCCESS. Production proof completed11:24:21UTC with all11 authoritative gates PASS, matching deployment449be33f-3cc1-4312-890f-f3df67718c1f/version5413751a-cf7e-4f90-aa55-562c520f0054100%/baseline1c92b5b0-0426-4f8f-8328-ee741569149b0%. Proof artifact d58ad376c576469dd4aa08f496837a4375d1c363e69c38bc8cd254ed6a57bdab; raw proof file SHA256757973067f21c0b8af9c6f504931d375f64249f21c7c56f613644c495aab06ea. Zero-origin counts all0 across7 public pages; visual/font/version checks pass.
 
-Final persistence reports COMPLETED, artifactda54593107f0ca4f9cb83b16d0a17694c63fa8e5f761a14c8665ef76ddd45551. Six state files committed ate3abee4dab87410eecd064e48ae0965e8f295141; canonical completion88a9cd68795c357c2cc29d8cd88a916e2c6dfd09, journal generation151, active=null/pending=null, revision190 completed/recoveryNONE. Post-run reconciler38727286924 was correctly skipped by its successful-run condition; no orphan mutation exists. A fresh GET-only baseline reconciliation and corrected independent new-audio check are pending next.
+Final persistence reports COMPLETED, artifactda54593107f0ca4f9cb83b16d0a17694c63fa8e5f761a14c8665ef76ddd45551. Six state files committed ate3abee4dab87410eecd064e48ae0965e8f295141; canonical completion88a9cd68795c357c2cc29d8cd88a916e2c6dfd09, journal generation151, active=null/pending=null, revision190 completed/recoveryNONE. Post-run reconciler38727286924 was correctly skipped by its successful-run condition; no orphan mutation exists. Corrected independent browser38727489912 and sanitized GET-only reconciliation38727878134 subsequently passed.
 
 Expected snapshot1852 posts,943 deduplicated search records,4245 routes,606 unique immutable media objects. Required media identities632:609 previously published,4 new identities,19 historical fallbacks,0 unresolved/hash mismatches/invalid payloads. Latest public revision was independently re-read190 after persistence; no fabricated revision or new publication is needed. Small metadata, proof/screenshots and persistence artifacts retained privately; the651MB build artifact was not downloaded locally.
 
@@ -70,26 +70,26 @@ Preserve existing Telegram hashtag ingestion, official logo/font, static renderi
 
 | Area | Existing implementation / authority | Verification so far |
 |---|---|---|
-| Telegram ingestion | API extractTelegramPost; channel/message and edited update variants; media association; D1 posts | Live source read; isolated regression/probe work pending |
+| Telegram ingestion | API extractTelegramPost; channel/message and edited update variants; media association; D1 posts | Live source/read-only D1/actual new posts verified; local workerd regression passes; SEC-01 activation held |
 | Hashtags/categories | Shared taxonomy:book,dialogue,audio,poetry/text,painting; audiobook overlaps book/audio | Source inspected; no mapping change proposed |
-| Automatic display | Existing ingestion and public category APIs; nonlocked Astro runtime fetches current API | Owner-confirmed feature; current content parity holds; distinguish from static publication; no new channel message sent |
+| Automatic display | Existing ingestion and public category APIs; nonlocked Astro runtime fetches current API | Ingestion verified by real posts1921–1923; static gap repaired by completed190; future unattended freshness held with SEC-01; no test channel message |
 | Database | Cloudflare D1 DB binding, posts, site_settings/revision and tag projections | Source inspected; no data mutation |
-| Public API | public/home-v1,posts-v1,tag-posts-v1,stats-v1 and safe SEO slug lookup | Runtime/public boundary probes pending hosted audit |
+| Public API | public/home-v1,posts-v1,tag-posts-v1,stats-v1 and safe SEO slug lookup | Fresh hosted public200/admin401/private-field exclusion; actual local SEO read-only regression |
 | Homepage | Astro server template, featured/latest/category/search/cards; locked-snapshot branch exists | Fresh mobile screenshot and16-check suite |
 | Archives | SSR source and static archive client; stable-ID search/load-more | Fresh20->40 pagination PASS |
 | Categories | Shared taxonomy and per-category pages | Fresh search/navigation PASS |
 | Articles | DB-ID/slug routes, RTL text/media/meta/related articles | Fresh seven article/image checks PASS |
-| Search | Static index contract V2 and public API search in dynamic mode | Numeric-ID PASS; Persian character/empty state tests next |
+| Search | Static index contract V2 and public API search in dynamic mode | Live numeric-ID/Persian variants/empty state/pagination PASS after repair |
 | Audio/video | Native audio layout plus global audio system, video controls, immutable media | Fresh finite duration and playback progress PASS |
 | Images | Original media fields, bootstrap immutable records, historical fallback handling | Fresh seven posts decoded images;19 historical fallback records from previous baseline |
 | Admin | Existing admin shell, token client, protected API routes and dedicated restore | Fresh visible login/unauthenticated401 PASS; no destructive tests |
-| SEO/indexing | SITE.url, read-only /seo/post/:slug, canonical/JSON-LD, sitemap/RSS/robots | Source inspected; previous full proof distinguished from this phase |
+| SEO/indexing | SITE.url, read-only /seo/post/:slug, canonical/JSON-LD, sitemap/RSS/robots | Fresh190 all11 gates,4245 routes; canonical/JSON-LD/sitemap failures0 |
 | Website runtime | Current static_version_main serves ASSETS and adds version identity; Astro dynamic worker is separate source path | Actual serving version verified; no assumption that CHECK_ONLY means ingestion absent |
-| Cache | Immutable static assets; current API/dynamic fetch policies differ | Header/performance measurements pending |
-| Static publication | Revision resolution/admission, sealed build,0% candidate, preproof,promote,production proof,six-file persistence | Canonical state closed; no new publication dispatched |
+| Cache | Immutable static assets; current API/dynamic fetch policies differ | Fresh version attribution and9-sample lab observations; immutable media verified |
+| Static publication | Revision resolution/admission, sealed build,0% candidate, preproof,promote,production proof,six-file persistence | 190 completed at journal151; state/proof/live identity match |
 | Recovery | Journal-derived reconciliation/readback/rollback; no APPLIED replay | Source inspected; previous completed recovery preserved |
 | Monitoring/errors | Existing safe diagnostics, retained proof observations, analytics v4/v5 paths, scheduler heartbeat | Duplicate supported versions require caller checks before removal |
-| Responsive/a11y | Existing header/footer/menu/RTL/font and player system | Fresh390px and desktop screenshots; tablet/keyboard measurements next |
+| Responsive/a11y | Existing header/footer/menu/RTL/font and player system | Fresh1440/768/390 screenshots; names/status/Escape verified live |
 
 ## Provisional defect register
 
@@ -111,7 +111,7 @@ Investigations, not yet claimed as confirmed production vulnerabilities:
 - Current screenshots from38705359244 accepted after opening the exact saved files:mobile menu/home and desktop1920 article. Earlier phase screenshots are not used as new audit evidence.
 - All private source, raw metadata and audit artifacts remain outside Git under C:/Users/mehdi karani/AppData/Local/Temp/mahoon-platform-audit-20261015. Do not commit secrets, actual account/D1 IDs or private configuration.
 
-## Next execution checkpoint
+## Initial execution plan (completed or superseded by final checkpoints)
 
 1. Complete architecture graph labeling/query; confirm live source differences and safe credential/backup capabilities without exposing values.
 2. Add/run focused hosted platform audit mode (tablet/Persian search/keyboard/lab performance/public API boundary and parity).
@@ -150,7 +150,7 @@ Hosted public GET health/posts/stats all200. Latest public listings expose none 
 
 ## Dependency audit, reachability and limits
 
-Fresh npm audit reports16 affected dependency entries (1critical/14high/1low, including transitive effects); this is not16 confirmed production exploits. Primary Astro advisory GHSA-26w7-cxv4-gfx2 requires processing untrusted AVIF through Sharp. This project uses imageService:passthrough; current static_version_main serves ASSETS rather than an Astro request renderer. Dev server/Miniflare are not public production servers. The request-time Astro attack path is therefore absent in the accepted static Worker. Do not blindly apply npm audit fix or claim the dependency findings resolved. Remaining advisory/build-time reachability review is pending.
+Fresh npm audit reports16 affected dependency entries (1critical/14high/1low, including transitive effects); this is not16 confirmed production exploits. Primary Astro advisory GHSA-26w7-cxv4-gfx2 requires processing untrusted AVIF through Sharp. This project uses imageService:passthrough; current static_version_main serves ASSETS rather than an Astro request renderer. Dev server/Miniflare are not public production servers. The request-time Astro attack path is therefore absent in the accepted static Worker. Do not blindly apply npm audit fix or claim the dependency findings resolved. Scope-specific runtime/build-input reachability triage is completed above; the affected dependency versions remain maintenance work.
 
 Sources: [Astro AVIF advisory](https://github.com/withastro/astro/security/advisories/GHSA-26w7-cxv4-gfx2), [Telegram webhook secret](https://core.telegram.org/bots/api#setwebhook), [Workers timingSafeEqual](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/#timingsafeequal).
 
@@ -284,3 +284,42 @@ Corrected read-only run38727489912:12/12PASS on unpinned serving5413751a-cf7e-4f
 GET-only reconciliation38727494130 independently reports baseline/Worker/domain/deployment/allocation PASS against the completed state. Its legacy helper unnecessarily included the account identifier in the output artifact, contrary to repository metadata rules. P2 DIAG-PRIVACY:removed the output field, kept account validation and internal GET paths intact, and replaced a real identifier in its test fixture with a synthetic value. A new assertion reproduced the exposure before correction; all19 baseline/negative/workflow tests pass after correction. A clean hosted reconciliation receipt will replace this optional raw receipt; required publication/journal/proof artifacts are preserved.
 
 Independent canonical verification:all six Git state blobs exactly match final-persistence SHA256 and byte lengths;613 indexed media identities; journal151 digestad1eb9bb352718ca644a8dcc9edaf0e4330892ded422e6e7781102a74c2d0e3e, revision190completed, active/pendingnull, upload/zero/promotion each one APPLIED attempt, rollback0. Latest content remains190. This completes website publication; the overall platform phase remains blocked on the explicitly held API trust-boundary activation.
+
+
+## Final checkpoint — 2026-10-15, 15:04 Tehran / 11:34 UTC
+
+**Website publication190: completed. Platform audit: BLOCKED on safe API activation.**
+
+- Sanitized authoritative GET-only reconciliation38727878134:PASS (Worker, official domain mapping, deployment,100/0allocation and persisted state); rawSHA25640b240807519704a23919a83c7dcc170586479b12c06d9707cab3ba7a66cc3c6. Verified it contains neither an account_id field nor the configured account value. Superseded optional raw receipt from38727494130 was removed after private retention and clean replacement. Required publication/journal/proof artifacts were not removed or modified. No history rewrite.
+- Production190 has4245/4245 final200 routes,4242 HTML,3704 ID/slug article routes,943 unique search IDs,606 verified immutable media objects,613 index identities. Canonical/SEO/JSON-LD/sitemap omissions, orphan posts, pagination overlap, media HTTP/MIME/version failures and version-attribution failures all0. Sitemap/RSS/robots and admin shell are included in the current crawler/11-gate proof.19 historical unavailable-source fallbacks remain explicit accepted maintenance,0 unresolved media; no such fallback for the three new posts.
+- Fresh independent browser38727489912:12/12PASS, including actual new posts1921–1923 and native MP3/OGG/MP4 playback progress. Fresh platform38726004896:all search/keyboard/status/responsive checks PASS,0 JS/forbidden dependencies. Exact final tablet homepage and new audio1923 screenshots were opened after download. Full905-test safety run38717022249 has0failures/errors,1 optional historical-artifact skip; later diagnostic changes have focused real-Chromium regressions, actual hosted acceptance and19/19 baseline tests. Overlapping suites are not summed.
+- Final API deployment independently remains375258db-cb64-4154-a685-ee380f1e87a3/versionea717386-6580-4d39-93a0-6c224deae34e100%. No API code/binding/secret/webhook/token/channel content was changed. The connection was preserved by withholding the coordinated backend correction; no uninterrupted-service uptime claim beyond observed evidence is made.
+- Source/mutation journal safety remains intact:one APPLIED attempt each for upload/zero/promotion,rollback0; journal151 completed190,active/pendingnull,proof and six persisted Git blobs match exactly. Last detected revision190 equals persisted190 at the cutoff. Normal publication38717369912 SUCCESS; post-run reconciler38727286924 correctly skipped a closed successful run. No resume, new transaction or expensive rerun is pending.
+
+### Exact remaining blocker and safe continuation
+
+SEC-01 remains a confirmed P0:the active generic POST handler lacks authenticated Telegram delivery and verified source authorization. Header/source/replay/restore repairs are prepared against both repository and exact live module and pass real local workerd/D1 tests; they are not production fixes yet. Existing BOT_TOKEN/ADMIN_TOKEN bindings are opaque to this environment. No supported authenticated getWebhookInfo/getChat/setWebhook operation can register/verify the matching secret and official channel with the current access. The owner explicitly declined supplying the credential and requires this particular change held if extra access is necessary.
+
+Minimum future owner-enabled step is supported authenticated Bot API registration/verification, either performed by the owner or through an authorized secure credential path; it does **not** require token rotation. Use the documented existing URL, matching secret, actual channel verification and drop_pending_updates=false. Before the coordinated live-module rollout, refresh source/settings/deployment and take the required private D1 backup. Preserve all current bindings/live-only logic, stage/test and verify before activation. Do not deploy the fail-closed guard now, expose Worker secrets, create a public migration endpoint, send a real test post or repeat the declined credential request. See workers/api/WEBHOOK-SECURITY-ROLLOUT.md.
+
+INGEST-01 replay and RESTORE-01 backend semantics remain prepared within that held live-module rollout. Current UI accurately describes the returned restore state. Historical duplicate rows remain untouched. Unattended static publication remains at the existing CHECK_ONLY/open-breaker policy:it was not disabled by this audit and is not reopened while the inbound trust boundary remains unresolved. Genuine current posts are published through190; automatic freshness of future posts is not claimed. This is the remaining production-safety limit, not a request for routine approval.
+
+### Commit and evidence index
+
+| Purpose | Commit |
+|---|---|
+| Responsive/public-boundary diagnostic |fa4c3995fe146dfa2ab1898a1ae896422dd23db6|
+| Deployed Persian search/a11y repair |a9fce831dfcfa6707fc2a8a5aca11d411cf96d31|
+| Prepared inbound guard (held) |83905b98a663708e237deb5189b9541b8dcfbade|
+| Prepared replay/source authorization (held) |415e99a78d06c5112afd0d42352a2314a9afedd0|
+| Prepared backend restore; compatible UI |38acff3267ae21617b633d6e624da7e776250db4|
+| Windows readback/media-hash reuse/33-file review |30400efba14fd07dd3206d47ddc0ca1035226ac2|
+| Hosted fixture identity/race; deployed executable source |45c4d3f39cbcbf7ad7198602fde359e12edcc2d1|
+| Final six-file production state |e3abee4dab87410eecd064e48ae0965e8f295141|
+| Canonical190 completion |88a9cd68795c357c2cc29d8cd88a916e2c6dfd09|
+| Hidden-cover diagnostic regression |92fe37405297a8c5b4ec0ca5bd80951e61ed1093|
+| Final diagnostic code / sanitized receipt repair |61a33bef65183f2eabe696a9ef9fa8b768a07a62|
+
+Final report/handoff-only commit is supplied with the delivery; it changes no runtime or journal state. Durable evidence is in the named GitHub runs and canonical state. Private small artifacts/checkpoints are under C:/Users/mehdi karani/AppData/Local/Temp/mahoon-platform-audit-20261015. No large build download, fake proof, manual journal edit, forced push or improvised rollback.
+
+Remaining optional work:P2 planned dependency maintenance with adapter compatibility;P3 physical iOS/Android codecs, screen-reader/contrast sampling, field INP and DevTools traces. These were not certified. No speculative redesign, brand/font replacement, new ingestion pipeline or destructive production test was introduced.
