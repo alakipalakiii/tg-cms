@@ -2256,7 +2256,8 @@ function mahoonTelegramPublicWebhookUrlV1(request, currentUrl) {
 }
 
 async function mahoonTelegramWebhookReadinessV1(request, env, info) {
-  const result = { contract: "MAHOON_WEBHOOK_READINESS_V1", ready: false, source_verified: false };
+  const result = { contract: "MAHOON_WEBHOOK_READINESS_V1", version_id: env.MAHOON_API_VERSION?.id || null,
+    ready: false, source_verified: false };
   if (!/^[A-Za-z0-9_-]{1,256}$/.test(env.TELEGRAM_WEBHOOK_SECRET || "")
       || !/^-100[0-9]+$/.test(env.TELEGRAM_SOURCE_CHAT_ID || "")) {
     return { ...result, reason: "Configuration unavailable" };

@@ -46,7 +46,8 @@ try {
   $headers['Cloudflare-Workers-Version-Overrides'] = 'tg-cms-api="' + $candidateVersion + '"'
   $info = Invoke-RestMethod ($webhookOrigin.TrimEnd('/') + '/admin/telegram/webhook-info') -Headers $headers
   if (-not $info.ok -or $info.readiness.contract -ne 'MAHOON_WEBHOOK_READINESS_V1' -or
-      $info.readiness.ready -ne $true -or $info.readiness.source_verified -ne $true) { throw 'Readiness rejected; no registration' }
+      $info.readiness.ready -ne $true -or $info.readiness.source_verified -ne $true -or
+      $info.readiness.version_id -ne $candidateVersion) { throw 'Readiness rejected; no registration' }
   $registered = Invoke-RestMethod ($webhookOrigin.TrimEnd('/') + '/admin/telegram/webhook-refresh') -Method Post -Headers $headers
   if ($registered.ok -ne $true -or $registered.refreshed -ne $true -or
       $registered.telegram_set_result -ne $true) { throw 'Reconcile; do not retry' }

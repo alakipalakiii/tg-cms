@@ -45,7 +45,7 @@ let registrationCalls = 0;
 let setAcknowledged = true, afterRegistration = null, botFailure = false;
 const refresh = new Miniflare({ modules: true, script: fixture, compatibilityDate: '2026-01-01',
   bindings: { TELEGRAM_WEBHOOK_SECRET: 'fixture-secret', TELEGRAM_SOURCE_CHAT_ID: '-1000000000001',
-    ADMIN_TOKEN: 'fixture-admin', BOT_TOKEN: 'fixture-token' },
+    ADMIN_TOKEN: 'fixture-admin', BOT_TOKEN: 'fixture-token', MAHOON_API_VERSION: { id: 'fixture-candidate-version' } },
   outboundService: async (request) => {
     if (botFailure) throw new Error('https://api.telegram.org/botfixture-token/private-error');
     if (new URL(request.url).pathname.endsWith('/getChat')) {
@@ -65,6 +65,7 @@ try {
     { headers: { 'X-Admin-Token': 'fixture-admin' } });
   const readiness = (await info.json()).readiness;
   assert.equal(readiness?.contract, 'MAHOON_WEBHOOK_READINESS_V1');
+  assert.equal(readiness.version_id, 'fixture-candidate-version');
   assert.equal(readiness.ready, true); assert.equal(readiness.source_verified, true);
   assert.equal(readiness.verified_channel_id, '-1000000000001');
   const response = await refresh.dispatchFetch('https://offline.invalid/admin/telegram/webhook-refresh',
