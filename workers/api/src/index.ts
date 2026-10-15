@@ -4562,6 +4562,16 @@ export default {
           return managementResponse;
         }
 
+        const source = getTelegramSource(update);
+        if (source && !isTelegramAdmin(source, env)) {
+          if (!env.TELEGRAM_SOURCE_CHAT_ID) {
+            return json({ ok: false, error: "Webhook unavailable" }, 503);
+          }
+          if (source.chat?.type !== "channel" || String(source.chat?.id) !== String(env.TELEGRAM_SOURCE_CHAT_ID)) {
+            return json({ ok: true, saved: false, reason: "Unapproved source" });
+          }
+        }
+
         const telegramPost = extractTelegramPost(update);
 
         if (!telegramPost) {
@@ -4685,7 +4695,10 @@ export default {
             is_published,
             view_count
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0
+          WHERE NOT EXISTS (
+            SELECT 1 FROM posts WHERE telegram_message_id = ? AND chat_id = ?
+          )
           `
         ).bind(
           telegramPost.text,
@@ -4705,8 +4718,14 @@ export default {
           telegramPost.photo_file_id,
           telegramPost.photo_unique_id,
           telegramPost.photo_width,
-          telegramPost.photo_height
+          telegramPost.photo_height,
+          telegramPost.telegram_message_id,
+          telegramPost.chat_id
         ).run();
+        // A replay must not restore a deleted post or create a second stable ID.
+        if (Number(result.meta?.changes || 0) === 0) {
+          return json({ ok: true, saved: false, duplicate: true });
+        }
         const mahoonProjectionTelegramCreatedId = Number(result.meta?.last_row_id || 0);
         if (mahoonProjectionTelegramCreatedId > 0) {
           await mahoonScaleSyncPostTagProjectionV1(

@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 const require = createRequire(new URL('../../website/dreary-disk/package.json', import.meta.url));
 const { build } = require('esbuild');
 const { Miniflare } = require('miniflare');
-const compiled = await build({ entryPoints: [fileURLToPath(new URL('../../workers/api/src/index.ts', import.meta.url))],
+const entry = process.argv[2] ? resolve(process.argv[2]) : fileURLToPath(new URL('../../workers/api/src/index.ts', import.meta.url));
+const compiled = await build({ entryPoints: [entry],
   bundle: true, write: false, format: 'esm', platform: 'browser' });
 // The binding throws before any database operation; no production database or network is used.
 const fixture = compiled.outputFiles[0].text.replace('async fetch(request, env) {',
@@ -14,7 +16,7 @@ assert.notEqual(fixture, compiled.outputFiles[0].text);
 const update = { channel_post: { message_id: 1, chat: { id: -1000000000001, type: 'channel' }, text: 'Offline fixture #کتاب' } };
 for (const secret of [undefined, '', 'invalid secret', 'fixture-secret']) {
   const mf = new Miniflare({ modules: true, script: fixture, compatibilityDate: '2026-01-01',
-    bindings: secret === undefined ? {} : { TELEGRAM_WEBHOOK_SECRET: secret },
+    bindings: { ...(secret === undefined ? {} : { TELEGRAM_WEBHOOK_SECRET: secret }), TELEGRAM_SOURCE_CHAT_ID: '-1000000000001' },
     outboundService: () => { throw new Error('OFFLINE_NETWORK_BLOCKED'); } });
   try {
     for (const supplied of [undefined, 'wrong-secret', 'fixture-secret']) {
@@ -54,7 +56,62 @@ try {
   assert.deepEqual(webhookPayload.allowed_updates, ['message', 'edited_message', 'channel_post', 'edited_channel_post']);
   assert.ok(!(await response.text()).includes('fixture-secret'));
 } finally { await refresh.dispose(); }
-const source = await readFile(new URL('../../workers/api/src/index.ts', import.meta.url), 'utf8');
+const source = await readFile(entry, 'utf8');
 assert.ok(source.indexOf('telegramWebhookRejection(request, env.TELEGRAM_WEBHOOK_SECRET)')
   < source.indexOf('const update = await request.json();'));
-console.log('Telegram boundary: actual workerd runtime, missing/invalid configuration, unsigned/wrong/correct token, empty update, admin boundary; no real writes/network.');
+const ingestion = new Miniflare({ modules: true, script: compiled.outputFiles[0].text, compatibilityDate: '2026-01-01',
+  bindings: { TELEGRAM_WEBHOOK_SECRET: 'fixture-secret', TELEGRAM_SOURCE_CHAT_ID: '-1000000000001', BOT_ADMIN_IDS: '123' }, d1Databases: ['DB'],
+  outboundService: () => { throw new Error('OFFLINE_NETWORK_BLOCKED'); } });
+try {
+  const db = await ingestion.getD1Database('DB');
+  const schema = await readFile(new URL('../../workers/api/migrations/0003_posts_baseline_and_indexes.sql', import.meta.url), 'utf8');
+  await db.batch(schema.split(';').filter((sql) => sql.trim()).map((sql) => db.prepare(sql)));
+  await db.prepare('CREATE TABLE mahoon_post_tags_v1(post_id INTEGER, tag_norm TEXT, PRIMARY KEY(post_id,tag_norm))').run();
+  const deliver = async (body) => {
+    const response = await ingestion.dispatchFetch('https://offline.invalid/telegram', { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': 'fixture-secret' }, body: JSON.stringify(body) });
+    assert.equal(response.status, 200); return response.json();
+  };
+  const photo = { message_id: 11, date: 1700000000, chat: { id: -1000000000001, type: 'channel' },
+    caption: 'Fixture #کتاب', photo: [{ file_id: 'fixture-file', file_unique_id: 'fixture-media', width: 640, height: 480 }] };
+  assert.equal((await deliver({ channel_post: photo })).saved, true);
+  let row = await db.prepare('SELECT * FROM posts').first();
+  const stableId = row.id, stableSlug = row.slug;
+  assert.equal(row.photo_file_id, 'fixture-file'); assert.equal(row.created_at, '2023-11-14 22:13:20');
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  assert.equal((await deliver({ channel_post: photo })).duplicate, true);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM posts').first()).n, 1, 'Telegram replay must not insert another row');
+  await Promise.all([deliver({ channel_post: photo }), deliver({ channel_post: photo })]);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM posts').first()).n, 1);
+  for (const envelope of [{ channel_post: { ...photo, chat: { id: -1000000000002, type: 'channel' } } },
+    { message: { ...photo, chat: { id: 999, type: 'private' }, from: { id: 999 } } }]) {
+    assert.equal((await deliver(envelope)).reason, 'Unapproved source');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM posts').first()).n, 1);
+  }
+  assert.equal((await deliver({ edited_channel_post: { ...photo, caption: 'Edited fixture #صوتی' } })).edited, true);
+  row = await db.prepare('SELECT * FROM posts').first();
+  assert.equal(row.id, stableId); assert.equal(row.slug, stableSlug); assert.equal(row.text, 'Edited fixture #صوتی');
+  assert.equal((await db.prepare('SELECT tag_norm FROM mahoon_post_tags_v1 WHERE post_id=?').bind(stableId).first()).tag_norm, 'صوتی');
+  await db.prepare("UPDATE posts SET deleted_at='2026-01-01',is_published=0 WHERE id=?").bind(stableId).run();
+  await deliver({ channel_post: photo });
+  await deliver({ edited_channel_post: photo });
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM posts').first()).n, 1);
+  row = await db.prepare('SELECT * FROM posts').first();
+  assert.equal(row.deleted_at, '2026-01-01'); assert.equal(row.is_published, 0);
+  for (const [position, kind] of ['audio', 'voice', 'video', 'document'].entries()) {
+    assert.equal((await deliver({ channel_post: { message_id: 20 + position, date: 1700000000 + position,
+      chat: photo.chat, caption: 'Fixture #صوتی', [kind]: { file_id: 'fixture-' + kind, file_unique_id: 'unique-' + kind, duration: 10 } } })).saved, true);
+    const media = await db.prepare('SELECT media_type,media_file_id FROM posts WHERE telegram_message_id=?').bind(20 + position).first();
+    assert.equal(media.media_type, kind); assert.equal(media.media_file_id, 'fixture-' + kind);
+  }
+  const adminPost = { ...photo, message_id: 50, chat: { id: 123, type: 'private' }, from: { id: 123 } };
+  assert.equal((await deliver({ message: adminPost })).saved, true);
+} finally { await ingestion.dispose(); }
+const missingSource = new Miniflare({ modules: true, script: fixture, compatibilityDate: '2026-01-01',
+  bindings: { TELEGRAM_WEBHOOK_SECRET: 'fixture-secret' }, outboundService: () => { throw new Error('OFFLINE_NETWORK_BLOCKED'); } });
+try {
+  assert.equal((await missingSource.dispatchFetch('https://offline.invalid/telegram', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': 'fixture-secret' },
+    body: JSON.stringify(update) })).status, 503);
+} finally { await missingSource.dispose(); }
+console.log('Telegram boundary and local D1: authentication, source authorization, refresh, sequential/concurrent replay, edits, stable IDs/slugs, deleted-post preservation, photo/audio/voice/video/document; no production writes/network.');
