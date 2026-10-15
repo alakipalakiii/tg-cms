@@ -181,11 +181,11 @@ class ResumableTransactionTests(unittest.TestCase):
     def test_scheduled_workflow_uses_staggered_slots_and_latest_main(self):
         workflow = Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8")
         self.assertIn('cron: "17,47 * * * *"', workflow)
-        checkout_expr = "ref: " + chr(36) + "{{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && 'main' || github.ref }}"
-        self.assertEqual(2, workflow.count(checkout_expr))
-        self.assertIn("SCHEDULE_EVENT_SHA=$GITHUB_SHA", workflow)
-        self.assertIn("EXECUTION_MAIN_SHA=$execution_sha", workflow)
-        self.assertIn("MAHOON_EXECUTION_SHA=$execution_sha", workflow)
+        checkout_expr = "ref: " + chr(36) + "{{ (github.event_name == 'schedule' || inputs.mode == 'AUTO_TICK') && 'main' || github.sha }}"
+        self.assertEqual(1, workflow.count(checkout_expr))
+        self.assertIn("print('SCHEDULE_EVENT_SHA=' + receipt['event_sha'])", workflow)
+        self.assertIn("source_sha: ${{ steps.source.outputs.source_sha }}", workflow)
+        self.assertIn("MAHOON_EXECUTION_SHA: ${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", workflow)
 
     def test_promotion_timeout_budgets_include_rollback_reserve(self):
         workflow = Path(".github/workflows/mahoon-static-publisher.yml").read_text(encoding="utf-8")

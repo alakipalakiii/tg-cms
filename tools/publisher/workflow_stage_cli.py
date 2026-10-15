@@ -935,6 +935,7 @@ def _parser() -> argparse.ArgumentParser:
     resolve = commands.add_parser("resolve-revision")
     resolve.add_argument("--published-state", default="publisher-state/published-static-state.json")
     resolve.add_argument("--output", required=True)
+    resolve.add_argument("--source-sha")
 
     bootstrap = commands.add_parser("bootstrap-journal")
     bootstrap.add_argument("--repository", required=True)
@@ -983,6 +984,7 @@ def _parser() -> argparse.ArgumentParser:
                          help="Repository owner for read-only GitHub run evidence")
     abandon.add_argument("--github-repo", default=None,
                          help="Repository name for read-only GitHub run evidence")
+    abandon.add_argument("--execution-context")
 
     rebuild = commands.add_parser("reset-build-ready",
                                   help="Narrowly-scoped recovery: reset a clean build_ready transaction to admitted for a fresh rebuild")
@@ -1022,6 +1024,7 @@ def _parser() -> argparse.ArgumentParser:
                            help="Original publisher workflow run attempt")
     reconcile.add_argument("--source-sha", required=True,
                            help="Source SHA of the original publisher run")
+    reconcile.add_argument("--execution-context")
     reconcile.add_argument("--github-owner", required=True,
                            help="GitHub repository owner")
     reconcile.add_argument("--github-repo", required=True,
@@ -1205,6 +1208,37 @@ def _run_gh_api(base: str, path: str, *, env: dict) -> str:
     return result.stdout
 
 
+def validate_execution_source(run: dict, source_sha: str, repository: str,
+                              run_id: str, attempt: int, context: dict | None = None) -> None:
+    """Context must come from the bound run's a6-execution-source artifact."""
+    if context is None and run.get("head_sha") == source_sha:
+        return  # Accepted legacy/manual run: executable source equals event source.
+    if not isinstance(context, dict) or (
+        context.get("contract") != "MAHOON_EXECUTION_SOURCE_V1"
+        or context.get("event_sha") != run.get("head_sha")
+        or context.get("source_sha") != source_sha
+        or context.get("run_id") != str(run_id)
+        or context.get("run_attempt") != attempt
+        or context.get("repository") != repository
+        or context.get("event") != run.get("event")
+        or context.get("ref") != "refs/heads/main"
+        or run.get("head_branch") != "main"
+        or run.get("path", "").split("@", 1)[0] != ".github/workflows/mahoon-static-publisher.yml"
+        or len(source_sha) != 40 or any(c not in "0123456789abcdef" for c in source_sha)
+    ):
+        raise ValueError("source run head SHA does not match the sealed build or authenticated execution context")
+    if run.get("head_sha") != source_sha and not (
+        context["event"] == "schedule" or
+        (context["event"] == "workflow_dispatch" and context.get("mode") == "AUTO_TICK")
+    ):
+        raise ValueError("only an automatic tick may resolve a newer executable main")
+
+
+def _execution_context(args) -> dict | None:
+    path = getattr(args, "execution_context", None)
+    return _json(path) if path and Path(path).is_file() else None
+
+
 def _fetch_github_run_evidence(args, source_sha: str) -> dict:
     if not args.github_owner or not args.github_repo:
         raise ValueError("abandonment requires --github-owner and --github-repo for read-only run evidence")
@@ -1213,8 +1247,8 @@ def _fetch_github_run_evidence(args, source_sha: str) -> dict:
     env.pop("CLOUDFLARE_READ_API_TOKEN", None)
     base = f"{args.github_owner}/{args.github_repo}"
     run_data = json.loads(_run_gh_api(base, f"actions/runs/{args.source_run_id}", env=env))
-    if run_data.get("head_sha") != source_sha:
-        raise ValueError("source run head SHA does not match the sealed build")
+    validate_execution_source(run_data, source_sha, base, str(args.source_run_id),
+                              args.source_run_attempt, _execution_context(args))
     if run_data.get("head_repository", {}).get("full_name") != base:
         raise ValueError("source run belongs to another repository")
     if int(run_data.get("run_attempt") or 0) != args.source_run_attempt:
@@ -1369,8 +1403,8 @@ def reconciliation_decision(args) -> dict:
         raise ValueError("source run belongs to another repository")
     if int(run_data.get("run_attempt") or 0) != args.source_run_attempt:
         raise ValueError("source run attempt does not match the recorded attempt")
-    if run_data.get("head_sha") != args.source_sha:
-        raise ValueError("source run head SHA does not match the sealed build")
+    validate_execution_source(run_data, args.source_sha, base, str(args.source_run_id),
+                              args.source_run_attempt, _execution_context(args))
     jobs = json.loads(_run_gh_api(base, f"actions/runs/{args.source_run_id}/jobs?per_page=100", env=env)).get("jobs", [])
     job_name_map = {
         "upload_version": "cloudflare-upload-operation",
@@ -1563,7 +1597,7 @@ def main(argv: list[str] | None = None) -> int:
             output = {"status": "VALID", "artifact_type": value["artifact_type"],
                       "artifact_sha256": value["artifact_sha256"]}
         elif args.command == "resolve-revision":
-            value = create_revision_resolution(args.published_state)
+            value = create_revision_resolution(args.published_state, source_sha=args.source_sha)
             transport.write_artifact(args.output, value, expected_type="revision_resolution")
             output = {"status": value["payload"]["decision"],
                       "artifact_sha256": value["artifact_sha256"]}

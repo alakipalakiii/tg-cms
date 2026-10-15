@@ -29,7 +29,7 @@ class AutoTickPolicyTests(unittest.TestCase):
 
 
     def test_auto_tick_promotion_ready_wiring(self):
-        self.assertIn("needs: [scheduled-policy-preflight, build-and-zero-percent, remote-proof]", self.workflow)
+        self.assertIn("needs: [build-validate, admission, resume-admission, scheduled-policy-preflight]", self.workflow)
         self.assertIn("inputs.mode == 'AUTO_TICK')) && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true' && 'YES' || inputs.ready", self.workflow)
 
     def test_native_schedule_promotion_ready_wiring(self):

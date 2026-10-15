@@ -138,7 +138,7 @@ class A6WorkflowContractTests(unittest.TestCase):
         self.assertIn("path: state", self.source)
         self.assertIn("--published-state state/publisher-state/production-content-fingerprint.json", self.source)
         self.assertNotIn("--published-state state/publisher-state/published-static-state.json", self.source)
-        self.assertIn("MAHOON_EXECUTION_SHA: ${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", self.source)
+        self.assertIn("MAHOON_EXECUTION_SHA: ${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", self.source)
 
     def test_resume_executable_code_checkouts_resolve_to_admitted_source_sha(self):
         """Every executable code checkout in the RESUME transaction chain must
@@ -152,7 +152,7 @@ class A6WorkflowContractTests(unittest.TestCase):
         an inner single-quoted string is not valid flow-mapping YAML)."""
         # The YAML scalar is double-quoted so the flow mapping stays parseable;
         # inside the GitHub Actions expression the mode literal MUST be single-quoted.
-        ref_expr = "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}"
+        ref_expr = "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}"
         resume_chain = [
             "journal-resume-verify", "revision-resolve", "admission", "resume-admission",
             "build-validate", "build-ready-write",
@@ -189,7 +189,7 @@ class A6WorkflowContractTests(unittest.TestCase):
 
         for name in resume_chain:
             r = code_ref(name)
-            expected = "${{ github.sha }}" if name in {"promote-intent-write", "promote-result-write"} else ref_expr
+            expected = "${{ needs.scheduled-policy-preflight.outputs.source_sha }}" if name in {"promote-intent-write", "promote-result-write"} else ref_expr
             self.assertEqual(expected, r,
                 f"{name} has an unexpected executable source ref: {r!r}")
         # State checkouts must stay on main (authoritative mutable state).
@@ -200,10 +200,11 @@ class A6WorkflowContractTests(unittest.TestCase):
                     self.assertEqual("main", w.get("ref"),
                                      f"{name} state checkout must remain on main")
 
-        for name in ("retire-stale-admitted", "journal-bootstrap"):
+        for name in ("retire-stale-admitted",):
             self.assertEqual("${{ github.sha }}", code_ref(name),
                 f"{name} is not part of the RESUME chain; keep github.sha")
-        self.assertEqual("${{ github.sha }}", code_ref("resume-promote-carryforward"))
+        self.assertEqual("${{ needs.scheduled-policy-preflight.outputs.source_sha }}", code_ref("resume-promote-carryforward"))
+        self.assertEqual("${{ needs.scheduled-policy-preflight.outputs.source_sha }}", code_ref("journal-bootstrap"))
 
     def test_resume_source_sha_required_for_resume_checkouts(self):
         """The fail-closed ref expression must reject empty resume_source_sha.
@@ -235,7 +236,7 @@ class A6WorkflowContractTests(unittest.TestCase):
 
     def test_no_legacy_combined_mutating_authority(self):
         for name in ("build-and-zero-percent", "remote-proof", "promote-and-validate",
-                     "persist-state", "scheduled-circuit-breaker"):
+                     "persist-state"):
             self.assertEqual("false", self.jobs[name].get("if"), name)
         for name, job in self.jobs.items():
             needs = job.get("needs", [])
@@ -291,9 +292,9 @@ class A6WorkflowContractTests(unittest.TestCase):
                               if (step.get("with") or {}).get("path") == "code")
                 diagnostic = next(step for step in job["steps"]
                                   if (step.get("with") or {}).get("path") == "diagnostics")
-                self.assertEqual("${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}",
+                self.assertEqual("${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}",
                                  source["with"]["ref"])
-                self.assertEqual("${{ github.sha }}", diagnostic["with"]["ref"])
+                self.assertEqual("${{ needs.scheduled-policy-preflight.outputs.source_sha }}", diagnostic["with"]["ref"])
                 self.assertEqual("false", diagnostic["with"]["persist-credentials"])
                 self.assertIn(f"python diagnostics/tools/publisher/workflow_stage_cli.py {command}", str(job))
                 self.assertIn("npm ci --prefix diagnostics/website/dreary-disk", str(job))

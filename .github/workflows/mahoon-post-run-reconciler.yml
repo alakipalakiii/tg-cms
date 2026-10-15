@@ -185,6 +185,13 @@ jobs:
               print(f"RECONCILE=none; run {run_id} does not own the journaled intent digest (recording runs={attempts}, artifact {intent_artifact_full!r} present={intent_artifact_full in artifact_names})")
               sys.exit(0)
 
+          # Resolve source from this run's immutable receipt, never from queued event metadata alone.
+          context_path = Path('handoff') / f'a6-execution-source-{run_id}' / 'execution-source.json'
+          context = json.loads(context_path.read_text(encoding='utf-8')) if context_path.is_file() else None
+          source_sha = producer.get('source_sha', '')
+          from publisher.workflow_stage_cli import validate_execution_source
+          validate_execution_source(run_data, source_sha, source_repo, run_id, source_attempt, context)
+
           job_map = {
               "upload_version": "cloudflare-upload-operation",
               "deploy_zero_percent": "cloudflare-zero-percent-operation",
@@ -309,6 +316,7 @@ jobs:
             --source-run-id "${{ steps.classify.outputs.run_id }}" \
             --source-run-attempt "${{ steps.classify.outputs.source_attempt }}" \
             --source-sha "${{ steps.classify.outputs.source_sha }}" \
+            --execution-context "handoff/a6-execution-source-${{ steps.classify.outputs.run_id }}/execution-source.json" \
             --github-owner "${OWNER_NAME}" \
             --github-repo "${BASE_NAME}" \
             --build-bundle "handoff/a6-build-${{ steps.classify.outputs.run_id }}/runner-evidence/v1-build-bundle.json" \
@@ -354,6 +362,7 @@ jobs:
             --source-run-id "${{ steps.classify.outputs.run_id }}" \
             --source-run-attempt "${{ steps.classify.outputs.source_attempt }}" \
             --source-sha "${{ steps.classify.outputs.source_sha }}" \
+            --execution-context "handoff/a6-execution-source-${{ steps.classify.outputs.run_id }}/execution-source.json" \
             --github-owner "${OWNER_NAME}" \
             --github-repo "${BASE_NAME}" \
             --build-bundle "handoff/a6-build-${{ steps.classify.outputs.run_id }}/runner-evidence/v1-build-bundle.json" \

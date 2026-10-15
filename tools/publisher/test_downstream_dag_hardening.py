@@ -576,7 +576,7 @@ class DownstreamDagHardeningTests(unittest.TestCase):
                       str(promote.get("if", "")))
         intent_checkout = next(step for step in promote["steps"]
                                if step.get("uses") == "actions/checkout@v4")
-        self.assertEqual("${{ github.sha }}", intent_checkout["with"]["ref"])
+        self.assertEqual("${{ needs.scheduled-policy-preflight.outputs.source_sha }}", intent_checkout["with"]["ref"])
         intent_command = next(step["run"] for step in promote["steps"]
                               if step.get("id") == "intent")
         self.assertIn("--reference handoff/runner-evidence/v1-build-bundle.json", intent_command)

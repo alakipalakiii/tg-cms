@@ -40,8 +40,8 @@ class PublishDagGateTests(unittest.TestCase):
                        "build-ready-write must require build-validate success")
         self.assertIn("!cancelled()", gate,
                        "build-ready-write must not run after cancellation")
-        self.assertIn("inputs.mode == 'PUBLISH'", gate,
-                       "gate must cover the PUBLISH branch explicitly")
+        self.assertIn("needs.admission.result == 'success'", gate,
+                       "fresh publication requires the policy-authorized admission")
         self.assertIn("inputs.mode == 'RESUME_ADMITTED'", gate,
                        "gate must cover the RESUME branch explicitly")
 
@@ -49,8 +49,8 @@ class PublishDagGateTests(unittest.TestCase):
         gate = str(self.job("build-ready-write").get("if", ""))
         # Fresh PUBLISH: admission success + build-validate success,
         # resume-admission skipped → gate must evaluate true.
-        self.assertIn("(inputs.mode == 'PUBLISH' || inputs.mode == 'PROMOTE_AND_VALIDATE')", gate,
-                       "PUBLISH branch must be present as a single unit")
+        self.assertIn("needs.admission.result == 'success'", gate,
+                       "manual and scheduled fresh publication share the admission branch")
         self.assertRegex(
             gate,
             r"needs\.build-validate\.result == 'success' && needs\.admission\.result == 'success'",

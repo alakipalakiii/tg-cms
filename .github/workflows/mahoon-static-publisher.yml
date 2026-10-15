@@ -241,20 +241,41 @@ jobs:
           echo "CI_TRAFFIC_MUTATION=NO"
 
   scheduled-policy-preflight:
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       publish_allowed: ${{ steps.policy.outputs.publish_allowed }}
       breaker_state: ${{ steps.policy.outputs.breaker_state }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ (github.event_name == 'schedule' || inputs.mode == 'AUTO_TICK') && 'main' || github.sha }}
+      - name: Pin the executable source independently of the queued event SHA
+        id: source
+        env:
+          MAHOON_TRIGGER_MODE: ${{ inputs.mode }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          receipt = {'contract': 'MAHOON_EXECUTION_SOURCE_V1', 'source_sha': source,
+                     'event_sha': os.environ['GITHUB_SHA'], 'run_id': os.environ['GITHUB_RUN_ID'],
+                     'run_attempt': int(os.environ['GITHUB_RUN_ATTEMPT']), 'repository': os.environ['GITHUB_REPOSITORY'],
+                     'ref': os.environ['GITHUB_REF'], 'event': os.environ['GITHUB_EVENT_NAME'],
+                     'mode': os.environ.get('MAHOON_TRIGGER_MODE', '')}
+          Path('execution-source.json').write_text(json.dumps(receipt, sort_keys=True) + '\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out: out.write('source_sha=' + source + '\n')
+          print('SCHEDULE_EVENT_SHA=' + receipt['event_sha'])
+          print('EXECUTION_SHA=' + source)
+          PY
+      - uses: actions/upload-artifact@v4
+        with: { name: 'a6-execution-source-${{ github.run_id }}', path: execution-source.json, if-no-files-found: error }
       - name: Validate scheduled publish policy before build
         id: policy
         run: |
-          python tools/publisher/scheduled_circuit_breaker.py preflight --path publisher-state/scheduled-publish-circuit-breaker.json
+          python tools/publisher/scheduled_circuit_breaker.py preflight --path publisher-state/scheduled-publish-circuit-breaker.json --journal publisher-state/production-transaction-journal.json
           echo "SCHEDULED_PUBLISH_POLICY=VARIABLE_AND_CIRCUIT_BREAKER"
   check-only:
     needs: scheduled-policy-preflight
@@ -269,7 +290,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK')) && 'main' || github.ref }}
+          ref: ${{ needs.scheduled-policy-preflight.outputs.source_sha }}
       - name: Read revision only; scheduled mode remains CHECK_ONLY
         run: python tools/m9/publisher_runner.py
 
@@ -551,58 +572,15 @@ jobs:
             git push origin HEAD:main
           fi
 
-  scheduled-circuit-breaker:
-    needs: [scheduled-policy-preflight, build-and-zero-percent, remote-proof, promote-and-validate, persist-state]
-    if: false # Legacy job outcomes do not describe the A6 stage graph.
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-      actions: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 1
-      - name: Open breaker after a scheduled transaction failure
-        env:
-          PREFLIGHT_STATE: ${{ needs.scheduled-policy-preflight.outputs.breaker_state }}
-          BUILD_RESULT: ${{ needs.build-and-zero-percent.result }}
-          REMOTE_RESULT: ${{ needs.remote-proof.result }}
-          PROMOTION_RESULT: ${{ needs.promote-and-validate.result }}
-          PERSIST_RESULT: ${{ needs.persist-state.result }}
-          RUN_ID: ${{ github.run_id }}
-          HEAD_SHA: ${{ github.sha }}
-        run: |
-          failed_job=""
-          if [ "$BUILD_RESULT" = "failure" ] || [ "$BUILD_RESULT" = "cancelled" ]; then failed_job="build-and-zero-percent"; fi
-          if [ -z "$failed_job" ] && { [ "$REMOTE_RESULT" = "failure" ] || [ "$REMOTE_RESULT" = "cancelled" ]; }; then failed_job="remote-proof"; fi
-          if [ -z "$failed_job" ] && { [ "$PROMOTION_RESULT" = "failure" ] || [ "$PROMOTION_RESULT" = "cancelled" ]; }; then failed_job="promote-and-validate"; fi
-          if [ -z "$failed_job" ] && { [ "$PERSIST_RESULT" = "failure" ] || [ "$PERSIST_RESULT" = "cancelled" ]; }; then failed_job="persist-state"; fi
-          if [ "$PREFLIGHT_STATE" != "CLOSED" ] || [ -z "$failed_job" ]; then
-            echo "scheduled breaker unchanged: state=$PREFLIGHT_STATE failed_job=$failed_job"
-            exit 0
-          fi
-          python tools/publisher/scheduled_circuit_breaker.py open \
-            --path publisher-state/scheduled-publish-circuit-breaker.json \
-            --run-id "$RUN_ID" \
-            --failed-job "$failed_job" \
-            --head-sha "$HEAD_SHA" \
-            --reason "scheduled run $RUN_ID ended $failed_job with failure/cancelled result"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add publisher-state/scheduled-publish-circuit-breaker.json
-          git diff --cached --quiet || git commit -m "chore: open scheduled publisher circuit breaker"
-          git push origin HEAD:main
-
   # A6 source-pinned, artifact-carried transaction stages.
   journal-bootstrap:
+    needs: [scheduled-policy-preflight]
     if: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && !(github.event_name == 'workflow_dispatch' && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE' || inputs.mode == 'RETIRE_STALE_ADMITTED' || inputs.mode == 'BROWSER_DIAGNOSTIC')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: '${{ github.sha }}', path: code }
+        with: { ref: '${{ needs.scheduled-policy-preflight.outputs.source_sha }}', path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/setup-python@v5
@@ -611,12 +589,13 @@ jobs:
         run: python code/tools/publisher/workflow_stage_cli.py bootstrap-journal --repository state --worker mahoon-art-magazine --remote origin --branch main
 
   journal-resume-verify:
+    needs: [scheduled-policy-preflight]
     if: ${{ github.event_name == 'workflow_dispatch' && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state, persist-credentials: false }
       - name: Verify pristine admission or the exact in-flight APPLIED transaction without writing state
@@ -776,13 +755,15 @@ jobs:
           PY
 
   revision-resolve:
-    needs: [journal-bootstrap, journal-resume-verify]
+    needs: [journal-bootstrap, journal-resume-verify, scheduled-policy-preflight]
     if: ${{ always() && ((github.event_name == 'workflow_dispatch' && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && needs.journal-resume-verify.result == 'success') || ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && !(github.event_name == 'workflow_dispatch' && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE')) && needs.journal-bootstrap.result == 'success')) }}
     runs-on: ubuntu-latest
     permissions: { contents: read, actions: read }
+    outputs:
+      decision: ${{ steps.revision-decision.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state, persist-credentials: false }
       - uses: actions/setup-python@v5
@@ -847,7 +828,9 @@ jobs:
           PY
       - name: Resolve revision for a new transaction
         if: ${{ inputs.mode != 'RESUME_ADMITTED' && inputs.mode != 'POST_PROMOTION_FINALIZE' }}
-        run: python code/tools/publisher/workflow_stage_cli.py resolve-revision --published-state state/publisher-state/production-content-fingerprint.json --output revision-resolution.json
+        run: python code/tools/publisher/workflow_stage_cli.py resolve-revision --published-state state/publisher-state/production-content-fingerprint.json --source-sha '${{ needs.scheduled-policy-preflight.outputs.source_sha }}' --output revision-resolution.json
+      - id: revision-decision
+        run: python -c "import json,os; d=json.load(open('revision-resolution.json')); open(os.environ['GITHUB_OUTPUT'],'a').write('decision='+d['payload']['decision']+'\n')"
       - uses: actions/upload-artifact@v4
         with:
           name: a6-revision-${{ github.run_id }}
@@ -856,14 +839,14 @@ jobs:
 
   admission:
     needs: [scheduled-policy-preflight, revision-resolve]
-    if: ${{ always() && needs.revision-resolve.result == 'success' && ((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true')) }}
+    if: ${{ always() && needs.revision-resolve.result == 'success' && needs.revision-resolve.outputs.decision == 'CHANGED' && ((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     outputs:
       decision: ${{ steps.admit-reuse.outputs.decision || steps.admit.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -914,7 +897,7 @@ jobs:
           if-no-files-found: error
 
   resume-admission:
-    needs: [journal-resume-verify, revision-resolve]
+    needs: [journal-resume-verify, revision-resolve, scheduled-policy-preflight]
     if: ${{ always() && github.event_name == 'workflow_dispatch' && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && needs.journal-resume-verify.result == 'success' && needs.revision-resolve.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: read, actions: read }
@@ -922,7 +905,7 @@ jobs:
       decision: ${{ steps.admit.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state, persist-credentials: false }
       - uses: actions/download-artifact@v4
@@ -994,13 +977,13 @@ jobs:
         with: { name: 'a6-admission-${{ github.run_id }}', path: runner-evidence/a6/admission.json, if-no-files-found: error }
 
   build-validate:
-    needs: [admission, resume-admission]
+    needs: [admission, resume-admission, scheduled-policy-preflight]
     if: ${{ always() && (((inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED' && (inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0')) || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED')) }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1064,7 +1047,7 @@ jobs:
         if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
-          EXECUTION_SHA: ${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}
+          EXECUTION_SHA: ${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}
           RESUME_MODE: ${{ inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE' }}
         run: |
           python - <<'PY'
@@ -1108,7 +1091,7 @@ jobs:
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
           PUBLISHER_MODE: BUILD_VALIDATE
-          MAHOON_EXECUTION_SHA: ${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}
+          MAHOON_EXECUTION_SHA: ${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}
           MAHOON_REVISION_RESOLUTION_ARTIFACT: ../handoff/revision-resolution.json
           MAHOON_ADMISSION_RECEIPT_ARTIFACT: ../handoff/admission.json
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -1117,7 +1100,7 @@ jobs:
         if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
-          EXECUTION_SHA: ${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}
+          EXECUTION_SHA: ${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}
           RESUME_MODE: ${{ inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE' }}
           MAHOON_PUBLIC_CONTENT_REVISION_API: https://mahoon-content-revision.morentoofficial.workers.dev/public/content-revision-v1
         run: |
@@ -1161,13 +1144,13 @@ jobs:
           if-no-files-found: error
 
   build-ready-write:
-    needs: build-validate
-    if: ${{ !cancelled() && ((inputs.mode == 'PUBLISH' || inputs.mode == 'PROMOTE_AND_VALIDATE') && needs.build-validate.result == 'success' && needs.admission.result == 'success') || ((inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && needs.build-validate.result == 'success' && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED') }}
+    needs: [build-validate, admission, resume-admission, scheduled-policy-preflight]
+    if: ${{ !cancelled() && ((needs.build-validate.result == 'success' && needs.admission.result == 'success') || ((inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && needs.build-validate.result == 'success' && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - name: Download the source run's sealed build bundle (in-flight resume)
@@ -1274,8 +1257,8 @@ jobs:
           overwrite: true
 
   production-baseline-reconciliation:
-    needs: build-ready-write
-    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES' && needs.build-ready-write.result == 'success' }}
+    needs: [build-ready-write, scheduled-policy-preflight]
+    if: ${{ !cancelled() && inputs.mode != 'RESUME_ADMITTED' && inputs.mode != 'POST_PROMOTION_FINALIZE' && needs.build-ready-write.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { actions: read }
     env:
@@ -1339,16 +1322,16 @@ jobs:
 
   # Mutation operations and their journal writes remain distinct credential boundaries.
   upload-intent-write:
-    needs: [build-ready-write, production-baseline-reconciliation]
+    needs: [build-ready-write, production-baseline-reconciliation, scheduled-policy-preflight]
     # ponytail: on resume the source upload intent is already durably recorded in the
     # live journal (reconciled APPLIED) and is re-exposed by resume-source-carryforward;
     # minting a second intent would corrupt the transaction, so skip the direct chain.
-    if: ${{ always() && needs.build-ready-write.result == 'success' && (inputs.mode != 'PUBLISH' || needs.production-baseline-reconciliation.result == 'success') && (inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0') }}
+    if: ${{ always() && needs.build-ready-write.result == 'success' && ((inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') || needs.production-baseline-reconciliation.result == 'success') && (inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0') }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1365,7 +1348,7 @@ jobs:
         with: { name: 'a6-upload-intent-${{ github.run_id }}', path: upload-intent.json, if-no-files-found: error }
 
   cloudflare-upload-operation:
-    needs: upload-intent-write
+    needs: [upload-intent-write, scheduled-policy-preflight]
     if: ${{ !cancelled() && needs.upload-intent-write.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -1373,7 +1356,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1404,7 +1387,7 @@ jobs:
         with: { name: 'a6-upload-result-${{ github.run_id }}', path: upload-result.json, if-no-files-found: error }
 
   upload-result-write:
-    needs: cloudflare-upload-operation
+    needs: [cloudflare-upload-operation, scheduled-policy-preflight]
     if: ${{ !cancelled() && needs.cloudflare-upload-operation.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
@@ -1414,7 +1397,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -1435,7 +1418,7 @@ jobs:
     # rather than upload-result-write, because on resume the direct upload-intent-write
     # self-blocks (COALESCED admission vs ADMITTED prerequisite) and the source
     # intent/result must be re-exposed regardless of the direct chain's outcome.
-    needs: [build-ready-write]
+    needs: [build-ready-write, scheduled-policy-preflight]
     if: ${{ always() && inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.build-ready-write.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: read, actions: read }
@@ -1444,7 +1427,7 @@ jobs:
       source_result_state: ${{ steps.bridge.outputs.source_result_state }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: '${{ github.sha }}', path: code }
+        with: { ref: '${{ needs.scheduled-policy-preflight.outputs.source_sha }}', path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - name: Download the source run's sealed upload intent and result
@@ -1511,7 +1494,7 @@ jobs:
   # The pre-promotion-proof and promote chain then complete using the carried
   # sealed evidence, preserving the original APPLIED identity.
   resume-zero-carryforward:
-    needs: [resume-source-carryforward]
+    needs: [resume-source-carryforward, scheduled-policy-preflight]
     # ponytail: skip when the source zero-percent is not already APPLIED,
     # or when we are not on the resume path with an APPLIED source upload.
     if: ${{ always() && inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.resume-source-carryforward.result == 'success' && needs.resume-source-carryforward.outputs.source_result_state == 'APPLIED' }}
@@ -1521,7 +1504,7 @@ jobs:
       carried: ${{ steps.bridge.outputs.carried }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: '${{ github.sha }}', path: code }
+        with: { ref: '${{ needs.scheduled-policy-preflight.outputs.source_sha }}', path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - name: Download the source run's sealed zero-percent intent
@@ -1601,7 +1584,7 @@ jobs:
           overwrite: true
 
   resume-upload-bridge:
-    needs: [upload-create-recovered-result]
+    needs: [upload-create-recovered-result, scheduled-policy-preflight]
     # ponytail: only meaningful when an UNKNOWN upload was recovered in-run;
     # on the APPLIED carryforward path these artifacts do not exist.
     if: ${{ always() && inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.upload-create-recovered-result.outputs.recovered == 'true' }}
@@ -1612,7 +1595,7 @@ jobs:
       recovered: ${{ needs.upload-create-recovered-result.outputs.recovered == 'true' && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: '${{ github.sha }}', path: code }
+        with: { ref: '${{ needs.scheduled-policy-preflight.outputs.source_sha }}', path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - name: Download this run's in-run derived recovery decision and readback
@@ -1662,7 +1645,7 @@ jobs:
           PY
 
   upload-recovery-readback-observe:
-    needs: [upload-result-write, resume-source-carryforward]
+    needs: [upload-result-write, resume-source-carryforward, scheduled-policy-preflight]
     # ponytail: an APPLIED source result is already reconciled in the journal and is
     # re-exposed directly by carryforward; the UNKNOWN-only recovery chain must not run.
     if: ${{ always() && ((needs.upload-result-write.outputs.result_state == 'UNKNOWN') || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.resume-source-carryforward.result == 'success' && needs.resume-source-carryforward.outputs.source_result_state == 'UNKNOWN')) }}
@@ -1672,7 +1655,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -1700,14 +1683,14 @@ jobs:
     # propagate that skip. The observe's own if already encodes when the
     # decision is meaningful, so require it to have actually run.
     if: ${{ always() && needs.upload-recovery-readback-observe.result == 'success' }}
-    needs: upload-recovery-readback-observe
+    needs: [upload-recovery-readback-observe, scheduled-policy-preflight]
     runs-on: ubuntu-latest
     permissions: { contents: read }
     outputs:
       decision: ${{ steps.decision.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1729,14 +1712,14 @@ jobs:
 
   upload-reconcile-recovery-decision:
     if: ${{ always() && needs.upload-recovery-decision.result == 'success' }}
-    needs: upload-recovery-decision
+    needs: [upload-recovery-decision, scheduled-policy-preflight]
     runs-on: ubuntu-latest
     permissions: { contents: write }
     outputs:
       reconciliation: ${{ steps.reconcile.outputs.reconciliation }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1749,7 +1732,7 @@ jobs:
           python -c "import json,os; open(os.environ['GITHUB_OUTPUT'],'a').write('reconciliation='+json.load(open('reconcile-status.json'))['status']+'\n')"
 
   upload-create-recovered-result:
-    needs: [upload-recovery-decision, upload-reconcile-recovery-decision]
+    needs: [upload-recovery-decision, upload-reconcile-recovery-decision, scheduled-policy-preflight]
     if: ${{ always() && needs.upload-recovery-decision.outputs.decision == 'RECONCILED_APPLIED' && needs.upload-reconcile-recovery-decision.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -1757,7 +1740,7 @@ jobs:
       recovered: ${{ steps.bridge.outputs.recovered }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1780,7 +1763,7 @@ jobs:
         with: { name: 'a6-upload-recovered-result-${{ github.run_id }}', path: recovered-upload-result.json, if-no-files-found: error }
 
   zero-percent-intent-write:
-    needs: [upload-result-write, upload-create-recovered-result, resume-source-carryforward, resume-zero-carryforward]
+    needs: [upload-result-write, upload-create-recovered-result, resume-source-carryforward, resume-zero-carryforward, scheduled-policy-preflight]
     # ponytail: the upload APPLIED proof arrives from the direct chain, the recovered
     # bridge (UNKNOWN source result), or the direct carryforward (APPLIED source result).
     # When the source zero-percent is already APPLIED and re-exposed by
@@ -1791,7 +1774,7 @@ jobs:
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1818,7 +1801,7 @@ jobs:
         with: { name: 'a6-zero-intent-${{ github.run_id }}', path: zero-percent-intent.json, if-no-files-found: error }
 
   cloudflare-zero-percent-operation:
-    needs: [zero-percent-intent-write, upload-create-recovered-result]
+    needs: [zero-percent-intent-write, upload-create-recovered-result, scheduled-policy-preflight]
     if: ${{ !cancelled() && needs.zero-percent-intent-write.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -1826,7 +1809,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1874,7 +1857,7 @@ jobs:
         with: { name: 'a6-zero-result-${{ github.run_id }}', path: zero-percent-result.json, if-no-files-found: error }
 
   zero-percent-result-write:
-    needs: cloudflare-zero-percent-operation
+    needs: [cloudflare-zero-percent-operation, scheduled-policy-preflight]
     if: ${{ !cancelled() && needs.cloudflare-zero-percent-operation.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
@@ -1884,7 +1867,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-upload-intent-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -1903,7 +1886,7 @@ jobs:
         with: { name: 'a6-zero-direct-result-${{ github.run_id }}', path: handoff/zero-percent-result.json, if-no-files-found: error }
 
   zero-recovery-readback-observe:
-    needs: zero-percent-result-write
+    needs: [zero-percent-result-write, scheduled-policy-preflight]
     if: ${{ always() && needs.zero-percent-result-write.outputs.result_state == 'UNKNOWN' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -1911,7 +1894,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-zero-intent-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -1937,14 +1920,14 @@ jobs:
 
   zero-recovery-decision:
     if: ${{ always() && needs.zero-recovery-readback-observe.result == 'success' }}
-    needs: zero-recovery-readback-observe
+    needs: [zero-recovery-readback-observe, scheduled-policy-preflight]
     runs-on: ubuntu-latest
     permissions: { contents: read }
     outputs:
       decision: ${{ steps.decision.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1968,12 +1951,12 @@ jobs:
 
   zero-reconcile-recovery-decision:
     if: ${{ always() && needs.zero-recovery-decision.result == 'success' }}
-    needs: zero-recovery-decision
+    needs: [zero-recovery-decision, scheduled-policy-preflight]
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -1983,7 +1966,7 @@ jobs:
       - run: python code/tools/publisher/workflow_stage_cli.py reconcile-recovery-decision --decision handoff/zero-recovery-decision.json --repository state --branch main
 
   zero-create-recovered-result:
-    needs: [zero-recovery-decision, zero-reconcile-recovery-decision]
+    needs: [zero-recovery-decision, zero-reconcile-recovery-decision, scheduled-policy-preflight]
     if: ${{ always() && needs.zero-recovery-decision.outputs.decision == 'RECONCILED_APPLIED' && needs.zero-reconcile-recovery-decision.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -1991,7 +1974,7 @@ jobs:
       recovered: ${{ steps.bridge.outputs.recovered }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2016,7 +1999,7 @@ jobs:
         with: { name: 'a6-zero-recovered-result-${{ github.run_id }}', path: recovered-zero-result.json, if-no-files-found: error }
 
   pre-promotion-proof:
-    needs: [zero-percent-result-write, zero-create-recovered-result, resume-zero-carryforward]
+    needs: [zero-percent-result-write, zero-create-recovered-result, resume-zero-carryforward, scheduled-policy-preflight]
     # ponytail: the zero-percent proof arrives from the direct result-write, the
     # recovered bridge, or the direct carryforward (when the source zero-percent
     # is already APPLIED and re-exposed under this run's canonical names).
@@ -2027,10 +2010,10 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       # Keep the published build source-pinned; use current read-only proof tooling for bounded diagnostics.
       - uses: actions/checkout@v4
-        with: { ref: '${{ github.sha }}', path: diagnostics, persist-credentials: false }
+        with: { ref: '${{ needs.scheduled-policy-preflight.outputs.source_sha }}', path: diagnostics, persist-credentials: false }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -2104,7 +2087,7 @@ jobs:
           if-no-files-found: ignore
 
   resume-preproof-carryforward:
-    needs: [build-ready-write, resume-zero-carryforward]
+    needs: [build-ready-write, resume-zero-carryforward, scheduled-policy-preflight]
     if: ${{ always() && (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.preproof_source_run_id != '' && inputs.preproof_source_run_id != null && inputs.preproof_source_run_id != '0' && needs.build-ready-write.result == 'success' && needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true' }}
     runs-on: ubuntu-latest
     permissions: { contents: read, actions: read }
@@ -2175,7 +2158,7 @@ jobs:
         with: { name: 'a6-preproof-${{ github.run_id }}', path: pre-promotion-proof.json, if-no-files-found: error }
 
   promote-intent-write:
-    needs: [pre-promotion-proof, resume-preproof-carryforward, zero-percent-result-write, zero-create-recovered-result, resume-zero-carryforward]
+    needs: [pre-promotion-proof, resume-preproof-carryforward, zero-percent-result-write, zero-create-recovered-result, resume-zero-carryforward, scheduled-policy-preflight]
     # ponytail: requires a passing pre-promotion proof and a zero-percent proof from
     # the direct result, the recovered bridge, or the carryforward path.
     if: ${{ always() && inputs.mode != 'POST_PROMOTION_FINALIZE' && (needs.pre-promotion-proof.result == 'success' || needs.resume-preproof-carryforward.outputs.carried == 'true') && (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true' || (needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true')) }}
@@ -2186,7 +2169,7 @@ jobs:
     steps:
       # The intent stays bound to the source build SHA; use the current CLI to preserve its verified references.
       - uses: actions/checkout@v4
-        with: { ref: "${{ github.sha }}", path: code }
+        with: { ref: "${{ needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2226,7 +2209,7 @@ jobs:
         with: { name: 'a6-promote-intent-${{ github.run_id }}', path: promote-intent.json, if-no-files-found: error }
 
   cloudflare-promote-operation:
-    needs: promote-intent-write
+    needs: [promote-intent-write, scheduled-policy-preflight]
     if: ${{ !cancelled() && needs.promote-intent-write.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -2234,7 +2217,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2283,7 +2266,7 @@ jobs:
         with: { name: 'a6-promote-result-${{ github.run_id }}', path: promote-result.json, if-no-files-found: error }
 
   promote-result-write:
-    needs: cloudflare-promote-operation
+    needs: [cloudflare-promote-operation, scheduled-policy-preflight, zero-create-recovered-result]
     if: ${{ !cancelled() && needs.cloudflare-promote-operation.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
@@ -2293,7 +2276,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/checkout@v4
-        with: { ref: '${{ github.sha }}', path: code }
+        with: { ref: '${{ needs.scheduled-policy-preflight.outputs.source_sha }}', path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -2335,7 +2318,7 @@ jobs:
         with: { name: 'a6-promote-direct-result-${{ github.run_id }}', path: handoff/promote-result.json, if-no-files-found: error }
 
   resume-promote-carryforward:
-    needs: [build-ready-write, resume-zero-carryforward, resume-preproof-carryforward]
+    needs: [build-ready-write, resume-zero-carryforward, resume-preproof-carryforward, scheduled-policy-preflight]
     if: >-
       ${{ always() && inputs.mode == 'POST_PROMOTION_FINALIZE' &&
           inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' &&
@@ -2349,7 +2332,7 @@ jobs:
       result_state: ${{ steps.carry.outputs.result_state }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: '${{ github.sha }}', path: code }
+        with: { ref: '${{ needs.scheduled-policy-preflight.outputs.source_sha }}', path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2476,7 +2459,7 @@ jobs:
         with: { name: 'a6-promote-direct-result-${{ github.run_id }}', path: handoff/promote-result.json, if-no-files-found: error }
 
   promote-recovery-readback-observe:
-    needs: promote-result-write
+    needs: [promote-result-write, scheduled-policy-preflight]
     if: ${{ always() && needs.promote-result-write.outputs.result_state == 'UNKNOWN' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -2484,7 +2467,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-promote-intent-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -2508,14 +2491,14 @@ jobs:
 
   promote-recovery-decision:
     if: ${{ always() && needs.promote-recovery-readback-observe.result == 'success' }}
-    needs: promote-recovery-readback-observe
+    needs: [promote-recovery-readback-observe, scheduled-policy-preflight]
     runs-on: ubuntu-latest
     permissions: { contents: read }
     outputs:
       decision: ${{ steps.decision.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2537,12 +2520,12 @@ jobs:
 
   promote-reconcile-recovery-decision:
     if: ${{ always() && needs.promote-recovery-decision.result == 'success' }}
-    needs: promote-recovery-decision
+    needs: [promote-recovery-decision, scheduled-policy-preflight]
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2552,7 +2535,7 @@ jobs:
       - run: python code/tools/publisher/workflow_stage_cli.py reconcile-recovery-decision --decision handoff/promote-recovery-decision.json --repository state --branch main
 
   promote-create-recovered-result:
-    needs: [promote-recovery-decision, promote-reconcile-recovery-decision]
+    needs: [promote-recovery-decision, promote-reconcile-recovery-decision, scheduled-policy-preflight]
     if: ${{ always() && needs.promote-recovery-decision.outputs.decision == 'RECONCILED_APPLIED' && needs.promote-reconcile-recovery-decision.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -2560,7 +2543,7 @@ jobs:
       recovered: ${{ steps.bridge.outputs.recovered }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -2583,9 +2566,7 @@ jobs:
         with: { name: 'a6-promote-recovered-result-${{ github.run_id }}', path: recovered-promote-result.json, if-no-files-found: error }
 
   production-proof:
-    needs: [upload-result-write, upload-create-recovered-result, zero-percent-result-write,
-      zero-create-recovered-result, promote-result-write, promote-create-recovered-result,
-      resume-source-carryforward, resume-zero-carryforward, resume-promote-carryforward]
+    needs: [upload-result-write, upload-create-recovered-result, zero-percent-result-write, zero-create-recovered-result, promote-result-write, promote-create-recovered-result, resume-source-carryforward, resume-zero-carryforward, resume-promote-carryforward, scheduled-policy-preflight]
     # ponytail: the APPLIED upload and zero proofs may arrive via their direct,
     # recovered, or in-flight carryforward paths.
     if: >-
@@ -2606,9 +2587,9 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
-        with: { ref: '${{ github.sha }}', path: diagnostics, persist-credentials: false }
+        with: { ref: '${{ needs.scheduled-policy-preflight.outputs.source_sha }}', path: diagnostics, persist-credentials: false }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -2759,16 +2740,15 @@ jobs:
           if-no-files-found: ignore
 
   final-state-materialization:
-    needs: [production-proof, upload-create-recovered-result, zero-create-recovered-result,
-      promote-create-recovered-result]
+    needs: [production-proof, upload-create-recovered-result, zero-create-recovered-result, promote-create-recovered-result, scheduled-policy-preflight]
     if: ${{ always() && needs.production-proof.result == 'success' && needs.production-proof.outputs.proof_state == 'PASS' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
-        with: { ref: '${{ github.sha }}', path: diagnostics, persist-credentials: false }
+        with: { ref: '${{ needs.scheduled-policy-preflight.outputs.source_sha }}', path: diagnostics, persist-credentials: false }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -2873,18 +2853,17 @@ jobs:
 
 
   final-persistence:
-    needs: [final-state-materialization, upload-create-recovered-result,
-      zero-create-recovered-result, promote-create-recovered-result]
+    needs: [final-state-materialization, upload-create-recovered-result, zero-create-recovered-result, promote-create-recovered-result, scheduled-policy-preflight]
     if: ${{ always() && needs.final-state-materialization.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/checkout@v4
-        with: { ref: '${{ github.sha }}', path: diagnostics, persist-credentials: false }
+        with: { ref: '${{ needs.scheduled-policy-preflight.outputs.source_sha }}', path: diagnostics, persist-credentials: false }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-build-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -2983,13 +2962,13 @@ jobs:
 
 
   rollback-intent-write:
-    needs: [production-proof, promote-result-write, promote-create-recovered-result, resume-promote-carryforward]
+    needs: [production-proof, promote-result-write, promote-create-recovered-result, resume-promote-carryforward, scheduled-policy-preflight]
     if: ${{ always() && needs.production-proof.outputs.proof_state == 'FAIL' && (needs.promote-result-write.outputs.result_state == 'APPLIED' || needs.promote-create-recovered-result.outputs.recovered == 'true' || (needs.resume-promote-carryforward.result == 'success' && needs.resume-promote-carryforward.outputs.result_state == 'APPLIED')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -3027,7 +3006,7 @@ jobs:
         with: { name: 'a6-rollback-intent-${{ github.run_id }}', path: rollback-intent.json, if-no-files-found: error }
 
   cloudflare-rollback-operation:
-    needs: rollback-intent-write
+    needs: [rollback-intent-write, scheduled-policy-preflight]
     if: ${{ !cancelled() && needs.rollback-intent-write.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -3035,7 +3014,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -3084,7 +3063,7 @@ jobs:
         with: { name: 'a6-rollback-result-${{ github.run_id }}', path: rollback-result.json, if-no-files-found: error }
 
   rollback-result-write:
-    needs: cloudflare-rollback-operation
+    needs: [cloudflare-rollback-operation, scheduled-policy-preflight]
     if: ${{ !cancelled() && needs.cloudflare-rollback-operation.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
@@ -3094,7 +3073,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-rollback-intent-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -3109,7 +3088,7 @@ jobs:
           python -c "import json,os; open(os.environ['GITHUB_OUTPUT'],'a').write('result_state='+json.load(open('record.json'))['status']+'\n')"
 
   rollback-recovery-readback-observe:
-    needs: rollback-result-write
+    needs: [rollback-result-write, scheduled-policy-preflight]
     if: ${{ always() && needs.rollback-result-write.outputs.result_state == 'UNKNOWN' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -3117,7 +3096,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/download-artifact@v4
         with: { name: 'a6-rollback-intent-${{ github.run_id }}', path: handoff }
       - uses: actions/download-artifact@v4
@@ -3132,14 +3111,14 @@ jobs:
 
   rollback-recovery-decision:
     if: ${{ always() && needs.rollback-recovery-readback-observe.result == 'success' }}
-    needs: rollback-recovery-readback-observe
+    needs: [rollback-recovery-readback-observe, scheduled-policy-preflight]
     runs-on: ubuntu-latest
     permissions: { contents: read }
     outputs:
       decision: ${{ steps.decision.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -3161,12 +3140,12 @@ jobs:
 
   rollback-reconcile-recovery-decision:
     if: ${{ always() && needs.rollback-recovery-decision.result == 'success' }}
-    needs: rollback-recovery-decision
+    needs: [rollback-recovery-decision, scheduled-policy-preflight]
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -3176,7 +3155,7 @@ jobs:
       - run: python code/tools/publisher/workflow_stage_cli.py reconcile-recovery-decision --decision handoff/rollback-recovery-decision.json --repository state --branch main
 
   rollback-create-recovered-result:
-    needs: [rollback-recovery-decision, rollback-reconcile-recovery-decision]
+    needs: [rollback-recovery-decision, rollback-reconcile-recovery-decision, scheduled-policy-preflight]
     if: ${{ always() && needs.rollback-recovery-decision.outputs.decision == 'RECONCILED_APPLIED' && needs.rollback-reconcile-recovery-decision.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
@@ -3184,7 +3163,7 @@ jobs:
       recovered: ${{ steps.bridge.outputs.recovered }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || github.sha }}", path: code }
+        with: { ref: "${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}", path: code }
       - uses: actions/checkout@v4
         with: { ref: main, path: state }
       - uses: actions/download-artifact@v4
@@ -3205,3 +3184,38 @@ jobs:
           echo "recovered=true" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with: { name: 'a6-rollback-recovered-result-${{ github.run_id }}', path: recovered-rollback-result.json, if-no-files-found: error }
+
+  scheduled-circuit-breaker:
+    needs: [scheduled-policy-preflight, journal-bootstrap, journal-resume-verify, revision-resolve, admission, resume-admission, build-validate, build-ready-write, production-baseline-reconciliation, upload-intent-write, cloudflare-upload-operation, upload-result-write, resume-source-carryforward, resume-zero-carryforward, resume-upload-bridge, upload-recovery-readback-observe, upload-recovery-decision, upload-reconcile-recovery-decision, upload-create-recovered-result, zero-percent-intent-write, cloudflare-zero-percent-operation, zero-percent-result-write, zero-recovery-readback-observe, zero-recovery-decision, zero-reconcile-recovery-decision, zero-create-recovered-result, pre-promotion-proof, resume-preproof-carryforward, promote-intent-write, cloudflare-promote-operation, promote-result-write, resume-promote-carryforward, promote-recovery-readback-observe, promote-recovery-decision, promote-reconcile-recovery-decision, promote-create-recovered-result, production-proof, final-state-materialization, final-persistence, rollback-intent-write, cloudflare-rollback-operation, rollback-result-write, rollback-recovery-readback-observe, rollback-recovery-decision, rollback-reconcile-recovery-decision, rollback-create-recovered-result]
+    if: ${{ always() && (github.event_name == 'schedule' || inputs.mode == 'AUTO_TICK') && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ needs.scheduled-policy-preflight.outputs.source_sha || github.sha }}', path: code, persist-credentials: false }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state }
+      - name: Fail closed on actual A6 failures or an unfinished canonical transaction
+        env:
+          A6_RESULTS: ${{ toJSON(needs) }}
+          RUN_ID: ${{ github.run_id }}
+          EXECUTION_SHA: ${{ needs.scheduled-policy-preflight.outputs.source_sha || github.sha }}
+        run: |
+          python code/tools/publisher/scheduled_circuit_breaker.py observe-a6 \
+            --path state/publisher-state/scheduled-publish-circuit-breaker.json \
+            --journal state/publisher-state/production-transaction-journal.json \
+            --run-id "$RUN_ID" --head-sha "$EXECUTION_SHA" | tee breaker-observation.json
+          cd state
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add publisher-state/scheduled-publish-circuit-breaker.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore: open scheduled A6 publisher circuit breaker'
+            git push origin HEAD:main
+          fi
+      - name: Surface an unresolved A6 failure in the run status
+        run: python -c "import json; d=json.load(open('breaker-observation.json')); raise SystemExit(1 if d.get('failure') else 0)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: 'a6-breaker-${{ github.run_id }}', path: breaker-observation.json, if-no-files-found: warn }
