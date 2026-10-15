@@ -16,7 +16,7 @@ const client = await readFile(new URL('../../website/dreary-disk/public/mahoon-s
 const records = Array.from({ length: 22 }, (_, position) => ({ id: position + 1,
   url: '/post/fixture-' + (position + 1), category: position === 0 || position % 2 ? 'book' : 'text',
   tags: [position === 0 ? 'audiobook' : position % 2 ? 'book' : 'text'],
-  normalized_search_text: 'fixture title ' + (position + 1) }));
+  normalized_search_text: 'fixture title ' + (position + 1) + (position === 0 ? ' دیالوگ کتاب خانه هنر' : '') }));
 let invalidIndex = false;
 const server = createServer((request, response) => {
   const url = new URL(request.url, 'http://localhost');
@@ -63,8 +63,14 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('#archiveGrid article').length === 22);
   assert.equal(await page.locator('#archiveGrid a').last().getAttribute('href'), '/post/fixture-22');
   assert.equal(await page.locator('#archiveGrid img').last().getAttribute('src'), '/fixture.svg');
+  for (const query of ['دیالوگ', 'ديالوگ', 'دىالوگ', 'کتاب', 'كتاب']) {
+    await page.locator('#archiveSearch').fill(query);
+    await page.waitForTimeout(350);
+    assert.equal(await page.locator('#archiveGrid article').count(), 1, query);
+    assert.equal(await page.locator('#archiveGrid a').getAttribute('href'), '/post/fixture-1');
+  }
   await page.locator('#archiveSearch').fill('۲۲');
-  await page.waitForFunction(() => document.querySelectorAll('#archiveGrid article').length === 1);
+  await page.waitForFunction(() => document.querySelector('#archiveGrid a')?.getAttribute('href') === '/post/fixture-22');
   assert.equal(await page.locator('#archiveGrid a').getAttribute('href'), '/post/fixture-22');
   await page.locator('#archiveSearch').fill('not present');
   await page.waitForFunction(() => document.querySelectorAll('#archiveGrid article').length === 0);
@@ -107,6 +113,23 @@ try {
   await page.locator('[data-mahoon-native-player]').evaluate((node) => document.body.append(node));
   assert.equal(await page.locator('#postArticle audio').count(), 0);
   assert.equal(await page.locator(selectors.audio).getAttribute('data-fixture'), 'native');
+  const layout = await readFile(new URL('../../website/dreary-disk/src/layouts/BaseLayout.astro', import.meta.url), 'utf8');
+  const menuScript = [...layout.matchAll(/<script is:inline>([\s\S]*?)<\/script>/g)]
+    .map((match) => match[1]).find((script) => script.includes('document.querySelector(".site-menu-toggle")'));
+  assert.ok(menuScript);
+  await page.setContent('<button class="site-menu-toggle" aria-expanded="false">Menu</button><nav id="mainNav"><a href="/">Home</a></nav>');
+  await page.addScriptTag({ content: menuScript });
+  await page.locator('button').focus(); await page.keyboard.press('Enter');
+  assert.equal(await page.locator('button').getAttribute('aria-expanded'), 'true');
+  await page.locator('a').focus(); await page.keyboard.press('Escape');
+  assert.equal(await page.locator('button').getAttribute('aria-expanded'), 'false');
+  assert.equal(await page.locator('nav').evaluate((node) => node.classList.contains('is-open')), false);
+  assert.equal(await page.locator('button').evaluate((node) => node === document.activeElement), true);
+  for (const source of ['index.astro', 'posts.astro', 'category/[category].astro']) {
+    const html = await readFile(new URL('../../website/dreary-disk/src/pages/' + source, import.meta.url), 'utf8');
+    assert.match(html, /<input[^>]+type="search"[^>]+aria-label="[^"]+"/);
+    if (source !== 'index.astro') assert.match(html, /id="archiveCount" role="status" aria-live="polite"/);
+  }
   console.log('Static archive browser fixtures passed: pagination, media cards, database IDs, no-match/reset, category, home navigation, invalid index.');
 } finally {
   await browser.close();

@@ -76,7 +76,7 @@ function safeJson(value) {
     <section class="mahoon-archive-search">
       <label>
         <span>جستجو در همه مطالب</span>
-        <input id="archiveSearch" type="search" placeholder="عنوان، متن، کد مطلب یا کلیدواژه را جستجو کن..." autocomplete="off" />
+        <input id="archiveSearch" type="search" aria-label="جست‌وجو در مطالب" placeholder="عنوان، متن، کد مطلب یا کلیدواژه را جستجو کن..." autocomplete="off" />
       </label>
     </section>
 
@@ -90,7 +90,7 @@ function safeJson(value) {
     </section>
 
     <section class="mahoon-archive-results" aria-live="polite">
-      <div class="mahoon-archive-count" id="archiveCount">{initialCountText}</div>
+      <div class="mahoon-archive-count" id="archiveCount" role="status" aria-live="polite">{initialCountText}</div>
       <div class="mahoon-archive-list" id="archiveGrid" set:html={initialCardsHtml}></div>
       <div
         class="mahoon-archive-empty"

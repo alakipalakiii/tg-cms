@@ -231,6 +231,13 @@ import { ClientRouter } from "astro:transitions";
           button.setAttribute("aria-expanded", String(!expanded));
           nav.classList.toggle("is-open", !expanded);
         });
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape" && button.getAttribute("aria-expanded") === "true") {
+            button.setAttribute("aria-expanded", "false");
+            nav.classList.remove("is-open");
+            button.focus();
+          }
+        });
       })();
     </script>
 

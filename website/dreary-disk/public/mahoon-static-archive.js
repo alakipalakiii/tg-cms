@@ -23,7 +23,7 @@
   const number = new Intl.NumberFormat('fa-IR');
   const normalize = (value) => String(value || '').replace(/[۰-۹٠-٩]/g,
     (digit) => String('۰۱۲۳۴۵۶۷۸۹'.includes(digit) ? '۰۱۲۳۴۵۶۷۸۹'.indexOf(digit) : '٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
-    .replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/\u200c/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    .replace(/[يى]/g, 'ی').replace(/ك/g, 'ک').replace(/\u200c/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
   document.querySelectorAll('[data-archive-link]').forEach((link) => {
     const active = normalize(link.dataset.archiveLink) === normalize(config.mode === 'category' ? config.category : 'همه مطالب');
     link.classList.toggle('is-active', active);

@@ -129,7 +129,8 @@ if (process.argv.includes('--self-test')) {
     result.index_count = index.records.length;
     await check('persian_search_variants', async () => {
       await navigate(page, '/posts/');
-      const query = 'دیالوگی';
+      const query = 'دیالوگ';
+      assert.ok(index.records.some((record) => record.normalized_search_text.includes(query)), 'Baseline term must exist in sealed index');
       const evidence = [];
       for (const value of [query, query.replace(/ی/g, 'ي'), query.replace(/ی/g, 'ى')]) {
         await page.locator('#archiveSearch').fill(value);
@@ -138,6 +139,7 @@ if (process.argv.includes('--self-test')) {
           status: await page.locator('#archiveCount').textContent() });
       }
       result.search_variants = evidence;
+      await page.screenshot({ path: `${output}/search-persian-variant.png`, fullPage: true });
       assert.ok(evidence[0].count > 0);
       assert.equal(evidence[1].status, evidence[0].status);
       assert.equal(evidence[2].status, evidence[0].status);
@@ -167,8 +169,14 @@ if (process.argv.includes('--self-test')) {
           reason: body.reason, error: body.error, total: body.total, response_keys: Object.keys(body) };
         if (Array.isArray(body.posts)) {
           observation.post_ids = body.posts.map((post) => post.id);
+          observation.latest_posts = body.posts.map(({ id, slug, created_at, media_type }) => ({ id, slug, created_at, media_type }));
           observation.private_fields_present = [...new Set(body.posts.flatMap((post) => ['admin_note', 'chat_id', 'chat_title', 'deleted_at', 'telegram_message_id'].filter((key) => key in post)))];
           observation.latest_ids_missing_from_static_index = observation.post_ids.filter((id) => !index.records.some((record) => record.id === id));
+          if (observation.latest_ids_missing_from_static_index.length) {
+            const latestId = observation.latest_ids_missing_from_static_index[0];
+            const article = await page.request.get(base + '/post/' + latestId);
+            observation.latest_missing_article = { id: latestId, status: article.status(), version: article.headers()['x-mahoon-worker-version'] };
+          }
         }
         result.api_probes.push(observation);
         if (method === 'GET') assert.equal(response.status(), 200);
