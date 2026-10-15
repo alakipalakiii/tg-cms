@@ -1,29 +1,46 @@
-# MAHOON finalization checkpoint
+# MAHOON finalized and live
 
-Status: **BLOCKED pending final185 proof/persistence**. Read MAHOON-FINAL-REPORT.txt for exact hashes and completed163/181 history.
+**MAHOON_PROJECT_FINALIZED_AND_LIVE: PASS**
 
-## Continue the active run
+Updated: 2026-10-15 04:00:21 Asia/Tehran. See `MAHOON-FINAL-REPORT.txt` for full independent hashes, run receipts, recovery history and limitations.
 
-- Run38649977839, normal PUBLISH/readyYES; source4b9889cd8213016e0337fe7b81d76f6bb2aec702.
-- Revision185 transaction9c9b7b78759bb8dcc6fe4a08b2e3da94e5f6b1155f28bb2bd21b18178de94ba7.
-- Cutoff2026-10-15 02:05:02 Asia/Tehran (2026-10-14 22:35:02 UTC). This is the single bounded catch-up after181.
-- Preproof98673bd1c0eaa49b2de0230ad18519e6b2d69eb75a86867d335670e72ae87772 PASS:4238 routes/4235 HTML/603 immutable objects/8 browser pages, every unchanged gate true.
-- Promotion APPLIED once. Fresh authoritative deploymentcf817382-242d-4d2e-9b40-969c7a9c1332:1c92b5b0-0426-4f8f-8328-ee741569149b100%, baselinebc11bf72-e914-498d-8665-b7d98c57ff900%.
-- Generation137 active185/operation_reported, pendingnull. Upload/Zero/Promotion one attempt each; rollback0. No proof/state commit yet for185.
-- Actual unpinned live diagnostic38655954274 SUCCESS/PASS16/16; raw resultfb33696192776cdbf9a327a633e871cf1a9dfcad6cbfafb379a1ba754875eee6. Seven new DB1914-1920 pages/images, native audio/video, search/pagination, fonts, mobile menu/about, admin401 boundary all pass; no JS errors/forbidden requests.
-- Production proof now performs its real crawl; runtime install and self-test passed. Do not dispatch a duplicate publication or replay mutations.
+## Final authority
 
-## Completion steps
+- Published revision **185**, latest final read185, decision UNCHANGED.
+- Cutoff: **2026-10-15 02:05:02 Asia/Tehran** (2026-10-14 22:35:02 UTC). Final revision check: **2026-10-15 03:56:36 Asia/Tehran**.
+- Worker `mahoon-art-magazine`; deployment `cf817382-242d-4d2e-9b40-969c7a9c1332`.
+- Serving `1c92b5b0-0426-4f8f-8328-ee741569149b` **100%**; baseline `bc11bf72-e914-498d-8665-b7d98c57ff90` **0%**.
+- Canonical journal generation **139**, revision185 **COMPLETED**, `active:null`, `pending:null`.
+- Upload, Zero-percent, Promotion each one APPLIED attempt; rollback zero. No mutation replay.
 
-1. Monitor38649977839 until production-proof/final-state/final-persistence complete; preserve diagnostics and repair only proven defects if needed.
-2. Download only small a6-production-proof-38649977839 and a6-final-persistence-38649977839 artifacts. Full build647MB stays hosted.
-3. Independently verify all proof gates,1c92 actual version, deploymentcf817382,100/0, three observation raw hashes and4238/4235/603/8 totals.
-4. Fetch main/fast-forward. Compare all six remote Git blobs with final persistence hashes/sizes; verify185 content fingerprint04d55b6ccd2e636452d0fe31a9fd79dae33cdac5aba4a5e7fe5436c59f185335, matching saved deployment/version, active/pendingnull and185COMPLETED. Use Git blobs, not Windows worktree bytes.
-5. Dispatch canonical mahoon-post-run-reconciler.yml for this run and final CHECK_ONLY. Respect the explicit cutoff; disclose later arrivals without indefinite additional publication.
-6. Fresh authoritative Cloudflare readback; replace report/handoff with genuine final PASS, full commits/hashes/run receipts. Commit and fast-forward push docs. Final response includes final documentation commit receipt.
+## Completion evidence
 
-## Retained small evidence
+- Normal publication [38649977839](https://github.com/alakipalakiii/tg-cms/actions/runs/38649977839): SUCCESS.
+- Preproof `98673bd1c0eaa49b2de0230ad18519e6b2d69eb75a86867d335670e72ae87772`.
+- Real production proof `14c076ad8f4c66eddfff1a93dbc12d87dfd81154fd66f23da7a60bc139db9df1`.
+- Final persistence `e96d78d27f2c239b8a53886d4ba943db820a869de319cfef706cc563b120ec36`; all six remote Git blobs match exact hashes and sizes.
+- Three observation raw hashes match the proof;4238 routes/4235 HTML/3698 article routes/603 immutable objects/8 browser pages PASS. All11 production gates true, attribution/SEO/media/route errors0.
+- Actual unpinned browser [38655954274](https://github.com/alakipalakiii/tg-cms/actions/runs/38655954274):16/16 PASS. Search/load-more, native audio/video playback, loaded fonts, seven new articles/images, mobile menu/about, admin login and401 boundary verified; JS errors/forbidden dependencies0.
+- Independent reconciliation [38660015711](https://github.com/alakipalakiii/tg-cms/actions/runs/38660015711): SUCCESS, no active transaction.
+- Final CHECK_ONLY [38660019688](https://github.com/alakipalakiii/tg-cms/actions/runs/38660019688): SUCCESS/UNCHANGED,185 equals published185.
 
-Under C:/Users/mehdi karani/AppData/Local/Temp/:mahoon-build-metadata-38649977839,mahoon-lineage-38649977839,mahoon-preproof-38649977839,mahoon-promote-38649977839,mahoon-candidate-185-38652304292,mahoon-final-live-185-38655954274. GitHub artifacts are the durable authority.
+## Commits
 
-Only185 timestamp edits1918/1919/1920 and1920 question-mark punctuation changed since181; no new/removed IDs or new media. All1849 raw posts/940 deduped entries and seven additions since163 are verified.19 established historical404/410 fallback source records remain, no new-post impact. Scheduled mode remainsCHECK_ONLY and normal publication is operational. No routine approval is needed. No manual journal edit, force push, secret change or unsafe rollback is authorized.
+- Deployed executable/build source: `4b9889cd8213016e0337fe7b81d76f6bb2aec702`.
+- Diagnostic implementation: `f54276f28f073e4292aaee51f4c64878eae50083`.
+- Exact final state: `a2c33d1680a9d014c3bcf3b6832ffd04e5f302c6`.
+- Finalization-ready journal: `fe70673595f7683baf68856bd4bc617a5267fc6f`.
+- Closing journal / verified main: `6e61fa979ef590c63dcfb745a8584829c89ff4d1`.
+- Subsequent closing documentation commit is the final delivery receipt; it changes these two documents only. No executable diff from the deployed source exists.
+
+## Content and future operation
+
+1849 raw published posts,940 deduped public entries. Seven additions since163:database IDs1914-1920.185 is the single bounded catch-up after181; no added/removed IDs since181, only three modification timestamps and1920 Persian question-mark edit. All included content through the cutoff is published, with correct media and full route parity.
+
+Revisions163,181,185 are completed. Do not resume or replay their mutations. For future authorized publication, use the normal fresh revision/admission protocol and existing journal safety gates. Scheduled mode is CHECK_ONLY:detects future changes; normal publication is verified but automatic future publishing is not enabled.
+
+19 established historical404/410 source fallback records remain accepted maintenance items; none affects the seven new posts. Destructive admin CRUD/credential rotation/D1 mutation was not exercised. No journal or production repair is pending.
+
+## Retained artifacts
+
+GitHub artifacts are the durable evidence. Small local copies under `C:/Users/mehdi karani/AppData/Local/Temp/` include `mahoon-build-metadata-38649977839`, `mahoon-lineage-38649977839`, `mahoon-preproof-38649977839`, `mahoon-production-proof-38649977839`, `mahoon-final-persistence-38649977839`, `mahoon-final-live-185-38655954274`, `mahoon-final-revision-38660019688` and independent production/persistence/Cloudflare audit receipts. The full647MB build was not downloaded locally.

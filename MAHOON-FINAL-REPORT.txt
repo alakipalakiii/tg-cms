@@ -1,57 +1,104 @@
-MAHOON_PROJECT_FINALIZED_AND_LIVE: BLOCKED
-Updated: 2026-10-15T03:18:58.165865+03:30 Asia/Tehran; 2026-10-14T23:48:58.165865+00:00 UTC
+MAHOON_PROJECT_FINALIZED_AND_LIVE: PASS
+Updated: 2026-10-15 04:00:21 Asia/Tehran (2026-10-15T00:30:21.783123+00:00 UTC)
+Website: https://mahoonartmagazine.ir
 
-CURRENT TRANSACTION
-One bounded catch-up publication is active: revision185, run38649977839.
-Source:4b9889cd8213016e0337fe7b81d76f6bb2aec702
-Transaction:9c9b7b78759bb8dcc6fe4a08b2e3da94e5f6b1155f28bb2bd21b18178de94ba7
-Publication cutoff:2026-10-15 02:05:02 Asia/Tehran (2026-10-14 22:35:02 UTC), revision185.
-Do not dispatch another publication or replay Upload, Zero-percent or Promotion.
+FINAL LIVE PUBLICATION
+Published content revision: 185. All authorized content through the declared cutoff is live and durably finalized.
+Cutoff: 2026-10-15 02:05:02 Asia/Tehran (2026-10-14 22:35:02 UTC), revision185.
+Final authoritative revision read: 2026-10-15 03:56:36 Asia/Tehran (2026-10-15T00:26:36.495526+00:00 UTC).
+Latest revision185 = persisted published revision185; decision UNCHANGED, request_count1.
+Revision receipt: 57152f857940656212b82287c2620c5ba367800a1b14c2035cee6f1edd923870.
+Fresh authoritative Cloudflare readback: 2026-10-15 03:58:30 Asia/Tehran (2026-10-15T00:28:30.4339808Z UTC).
+Worker: mahoon-art-magazine.
+Deployment: cf817382-242d-4d2e-9b40-969c7a9c1332.
+Serving version: 1c92b5b0-0426-4f8f-8328-ee741569149b at100%.
+Baseline: bc11bf72-e914-498d-8665-b7d98c57ff90 at0%.
+Saved STATIC state, live deployment/version, content fingerprint and canonical journal independently agree.
 
-SAFE LIVE STATE
-Authoritative Cloudflare deployment:cf817382-242d-4d2e-9b40-969c7a9c1332.
-Intended1c92b5b0-0426-4f8f-8328-ee741569149b:100%.
-Baselinebc11bf72-e914-498d-8665-b7d98c57ff90:0%.
-Promotion result:adb3f783685b4e8e0f189d7ec4b3d0c5064e5fa34439af7d63bf1037378c740c, APPLIED, matching fresh Cloudflare readback.
-Canonical journal generation137: active185/operation_reported; pending:null.
-Upload, Zero-percent and Promotion each have one APPLIED attempt; rollback has no attempt.
-Production proof/final persistence for185 do not yet exist. Main run is observing the real production crawl after pinned Chromium installation and self-test.
-Persisted completed publication remains181 until185 final persistence closes the transaction.
+CONTENT AND WEBSITE ACCEPTANCE
+1849 raw published posts;940 unique deduped public listing/search entries.
+Seven new database IDs since revision163:1914,1915,1916,1917,1918,1919,1920. All seven actual production pages and their images verified.
+Revision181 introduced these seven posts. The one bounded185 catch-up adds no IDs and removes none; it publishes the latest1918/1919/1920 modification timestamps and1920's Persian question-mark edit.
+Sealed snapshot, media manifest and route manifest raw hashes independently match the build bundle.
+Content fingerprint: 04d55b6ccd2e636452d0fe31a9fd79dae33cdac5aba4a5e7fe5436c59f185335.
+Media:628 required source identities;609 successful immutable records/603 unique objects;19 established historical404/410 fallback records. No new-post media fallback, unresolved identity, bootstrap hash or MIME error.
+Real production crawl:4238/4238 routes HTTP200;4235/4235 HTML;3698/3698 DB-ID and slug article routes;603 required immutable media objects verified.
+All11 unchanged production gates PASS:route_parity,page_attribution,content_parity,listing_uniqueness,category_parity,latest_parity,media,visual,seo,zero_origin,admin_panel.
+Missing/orphan routes, broken critical links, redirects loops, duplicate listings/canonicals, category/latest/search parity errors, SEO/JSON-LD/sitemap omissions, media HTTP/MIME/version errors and attribution errors:0.
+All4238 complete body observations have the expected actual version and no version override header; production was measured unpinned.
+/posts:HTTP200,99808bytes, bodySHA ea2faf59050d538d67946df8313f040fa526543a456d5a093fe37bdc4eeb1214.
+/sitemap.xml:HTTP200,657505bytes; /rss.xml:HTTP200,39670bytes; /robots.txt:HTTP200,109bytes. Canonical metadata, JSON-LD, sitemap coverage and robots sitemap directive PASS.
+Browser proof:8/8 pages HTTP200, actual intended version, visual and zero-origin PASS; loaded MahoonFont; no page exception or screenshot error.
+Runtime:Node22.23.3/Playwright1.63.0/Chromium153.0.8010.12; executable existence, launch and existing browser self-test verified on the hosted runner.
 
-VERIFIED185 EVIDENCE
-Sealed build bundle:212e816b8da6d6d1d942316ac60f5cd6d80330d25e31bbaa328444e87c01ffce.
-Content fingerprint:04d55b6ccd2e636452d0fe31a9fd79dae33cdac5aba4a5e7fe5436c59f185335.
-1849 raw published posts;940 deduped listing entries. Seven additions since163: DB IDs1914-1920.
-No added/removed IDs since181.185 updates timestamps1918/1919/1920 and changes1920's ASCII question mark to Persian punctuation.
-628 source media identities:609 successful immutable records/603 unique objects and19 established historical404/410 fallbacks. No new, unresolved, hash or MIME errors.
-All small source/operation/admission/preproof envelopes independently passed the strict artifact validator with the complete reference chain.
-Pre-promotion proof:98673bd1c0eaa49b2de0230ad18519e6b2d69eb75a86867d335670e72ae87772, PASS.
-All4238 routes/4235 HTML routes,603 media objects,8 browser pages PASS; every accepted route/content/category/listing/latest/media/SEO/visual/zero-origin gate true.
-Runtime:Node22.23.3, Playwright1.63.0, Chromium153.0.8010.12; executable exists and launches.
-Preproof browser rawSHA:96298cb42adef40a7da1d4eaf8860a6f3c369878c18a7563c96c7ea3ebbcc003.
-Preproof crawler rawSHA:6e644f32b541c779c474dccf4e3aee7f3976d2b0d7eca973642a5124b1511052.
+INDEPENDENT FUNCTIONAL ACCEPTANCE
+Read-only actual production run38655954274 SUCCESS/PASS:16/16, candidate_pinned:false.
+Sanitized result rawSHA:fb33696192776cdbf9a327a633e871cf1a9dfcad6cbfafb379a1ba754875eee6.
+Archive load-more20->40; archive/home/category DB1920 search and article navigation; all seven new articles each with6 decoded images; loaded fonts.
+Visible native audio782:finite60.584479s duration, actual current_time0.117936s. Video292:finite7.105215s, actual current_time0.110103s. Both play through actual controls.
+390px mobile menu opens and navigates to/about. Admin login visible; unauthenticated admin API401.
+JavaScript errors0; forbidden public dependencies0. Zero-origin API/media/search/Telegram/Workers.dev request counters0.
+Screenshots of all seven candidate articles and actual production1920/search visually reviewed. Pinned candidate run38652304292 also passed16/16 before Promotion.
 
-INDEPENDENT ACTUAL PRODUCTION ACCEPTANCE
-Read-only run38655954274 SUCCESS/PASS,16/16 checks, candidate_pinned:false.
-Saved result rawSHA:fb33696192776cdbf9a327a633e871cf1a9dfcad6cbfafb379a1ba754875eee6.
-Archive load-more20->40; archive/home/category DB1920 search/navigation; seven new articles each with6 decoded images; loaded MahoonFont.
-Audio782:duration60.584479s/current_time0.117936; video292:duration7.105215s/current_time0.110103; visible native controls actually play.
-Admin login visible and unauthenticated API401.390px mobile menu opens and navigates to/about.
-JavaScript errors0; forbidden public dependencies0. Screenshots of all seven candidate articles and actual production1920/search visually reviewed.
-Earlier pinned candidate185 run38652304292 also passed16/16.
+REAL PROOF AND DURABLE PERSISTENCE
+Main normal PUBLISH run38649977839:SUCCESS, including build, fresh revision handoff, every proof gate, Promotion, final-state materialization and final persistence.
+Transaction:9c9b7b78759bb8dcc6fe4a08b2e3da94e5f6b1155f28bb2bd21b18178de94ba7.
+Build bundle:212e816b8da6d6d1d942316ac60f5cd6d80330d25e31bbaa328444e87c01ffce.
+Pre-promotion proof:98673bd1c0eaa49b2de0230ad18519e6b2d69eb75a86867d335670e72ae87772.
+Promotion result:adb3f783685b4e8e0f189d7ec4b3d0c5064e5fa34439af7d63bf1037378c740c, effectively APPLIED and matching current Cloudflare.
+Real production proof: 14c076ad8f4c66eddfff1a93dbc12d87dfd81154fd66f23da7a60bc139db9df1.
+Measured/sealed: 2026-10-15 03:51:26 Asia/Tehran (2026-10-15T00:21:26.804098+00:00 UTC).
+Final persistence: e96d78d27f2c239b8a53886d4ba943db820a869de319cfef706cc563b120ec36.
+All small authority/operation/admission/build/preproof envelopes passed the strict validator with complete references. Every stored production observation hash independently matched the sealed proof:
+  browser-observations.json: a81979a41d54604964e0d47d0955d1b43b031df19c70d538cb06054f8fc6744e
+  crawler-summary.json: 226ab594c530323a60089a5a8b59efc3b59816c399944467ed8bc66bf22df60a
+  crawler-route-state.json: 898751f0823146eaa8b436d1be56136eca8b5e35c4373bea7cd54b03ceb740f4
 
-COMPLETED HISTORY
-Rev163:38634275983 SUCCESS; real production proof5eabba732b07a9a1594f72127c3855cd13a432b507ccee7bccc7ab7c2aa39194 measured38599823193; state7c0be71556f041ec940e6f7d3264cd2dca766675; generation119/COMPLETED. Reconciliation38635735894 SUCCESS. No APPLIED mutation replayed.
-Rev181:38636125070 SUCCESS; real production proof54f79ea6926baf7ac7653df1ba643d46b80627d8f35d0377ba642649d1c2f4a8; final persistence96e16fe8fc9a5f2cd7e16e87724f99cae5d2443fc39de416f7f27511e29d5083; state1f2c7637010b0ce56be551f1fcbc9b9182396b77; closing journal2da135bde449fdb131589ae6339ae25e26a33a29/generation129/COMPLETED. All six remote Git blob hashes and three observation hashes independently matched. Reconciliation38648593677 SUCCESS.
-CHECK_ONLY38648599058 detected185 vs181, motivating this single bounded catch-up.
+Six persisted state files independently matched exact remote Git blob SHA256 and byte count; Windows worktree line-ending changes were not used as hash authority:
+  publisher-state/current-accepted-route-manifest.json
+    323205ab003636d24b7442f394929380d79444477e5bb03144fdec4b59f6f1f6  (360768 bytes)
+  publisher-state/immutable-media-index.json
+    75cec2d1365ab9b72581bb105dec3bb4f6b47f9bf7aa27faa44db30580ac197e  (246305 bytes)
+  publisher-state/production-content-fingerprint.json
+    ffa70e41c2e84d6bc11d7efe6cdcfb7cb2ef4eee03366d1723cc7128df01a612  (142 bytes)
+  publisher-state/production-media-manifest.json
+    918ffd482da9a4a983f2dd80879141ffd95fea537dd6b3f701ce87ef3d10be8a  (582201 bytes)
+  publisher-state/published-route-manifest.json
+    323205ab003636d24b7442f394929380d79444477e5bb03144fdec4b59f6f1f6  (360768 bytes)
+  publisher-state/published-static-state.json
+    49a6745181a2adcb8070a880f8c55dba87e5e1910d8265241e0af3ece982574a  (401 bytes)
 
-PROVEN REPAIRS AND LIMITS
-Hosted diagnostic38578178875 proved Chromium absent before installation. Complete hosted/posts/ baseline99201bytes/0.694014s and candidate97543bytes/0.115289s both HTTP200, curl0, correctly attributed; no confirmed production corruption from local transfer failures.
-Missing backend build_bundle context caused the early production rejection. Structured sanitized browser/crawl rejection evidence, authority references/staging root, POSIX inventory order, strictly bound legacy media lineage/current bootstrap records and persistence journal path were repaired and tested.
-Static archive/home search and pagination restored; public SSR metadata uses the read-only SEO endpoint.
-Real-data regression/preflight fixtures, focused unit tests, positive/negative browser self-test and website build passed. Audio observer follows the transplanted native player and preserves normal browser cache; accepted visual/version/dependency guards are unchanged.
-Scheduled PUBLISHER_MODE_SCHEDULED=CHECK_ONLY, read directly. Future changes are detected; accepted normal publication behavior has been exercised.
-No destructive admin CRUD, token rotation or D1 mutation was exercised.19 historical unavailable-source fallbacks remain accepted; none affects the seven new posts.
+Canonical journal generation139:revision185 COMPLETED; active:null; pending:null.
+Proof SHA and state commit in journal match persistence. Upload, Zero-percent and Promotion each have exactly one APPLIED attempt; rollback0. No APPLIED mutation was replayed.
+Independent canonical reconciliation38660015711:SUCCESS; RECONCILE=none; journal has no active transaction.
+Final CHECK_ONLY38660019688:SUCCESS/UNCHANGED, latest185 equals persisted185.
 
-REMAINING
-Finish this same real production proof, final-state materialization and final persistence. Independently verify proof hashes, all six remote state Git blobs, completed journal and fresh live100/0. Run canonical reconciliation and final CHECK_ONLY; compare with the declared cutoff, without indefinite chasing later arrivals. Then replace this BLOCKED checkpoint with the actual final report and safely push it.
+FINAL COMMIT IDENTITIES
+Deployed executable/build source:4b9889cd8213016e0337fe7b81d76f6bb2aec702.
+Latest diagnostic implementation:f54276f28f073e4292aaee51f4c64878eae50083.
+Final state commit: a2c33d1680a9d014c3bcf3b6832ffd04e5f302c6.
+Finalization-ready journal:fe70673595f7683baf68856bd4bc617a5267fc6f.
+Closing journal / independently verified main: 6e61fa979ef590c63dcfb745a8584829c89ff4d1.
+No executable file changed between the deployed source and this verified main. Closing documentation is committed and fast-forward pushed; its exact commit receipt is supplied in the completion message and Git history for this file.
+
+COMPLETED RECOVERY HISTORY
+Revision163 durably completed in38634275983. Real proof5eabba732b07a9a1594f72127c3855cd13a432b507ccee7bccc7ab7c2aa39194 measured38599823193; state7c0be71556f041ec940e6f7d3264cd2dca766675; generation119 completed; reconciliation38635735894 SUCCESS. Original Upload/Zero/Promotion were carried forward without replay.
+Revision181 completed in38636125070. Real proof54f79ea6926baf7ac7653df1ba643d46b80627d8f35d0377ba642649d1c2f4a8; persistence96e16fe8fc9a5f2cd7e16e87724f99cae5d2443fc39de416f7f27511e29d5083; state1f2c7637010b0ce56be551f1fcbc9b9182396b77; closing journal2da135bde449fdb131589ae6339ae25e26a33a29/generation129; reconciliation38648593677 SUCCESS. Its six state blob hashes and three observation hashes independently matched.
+CHECK_ONLY38648599058 detected185 vs181; this was followed by exactly one bounded normal catch-up, now completed.
+
+PROVEN REPAIRS AND VALIDATION
+Hosted diagnostic38578178875 proved Chromium absent on the clean runner before pinned installation; executable launch and the existing positive/negative self-test then passed. Both pre-promotion and production proof stages explicitly install the lockfile-pinned browser.
+Separate hosted/posts/ comparison:baseline99201bytes/0.694014s and candidate97543bytes/0.115289s; both HTTP200, curl0, complete transfers and correctly attributed versions. Local incomplete transfer was not treated as confirmed production corruption.
+Early ProductionProofRejected was traced to missing build_bundle backend context before backend.collect(). Corrected sealed-evidence preflight and negative fixtures verified the fix.
+Sanitized structured failure/page evidence is preserved even when browser subprocess exit1 reports a legitimate visual rejection. Browser launch errors, JavaScript exceptions, navigation/status/screenshot/font/version problems remain distinguishable.
+Complete finalization authority references and staging root, POSIX inventory ordering, strictly bound legacy media lineage/current media records and the repository-relative persistence journal path were repaired.
+Static archive/home search and pagination restored; SSR public metadata uses the read-only SEO endpoint and does not increase view_count. Database-ID management rules, protected admin endpoints and soft-delete rules preserved.
+Focused regression suites, real sealed-data preflights, browser fixtures and positive/negative self-tests passed; website npm run build passed locally and in real hosted publication builds. Previously recorded suites include168 tests with1 skip,112 persistence/journal tests,97 workflow/observer tests and32 workflow/mobile checks; overlapping suites are not summed.
+Audio diagnostic38641990258 proved identical complete baseline/candidate OGG bytes and SHA; interception disabled normal browser cache and produced Infinity metadata. The observer follows the transplanted native player, excludes the empty auxiliary player and preserves normal cache. Finite duration/playback, accepted public dependency classifier, visual, route, zero-origin and version gates remain unchanged.
+
+EVIDENCE RETENTION AND MAINTENANCE
+GitHub Actions artifacts retain sealed proofs, sanitized crawler/browser observations, screenshots, revision receipt and final persistence. Only small metadata/proof/operation artifacts were downloaded locally; the647MB build remained hosted.
+Local independent audit receipts and small artifacts are under C:/Users/mehdi karani/AppData/Local/Temp/mahoon-*; durable authority is the canonical main journal/state and GitHub artifacts.
+Scheduled PUBLISHER_MODE_SCHEDULED=CHECK_ONLY, read directly:future changes are detected. Normal authorized publication has been verified through actual completed181 and185 transactions; scheduled detection alone does not automatically publish future posts.
+19 established historical unavailable-source fallback records remain as accepted maintenance items; none affects the seven new posts. No destructive admin CRUD, credential rotation or D1 mutation was exercised; admin shell and401 boundary were verified read-only.
+No manual journal edit, force push, improvised rollback, secret change, fabricated proof or skipped acceptance gate was used. No mission blocker remains at the final measurement/cutoff.
