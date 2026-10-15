@@ -24,6 +24,12 @@ on:
         required: false
         default: "NO"
         options: ["NO", "YES"]
+      platform_audit:
+        description: "Read-only responsive, search, performance and public API audit"
+        type: choice
+        required: false
+        default: "NO"
+        options: ["NO", "YES"]
 
 permissions:
   contents: read
@@ -52,6 +58,8 @@ jobs:
         run: node tools/publisher/prepromotion_browser_gate.mjs --self-test > browser-self-test.json
       - name: Run static archive regression fixtures
         run: node tools/publisher/test_static_archive.mjs
+      - name: Check platform audit probe safety
+        run: node tools/publisher/platform_audit.mjs --self-test
       - name: Read prior browser post identities
         if: ${{ inputs.baseline_run_id != '' }}
         uses: actions/download-artifact@v4
@@ -67,7 +75,9 @@ jobs:
           MAHOON_BASELINE_RUN_ID: ${{ inputs.baseline_run_id }}
           MAHOON_PIN_CANDIDATE: ${{ inputs.pin_candidate }}
         run: |
-          if [ '${{ inputs.audio_matrix }}' = 'YES' ]; then
+          if [ '${{ inputs.platform_audit }}' = 'YES' ]; then
+            node tools/publisher/platform_audit.mjs
+          elif [ '${{ inputs.audio_matrix }}' = 'YES' ]; then
             node tools/publisher/audio_runtime_diagnostic.mjs
           else
             node tools/publisher/live_functionality_smoke.mjs
@@ -79,4 +89,5 @@ jobs:
           path: |
             browser-self-test.json
             runner-evidence/live-functionality/**
+            runner-evidence/platform-audit/**
           if-no-files-found: warn
