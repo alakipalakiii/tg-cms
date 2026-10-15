@@ -1,3 +1,5 @@
+import { telegramWebhookRejection } from './telegramWebhook';
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
@@ -2280,6 +2282,10 @@ async function mahoonTelegramWebhookRefreshV1(request, env) {
     return mahoonTelegramWebhookJsonV1({ ok: false, error: "Unauthorized" }, 401);
   }
 
+  if (!/^[A-Za-z0-9_-]{1,256}$/.test(env.TELEGRAM_WEBHOOK_SECRET || "")) {
+    return mahoonTelegramWebhookJsonV1({ ok: false, error: "Webhook unavailable" }, 503);
+  }
+
   try {
     const before = await mahoonTelegramBotApiV1(env, "getWebhookInfo");
     const currentUrl = before?.result?.url || "";
@@ -2294,6 +2300,7 @@ async function mahoonTelegramWebhookRefreshV1(request, env) {
 
     const setResult = await mahoonTelegramBotApiV1(env, "setWebhook", {
       url: nextUrl,
+      secret_token: env.TELEGRAM_WEBHOOK_SECRET,
       allowed_updates: allowedUpdates,
       drop_pending_updates: false
     });
@@ -4545,6 +4552,8 @@ export default {
       }
 
       if (request.method === "POST") {
+        const rejected = telegramWebhookRejection(request, env.TELEGRAM_WEBHOOK_SECRET);
+        if (rejected) return json({ ok: false, error: rejected === 503 ? "Webhook unavailable" : "Unauthorized" }, rejected);
         const update = await request.json();
 
         const managementResponse = await handleTelegramManagementMessage(update, env);

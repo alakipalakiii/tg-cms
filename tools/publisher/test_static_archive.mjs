@@ -64,8 +64,10 @@ try {
   assert.equal(await page.locator('#archiveGrid a').last().getAttribute('href'), '/post/fixture-22');
   assert.equal(await page.locator('#archiveGrid img').last().getAttribute('src'), '/fixture.svg');
   for (const query of ['دیالوگ', 'ديالوگ', 'دىالوگ', 'کتاب', 'كتاب']) {
+    await page.locator('#archiveSearch').fill('not present');
+    await page.waitForFunction(() => document.querySelectorAll('#archiveGrid article').length === 0);
     await page.locator('#archiveSearch').fill(query);
-    await page.waitForTimeout(350);
+    await page.waitForFunction(() => document.querySelectorAll('#archiveGrid article').length === 1, null, { timeout: 3000 });
     assert.equal(await page.locator('#archiveGrid article').count(), 1, query);
     assert.equal(await page.locator('#archiveGrid a').getAttribute('href'), '/post/fixture-1');
   }

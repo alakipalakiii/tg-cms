@@ -71,4 +71,45 @@ Investigations, not yet claimed as confirmed production vulnerabilities:
 5. Use the established guarded deployment path; investigate supported code-only deployment before any release because185 is already completed. Never fake a content revision or reopen a completed transaction.
 6. Final independent production verification, latest expected counts, canonical consistency, evidence-backed final report/commit/push.
 
-No production code, content, publishing policy or secret has been changed in this audit checkpoint.
+## Repair checkpoint — 2026-10-15, approximately 12:45 Tehran / 09:15 UTC
+
+The earlier provisional register is superseded by these findings:
+
+| ID | Priority | Confirmed evidence | Correction / state |
+|---|---|---|---|
+| SEC-01 | P0 | Authoritative live bundle, isolated unsigned synthetic update reaches INSERT on two paths; mock stops before execution, outbound calls0. Hosted38708829025 accepts empty unsigned updates on both paths. Live secret-binding names confirm no TELEGRAM_WEBHOOK_SECRET. | Fail-closed constant-time header guard prepared; refresh preserves secret and pending updates; real local workerd regression PASS. Not deployed: coordinated Telegram secret registration requires existing owner Bot API credential. See workers/api/WEBHOOK-SECURITY-ROLLOUT.md. No historical compromise claimed. |
+| SEARCH-01 | P2 | Regression fails specifically for alef maksura in دىالوگ:0 vs expected1; Persian/Arabic yeh find the same fixture. | One-line normalization /[يى]/g, same as existing taxonomy; regression PASS. Code a9fce831dfcfa6707fc2a8a5aca11d411cf96d31; production deployment pending. |
+| A11Y-01 | P2 | Fresh browser accessibility tree has unnamed homepage searchbox; count live-region attributes absent; Escape leaves mobile menu expanded. | Explicit search names in homepage/archive/category, polite status count and Escape closes/restores focus. Source/real-browser fixture PASS; production deployment pending. |
+| DOC-01 | P2 | API README incorrectly calls full source a placeholder; root README points to historical origins and direct deploy instructions. | Document official origins, dynamic/static distinction, guarded production path and live API source authority. |
+| VISIBILITY-01 | P1 investigation | Fresh hosted public API shows actual new post1921 absent from immutable search index; CHECK_ONLY38709085039 reports revision188 vs published185. | Ingestion is demonstrably receiving genuine new content. Confirm route visibility and exact freshness before changing any schedule. No competing ingestion or fabricated revision. |
+
+## Fresh browser and performance evidence
+
+Run38708829025, unpinned current version, collected9 cold-context laboratory samples. HTTP200 with matching x-mahoon-worker-version, fonts loaded, no horizontal overflow across1440/768/390px; JS errors0 and forbidden dependencies0. Result SHA256 `5d80ca02751808ef286371dee49162ea999723c3c2003a3a5dce7bd3f1c35fe7`.
+
+| Viewport | Samples | Median TTFB ms | Median observed LCP ms | Maximum CLS |
+|---|---:|---:|---:|---:|
+| Desktop1440×1000 |3|105.3|324|0.00256|
+| Tablet768×1024 |3|88.5|308|0.00209|
+| Mobile390×844 |3|89.8|272|0.05316|
+
+These are GitHub runner Chromium measurements with no device/network throttling. They are not field Core Web Vitals or physical-device results. No speed optimization is justified by these samples. Desktop, tablet and mobile screenshots were opened from this exact run; established burgundy/cream identity, official logo/font and RTL layout retained. Offscreen lazy images in a full-page screenshot are not classified as broken without load evidence. Placeholder ads/empty illustration slots are not grounds for redesign.
+
+The run's Persian variant check used a term absent from the index, so its failure did not prove a production search fault. The test now verifies its baseline term exists. Follow-up38710010972 stopped before live observations because the new fixture used350ms against a300ms debounce plus async fetch; replaced with state-based waits and reran locally PASS. These diagnostic failures did not mutate production or justify any release retry.
+
+Hosted public GET health/posts/stats all200. Latest public listings expose none of admin_note/chat_id/chat_title/deleted_at/telegram_message_id. API/stat counts differ from deduplicated static listings by design; do not compare raw totals as corruption evidence.
+
+## Dependency audit, reachability and limits
+
+Fresh npm audit reports16 affected dependency entries (1critical/14high/1low, including transitive effects); this is not16 confirmed production exploits. Primary Astro advisory GHSA-26w7-cxv4-gfx2 requires processing untrusted AVIF through Sharp. This project uses imageService:passthrough; current static_version_main serves ASSETS rather than an Astro request renderer. Dev server/Miniflare are not public production servers. The request-time Astro attack path is therefore absent in the accepted static Worker. Do not blindly apply npm audit fix or claim the dependency findings resolved. Remaining advisory/build-time reachability review is pending.
+
+Sources: [Astro AVIF advisory](https://github.com/withastro/astro/security/advisories/GHSA-26w7-cxv4-gfx2), [Telegram webhook secret](https://core.telegram.org/bots/api#setwebhook), [Workers timingSafeEqual](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/#timingsafeequal).
+
+## Executed repair tests
+
+- Static archive browser regression: red for alef maksura before fix; green after fix, including Persian/Arabic kaf/yeh, numeric IDs, load-more, empty/reset, categories, homepage navigation, invalid-index recovery, real media selectors and keyboard focus.
+- npm run build --prefix website/dreary-disk:PASS, Astro6.3.6, adapter13.5.2;6.61seconds.
+-85 targeted publisher tests:84PASS/1skip (materializer integration requires explicit opt-in). Separately rerun downstream workflow32PASS after diagnostic integration.
+- Telegram boundary test:actual local workerd, missing/invalid configuration503, missing/wrong header401 before mock DB, correct header reaches unchanged processing, authenticated empty update200/saved=false, admin401, safe refresh with no dropped pending updates/no secret in response. No real production writes or Telegram messages.
+
+Production website still revision185 at this checkpoint. Website code pushed through a9fce83; API correction is prepared only. No production secret, content, policy, API code or traffic mutation has occurred in this audit phase yet.

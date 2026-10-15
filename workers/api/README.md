@@ -21,13 +21,15 @@ Real local files such as `.env`, `.dev.vars`, and `wrangler.toml` must not be co
 
 ## Source Code
 
-The real Worker source code should be copied from Cloudflare later and saved in:
+The repository contains a complete implementation at:
 
 ```text
 src/index.ts
 ```
 
-Until then, `src/index.ts` is only a safe placeholder.
+It is not a placeholder. It is also not automatically the authoritative live bundle: the current Cloudflare module differs from this source. Before any API deployment, read the actual source/version/settings, preserve live-only behavior and take the required private D1 backup. Do not overwrite the live API with this directory without reconciling those differences.
+
+The prepared inbound Telegram authentication repair requires coordinated secret registration before deployment. See [WEBHOOK-SECURITY-ROLLOUT.md](WEBHOOK-SECURITY-ROLLOUT.md). The secret value belongs only in secure configuration; do not put it in this repository. Run its isolated regression with `node tools/publisher/test_telegram_boundary.mjs` from the repository root.
 
 ## Public Endpoints
 

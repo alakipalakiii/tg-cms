@@ -60,6 +60,8 @@ jobs:
         run: node tools/publisher/test_static_archive.mjs
       - name: Check platform audit probe safety
         run: node tools/publisher/platform_audit.mjs --self-test
+      - name: Check isolated Telegram boundary regression
+        run: node tools/publisher/test_telegram_boundary.mjs
       - name: Read prior browser post identities
         if: ${{ inputs.baseline_run_id != '' }}
         uses: actions/download-artifact@v4
