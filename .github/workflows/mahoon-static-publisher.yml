@@ -2006,6 +2006,8 @@ jobs:
     if: ${{ always() && inputs.mode != 'POST_PROMOTION_FINALIZE' && (inputs.preproof_source_run_id == '' || inputs.preproof_source_run_id == null || inputs.preproof_source_run_id == '0') && (needs.zero-percent-result-write.outputs.result_state == 'APPLIED' || needs.zero-create-recovered-result.outputs.recovered == 'true' || (needs.resume-zero-carryforward.result == 'success' && needs.resume-zero-carryforward.outputs.carried == 'true')) }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
+    outputs:
+      proof_state: ${{ steps.proof-state.outputs.proof_state }}
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_API_TOKEN }}
     steps:
@@ -2045,6 +2047,7 @@ jobs:
       - name: Run the existing browser gate self-test
         run: mkdir -p runner-evidence && node diagnostics/tools/publisher/prepromotion_browser_gate.mjs --self-test > runner-evidence/pre-promotion-browser-self-test.json
       - name: Observe and seal combined pre-promotion proof
+        id: proof-state
         env:
           PYTHONPATH: diagnostics/tools:code/tools/publisher:code/tools:code
           MAHOON_WRANGLER: npx wrangler@4.83.0
@@ -2072,6 +2075,20 @@ jobs:
           )
           python diagnostics/tools/publisher/workflow_stage_cli.py pre-promotion-proof-observe \
             "${args[@]}" "${refs[@]}" > preproof-status.json
+          python diagnostics/tools/publisher/workflow_stage_cli.py validate-artifact \
+            --input "$workspace/pre-promotion-proof.json" --type pre_promotion_proof_evidence \
+            --reference "$workspace/handoff/runner-evidence/v1-build-bundle.json" --reference "$zero_result" "${refs[@]}"
+          python - <<'PY'
+          import json, os
+          from publisher.artifact_contract import artifact_digest
+          status = json.load(open('preproof-status.json'))
+          proof = json.load(open('pre-promotion-proof.json'))
+          assert proof['artifact_sha256'] == status['artifact_sha256'] == artifact_digest(proof)
+          assert type(proof['payload']['PASS']) is bool
+          assert status['status'] == ('PASS' if proof['payload']['PASS'] else 'FAIL')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write('proof_state=' + status['status'] + '\n')
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:

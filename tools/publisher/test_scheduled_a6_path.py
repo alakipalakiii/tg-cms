@@ -311,6 +311,84 @@ class A6RecoveryTests(unittest.TestCase):
         self.assertEqual("123", result["incident_run"])
         self.assertEqual("234", result["safety_test_run_id"])
 
+    def test_real_preproof_output_contract_and_changed_publication_watcher(self):
+        from test_a6_workflow_contract import _python_heredoc, _run_workflow_script
+        from tools.publisher import artifact_contract as contracts
+        jobs = yaml.load(WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)["jobs"]
+        job = jobs["pre-promotion-proof"]
+        step = next(s for s in job["steps"] if s.get("id") == "proof-state")
+        self.assertEqual("${{ steps.proof-state.outputs.proof_state }}", job["outputs"]["proof_state"])
+        self.assertIn("validate-artifact", step["run"])
+        self.assertIn('--type pre_promotion_proof_evidence', step["run"])
+        proof_path, status_path, output = (self.root / n for n in
+            ("pre-promotion-proof.json", "preproof-status.json", "github-output"))
+        proof = self.f.prepromotion_proof
+        status = {"status":"PASS", "artifact_sha256":proof["artifact_sha256"]}
+        script = _python_heredoc(step["run"])
+        for change in ("good", "missing-proof", "missing-status", "bad-json", "tampered", "status-mismatch"):
+            with self.subTest(change=change):
+                proof_path.write_text(json.dumps(proof))
+                status_path.write_text(json.dumps(status))
+                output.unlink(missing_ok=True)
+                if change == "missing-proof": proof_path.unlink()
+                if change == "missing-status": status_path.unlink()
+                if change == "bad-json": status_path.write_text("{")
+                if change == "tampered":
+                    proof_path.write_text(json.dumps({**proof,"artifact_sha256":"0" * 64}))
+                if change == "status-mismatch": status_path.write_text(json.dumps({**status,"status":"FAIL"}))
+                result = _run_workflow_script(script, self.root, {"GITHUB_OUTPUT":str(output)})
+                if change != "good":
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertFalse(output.exists())
+                    continue
+                self.assertEqual(0, result.returncode, result.stderr)
+                actual = dict(line.split("=",1) for line in output.read_text().splitlines())
+                self.assertEqual({"proof_state":"PASS"}, actual)
+                results = {"pre-promotion-proof":{"result":"success","outputs":actual},
+                           "production-proof":{"result":"success","outputs":{"proof_state":"PASS"}},
+                           "admission":{"result":"success","outputs":{"decision":"ADMITTED"}},
+                           "final-persistence":{"result":"success"}}
+                self.assertIsNone(breaker.a6_failure(results, self.path))
+                for stage in ("pre-promotion-proof", "production-proof"):
+                    for item in ({"result":"failure"}, {"result":"cancelled"}, {"result":"skipped"},
+                                 {"result":"success"}, {"result":"success","outputs":None},
+                                 {"result":"success","outputs":{"proof_state":"FAIL"}},
+                                 {"result":"success","outputs":{"proof_state":True}},
+                                 {"result":"success","outputs":{"proof_state":"PASS "}}):
+                        with self.subTest(stage=stage,item=item):
+                            self.assertEqual(stage, breaker.a6_failure({**results,stage:item}, self.path))
+        # A self-consistent failed seal emits FAIL and the watcher must reject it.
+        failed = copy.deepcopy(proof)
+        failed["payload"]["PASS"] = False
+        failed = contracts.seal_artifact(failed)
+        proof_path.write_text(json.dumps(failed))
+        status_path.write_text(json.dumps({"status":"FAIL","artifact_sha256":failed["artifact_sha256"]}))
+        output.unlink(missing_ok=True)
+        result = _run_workflow_script(script,self.root,{"GITHUB_OUTPUT":str(output)})
+        self.assertEqual(0,result.returncode,result.stderr)
+        self.assertEqual("proof_state=FAIL\n",output.read_text())
+        with self.assertRaises(ValueError):
+            contracts.validate_artifact(failed,referenced_artifacts=self.f.references)
+        self.assertIsNone(breaker.a6_failure({}, self.path))
+
+    def test_changed_open_tick_recovery_requires_sealed_readonly_revision_and_exact_failure(self):
+        with patch.dict(os.environ,{"GITHUB_RUN_ID":"235","GITHUB_RUN_ATTEMPT":"1","GITHUB_JOB":"revision-resolve"}):
+            revision = cli.create_revision_resolution(self.root / "publisher-state/production-content-fingerprint.json",
+                source_sha="b" * 40, fetcher=lambda *a,**kw: ({"revision":38,"changed_at":"2026-10-16T11:30:09Z"},{}))
+        evidence = copy.deepcopy(self.evidence)
+        evidence["sealed_artifacts"].append(revision)
+        evidence["open_auto_tick"].update({"decision":"CHANGED","conclusion":"failure",
+            "check_only_outcome":"CHANGED_REVISION_DETECTED_CHECK_ONLY","failed_jobs":["check-only"],
+            "revision_artifact_sha256":revision["artifact_sha256"]})
+        self.assertEqual("CLOSED",breaker.a6_closed_state(self.state,evidence,self.root,authorized=True)["state"])
+        for field,value in (("failed_jobs",["check-only","revision-resolve"]), ("failed_jobs",[]),
+                            ("check_only_outcome","UNKNOWN"), ("revision_artifact_sha256",self.f.proof["artifact_sha256"]),
+                            ("id","236"), ("journal_unchanged",False), ("mutation_jobs_executed",["admission"])):
+            bad = copy.deepcopy(evidence)
+            bad["open_auto_tick"][field] = value
+            with self.subTest(field=field),self.assertRaises(ValueError):
+                breaker.a6_closed_state(self.state,bad,self.root,authorized=True)
+
     def test_bad_incident_tests_idle_seal_persistence_live_or_journal_cannot_close(self):
         changes = [("incident_run", "999"), ("incident_media_regression","FAIL"),
                    ("artifact_lineage_verified",False), ("journal_generation",0)]

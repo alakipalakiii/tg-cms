@@ -94,9 +94,14 @@ def a6_failure(results: Mapping[str, dict], journal_path: Path) -> str | None:
     for name, result in results.items():
         if result.get("result") in {"failure", "cancelled"}:
             return name
+    completed_publication = results.get("final-persistence", {}).get("result") == "success"
     for stage in ("pre-promotion-proof", "production-proof"):
         item = results.get(stage, {})
-        if item.get("result") == "success" and item.get("outputs", {}).get("proof_state") != "PASS":
+        outputs = item.get("outputs")
+        if (completed_publication and item.get("result") != "success") or (
+            item.get("result") == "success"
+            and (not isinstance(outputs, dict) or outputs.get("proof_state") != "PASS")
+        ):
             return stage
     for stage, recovered in (("upload-result-write", "upload-create-recovered-result"),
                              ("zero-percent-result-write", "zero-create-recovered-result"),
@@ -130,13 +135,18 @@ def a6_closed_state(state: dict, evidence: dict, repository: Path, *, authorized
         raise ValueError("A6 corrective source is invalid")
     for label in ("safety_test", "open_auto_tick"):
         run = evidence[label]
-        if (run.get("conclusion") != "success" or run.get("head_sha") != fix
+        if (run.get("head_sha") != fix
                 or not str(run.get("id", "")).isdigit()):
             raise ValueError("A6 hosted recovery run is incomplete or has wrong source")
-    if (evidence["open_auto_tick"].get("mode") != "AUTO_TICK"
-            or evidence["open_auto_tick"].get("decision") != "UNCHANGED"
-            or evidence["open_auto_tick"].get("mutation_jobs_executed") != []
-            or evidence["open_auto_tick"].get("journal_unchanged") is not True
+    tick = evidence["open_auto_tick"]
+    unchanged = tick.get("decision") == "UNCHANGED" and tick.get("conclusion") == "success"
+    changed_read_only = (tick.get("decision") == "CHANGED" and tick.get("conclusion") == "failure"
+                         and tick.get("check_only_outcome") == "CHANGED_REVISION_DETECTED_CHECK_ONLY"
+                         and tick.get("failed_jobs") == ["check-only"])
+    if (evidence["safety_test"].get("conclusion") != "success"
+            or tick.get("mode") != "AUTO_TICK" or not (unchanged or changed_read_only)
+            or tick.get("mutation_jobs_executed") != []
+            or tick.get("journal_unchanged") is not True
             or evidence.get("incident_media_regression") != "PASS"):
         raise ValueError("A6 OPEN idle path or media regression not proven")
     journal = _journal(repository / "publisher-state/production-transaction-journal.json")
@@ -154,6 +164,15 @@ def a6_closed_state(state: dict, evidence: dict, repository: Path, *, authorized
     references = {item["artifact_sha256"]: item for item in artifacts}
     for item in artifacts:
         contracts.validate_artifact(item, referenced_artifacts=references)
+    if changed_read_only:
+        revision = references[tick["revision_artifact_sha256"]]
+        if (revision["artifact_type"] != "revision_resolution"
+                or revision["producer"]["source_sha"] != fix
+                or revision["producer"]["workflow_run_id"] != str(tick["id"])
+                or revision["payload"]["decision"] != "CHANGED"
+                or revision["payload"]["published_revision"] != published["published_content_revision"]
+                or revision["payload"]["revision"] <= published["published_content_revision"]):
+            raise ValueError("A6 changed CHECK_ONLY revision evidence mismatch")
     sealed_proof = references[proof["artifact_sha256"]]
     sealed_persistence = references[persisted["artifact_sha256"]]
     if (sealed_proof["artifact_type"] != "proof_evidence"
@@ -204,7 +223,7 @@ def a6_closed_state(state: dict, evidence: dict, repository: Path, *, authorized
     if journal["generation"] != evidence["journal_generation"]:
         raise ValueError("A6 recovery journal changed")
     return {"contract": CONTRACT, "state": "CLOSED",
-            "reason": f"{A6_RECOVERY_KIND}: incident {state['failed_run_id']} media failures rejected; current sealed production and scheduled graph verified",
+            "reason": f"{A6_RECOVERY_KIND}: incident {state['failed_run_id']} regression resolved; completed sealed production, persistence and scheduled path verified",
             "failed_run_id": None, "failed_job": None, "head_sha": fix,
             "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "recovery_kind": A6_RECOVERY_KIND, "incident_run": state["failed_run_id"], "fix_sha": fix,
