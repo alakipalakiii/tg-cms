@@ -55,3 +55,8 @@ Thumbs.db
 # Editor files
 .vscode/
 .idea/
+
+# Portable workspace: local evidence, historical work and verification output
+/local-output/
+/local-archive/
+/local-*-validation.log
