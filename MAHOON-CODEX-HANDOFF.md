@@ -1,3 +1,70 @@
+# Final readback — native scheduled publication206 verified
+
+**BREAKER_REPAIR: PASS. AUTO_PUBLISH_STATUS: ENABLED_AND_VERIFIED.**
+Final independent acceptance cutoff: **2026-10-16T18:22:23.123844+00:00 UTC**. Latest authoritative revision **206 = persisted published206**, **1860 public records, 4265 routes**. This readback supersedes the earlier205 checkpoint below.
+
+- Native GitHub **schedule** run [38919224649](https://github.com/alakipalakiii/tg-cms/actions/runs/38919224649), source **7e6e5fc254c4a8d47ee38f68e129dfdd78df6573**, completed successfully at2026-10-16T16:30:26Z. Both actual proof job outputs are PASS; build, promotion, production-proof, materialization, final-persistence and scheduled-circuit-breaker succeeded. This was a genuine unattended scheduled publication; no new dispatch was used to obtain this evidence.
+- Independent validation: **12 sealed artifacts**, **6 exact remote state blobs**, **5 raw observation hashes** and **4 raw build input hashes** match. Journal **201**, active/pending=null; SHA256 **4b522c3e366a8e5f1e78e7cfdc66f9fc714920553044848e6de4051bb824fb8f**. State commit **dc88a49ebdcff2e0537dca34bc406a313d79c054**, canonical closure **5d07f5b2ef933037bdcf9c10046d1610a37a50bb**. Upload/zero-percent/promotion each have exactly one APPLIED attempt, rollback0; completed204 history is unchanged.
+- Website **15b81db8-10a5-40d3-97d3-b4c9c813b6b5 at100%**, baseline e18cff07-b909-4973-8977-c504d7fe7b8d at0%; deployment **20c8652e-d637-495a-8659-b6a7e63499ed**. Authoritative Cloudflare readback matches the sealed production proof and persisted state. Static seal **1dd3d29393cdd30469f3af06fe72e4d15825df5bfbd580cd9de5572af9315481**.
+- Seals: preproof **481e9955a05ab459e64b898d8b47e11fa372aa8183191ef9f76d0bdc9bef6f88**; production **51d985ddb9e200c27180d42ce7d2e0618733095c2d826fe35aa456c358f2ae1e**; persistence **bfcb4246809a4943e731caea32e21a9c9ff6bb604b567492cf58bb0bc0b1d969**.
+- Snapshot comparison205→206: only DB **1931** added; all **1859** prior public records identical, no removals or edits. The full existing route/media/browser/production proof gates remain enforced. Earlier unchanged AUTO_TICK205 [38908441267](https://github.com/alakipalakiii/tg-cms/actions/runs/38908441267) remains the verified no-duplicate/no-deployment idle evidence; it is not represented as an idle206 run.
+- **PUBLISH remains enabled; breaker CLOSED.** Native cron remains17,47 * * * * UTC; Cloudflare heartbeat cron[] unchanged. API version708ba338-168e-4f69-aa57-ce5a012e7432/deployment7103967e-93f5-47e9-81df-42e7447b5943 unchanged. Fresh GET-only health/public listing/stats200 and protected admin401 at2026-10-16T18:21:31Z. No credential, webhook, Telegram security, D1 or scheduler-policy mutation was performed in this final readback.
+- Fix **ea489c68b2403159f842c230a10d3dc05afbed44**; supported breaker recovery **2f76ec30b07f67d4d6db605e522aa0969491d709**. Hosted safety [38895585563](https://github.com/alakipalakiii/tg-cms/actions/runs/38895585563):923 tests,0 failures/errors,1 optional historical-artifact skip. Future freshness depends on GitHub scheduling/queue and the required full proof duration; immediate publication is not promised. No destructive live bot/admin test was performed.
+
+---
+
+## Earlier verified repair and publication205 checkpoint
+
+# Circuit breaker repair — FINAL ACCEPTANCE205, 2026-10-16
+
+**BREAKER_REPAIR: PASS. AUTO_PUBLISH_STATUS: ENABLED_AND_VERIFIED. SEC-01: PASS, unchanged.**
+Acceptance cutoff: 2026-10-16T13:33:04.108602+00:00 UTC. Latest authoritative revision **205 = persisted published205**, 1859 public records, 4263 routes. This section supersedes all historical revision203/CHECK_ONLY/OPEN statements below. No owner action remains for this repair.
+
+## Exact incident and repair
+
+Native scheduled run [38883274107](https://github.com/alakipalakiii/tg-cms/actions/runs/38883274107), source 3e05973aac7df73b08d55bc0b3529e8843f85c42, completed revision204 and all publication/proof/persistence stages. Only scheduled-circuit-breaker failed. Its retained immutable `A6_RESULTS` has pre-promotion-proof.result=success with **outputs={}**; its actual sealed preproof is PASS. Replaying the complete actual needs context reproduces the false failure; adding only the verified missing output removes it. Eight invalid/missing/FAIL output variants remain rejected. Reconciler [38893508493](https://github.com/alakipalakiii/tg-cms/actions/runs/38893508493) found no active transaction and performed no recovery or publication.
+
+Fix **ea489c68b2403159f842c230a10d3dc05afbed44** declares the active preproof job output and emits PASS/FAIL from its validated sealed artifact, matching status digest, recomputed seal and boolean PASS. The watcher rejects missing/invalid proof outputs and requires both successful proofs for completed publication; unchanged idle remains valid. Promotion, route/media/visual/zero-origin/identity requirements are unchanged. Existing always-upload diagnostic retention remains.
+
+Supported `recover-a6` recovery commit **2f76ec30b07f67d4d6db605e522aa0969491d709**, evidence SHA256 **089499134cb994a0de7900be762c3c559171964733ff5f1cdb99c804d377a4a6**, closed the breaker with journal181 clear, twelve incident seals plus the hosted revision205 resolution, six exact remote Git blobs and independent Cloudflare readback. No manual journal edit, policy mutation or Cloudflare traffic operation occurred in recovery. Its narrowly tested CHANGED CHECK_ONLY branch requires the exact exit3 outcome, only check-only failed, a source/run-bound sealed newer revision, no mutation jobs and unchanged journal; all normal production-proof/persistence/live-state gates still apply. Breaker recovery audit fields intentionally describe revision204 at closure; current serving state is in published-static-state.json.
+
+## Hosted and live evidence
+
+| Check | Run | Result |
+|---|---|---|
+| Ubuntu/Node22/pinned Chromium safety + locked build |[38895585563](https://github.com/alakipalakiii/tg-cms/actions/runs/38895585563)|SUCCESS;923 tests/71.030s,0 failures/errors,1 optional historical-artifact skip; local focused74 tests also PASS|
+| OPEN AUTO_TICK |[38895938836](https://github.com/alakipalakiii/tg-cms/actions/runs/38895938836)|Expected CHECK_ONLY exit3 for CHANGED205; only check-only failed; all publication jobs skipped, journal181 unchanged, watcher failure=null|
+| Unpinned production204 reader acceptance |[38895921995](https://github.com/alakipalakiii/tg-cms/actions/runs/38895921995)|SUCCESS;9/9|
+| Pinned candidate205 reader acceptance |[38902334460](https://github.com/alakipalakiii/tg-cms/actions/runs/38902334460)|SUCCESS;9/9 at0%|
+| **Unpinned production205 reader acceptance** |[38903409487](https://github.com/alakipalakiii/tg-cms/actions/runs/38903409487)|**SUCCESS;9/9**, latest DB1930, actual OGG/MP4 playback, search/navigation/mobile/admin401,0JS errors,0 forbidden public dependencies|
+| Fresh normal changed AUTO_TICK205 |[38896212436](https://github.com/alakipalakiii/tg-cms/actions/runs/38896212436)|SUCCESS; full proof/persistence and watcher successful; both actual proof job outputs PASS|
+| **Enabled unchanged AUTO_TICK205** |[38908441267](https://github.com/alakipalakiii/tg-cms/actions/runs/38908441267)|**SUCCESS**; publish_allowed=true,UNCHANGED205,breakerCLOSED; no build/export/crawl/upload/promotion/persistence|
+
+Revision205 had already arrived during diagnosis; an actual UNCHANGED204 tick was therefore unavailable. The bounded cutoff was205. Normal new transaction205 added only public DB1930, [دست های تو](https://mahoonartmagazine.ir/post/1930); all1858 previous public snapshot records were identical, with no removals or edits. Revision differences were not used as post counts. Revision204's completed journal entry remains exactly unchanged. Each205 upload/zero-percent/promotion has one APPLIED attempt; execution attempts=1,rollback=0. No completed transaction was replayed.
+
+## Canonical production agreement
+
+- Website **e18cff07-b909-4973-8977-c504d7fe7b8d100%**, baseline e13f714d-f11d-4fb0-8a42-df841fb41b15 at0%; deployment **c523d854-13fd-46b2-9192-d798609fbf0c**. Independent provider readbacks agree with proof and persistence. Original204 version/deployment/seal were independently verified before the fresh transaction.
+- API **708ba338-168e-4f69-aa57-ce5a012e7432 at100%**, deployment7103967e-93f5-47e9-81df-42e7447b5943, unchanged. Fresh GET-only health/public listing/stats=200, protected admin/health=401. Telegram registration, URL, opaque credentials, security and bot behavior were not changed; no real test post, destructive live management command or D1 reset/restore/schema change occurred.
+- Source for publication **2f76ec30b07f67d4d6db605e522aa0969491d709**; state commit **47311b1e9d31888b8efd7853c2f57a045b760403**; completed canonical journal observed at **7e6e5fc254c4a8d47ee38f68e129dfdd78df6573**. Journal **191**, active/pending=null; raw SHA256 **41352c1afda06316f6bd1c867c89a59a75517aae34be9f80c6e486160a9759a3**. Six remote state blobs match sealed hashes/sizes; twelve sealed artifacts and nine raw build/observation hashes independently validate.
+- Production **4263/4263** complete route responses200, 609 immutable media objects,0 media/version/canonical/critical-link failures, complete sitemap/SEO/category/latest/listing parity and all eleven production gates PASS. Existing19 historical media fallbacks remain;0 unresolved media. Public browser zero-origin measurements remain zero.
+- Production browser result SHA256 **40bd1d8f7bcb8ddfdf24c2a9329c9beeb1dda76e75d7001ec5880a4763c1222b**. An auxiliary local urllib body read timed out; it is retained as INCONCLUSIVE_LOCAL_TRANSPORT. Hosted complete-route and browser evidence determined acceptance; no production-corruption claim or mutation was made from that local observation.
+- The idle run executed only policy preflight, no-op journal bootstrap, revision resolution and watcher. Journal raw hash/generation and deployment stayed identical; mutation jobs=[]; watcher={changed:false,failure:null,state:CLOSED}.
+
+Initial204 readback: e13f714d-f11d-4fb0-8a42-df841fb41b15 at100%, baseline1004374c-4b46-458d-be0f-a39537f9550a at0%, deployment721649e3-99a9-44ff-8779-9e775bfa23ea, static seal259a2c5fcd4d3b574fb20d31611127bcf605189849273c244b3ae253f02c041a. Revision204 proof seals: preproof **3da3ce3ffef0284d6f3c4bc74317934699dd9f68f4f7f8b4f4e1809b5bf7b1bc**, production **7992aab73cbc76f26129586fec7a6acbac2d94a5cea3951f8aec7b95be14943d**, persistence **4c899c7517540b5402b770e89fc061d5f457bcd08a0cd3b39db446a293cbbbb9**. State commit7592b724f1dd27d8f1c6c9cf5075fc0c46fcd902 and original journal181 were verified independently.
+
+Revision205 seals: static artifact **a4236d4871054d10e27ac413fd61411f9b9579d68c908c8f3504a870699e92e4**, preproof **ac7a8c4644c0c216bd2a3251dbf7d258846c0ce804875b4d224c0de17b4ebc90**, production **e50f831ff260159148032e218a5b8179cb5d2a20bb74e2ab88487e4d6f4f915d**, persistence **370c16f638f4972f966f294ccd3b8e2df7f0fd4754bec61b67dd870d9bb2b728**.
+
+## Ongoing operation and limits
+
+**PUBLISHER_MODE_SCHEDULED=PUBLISH; breakerCLOSED.** Native GitHub workflow353485398 remains active, cron17,47 * * * * UTC. Cloudflare heartbeat cron[] and opaque bindings remain unchanged. The genuine native changed-content event204, corrected real changed AUTO_TICK205, actual enabled idle and executable schedule-condition tests establish the unattended path. Future content follows the same normal A6 gates without a Codex session, CMD or ordinary approval. GitHub queue/schedule delay and the complete proof pipeline affect freshness; no immediate-publication guarantee is made. Real failures, invalid/missing proof or incomplete journal still stop publication and require evidence-backed recovery. No alternate scheduler or automatic breaker-close/retry loop was added.
+
+Optional dependency/device/performance maintenance and existing historical unavailable-source media remain separate. No destructive live bot/admin tests or physical-device codec matrix was performed. The final report-only fast-forward commit is the delivery receipt; code, recovery, execution and state commit IDs are above. Durable GitHub artifacts/logs and canonical state retain the evidence; the large build artifact was not downloaded locally for this diagnosis.
+
+---
+
+## Historical checkpoints — superseded by the acceptance above
+
 # Automatic publishing — FINAL ACCEPTANCE, 2026-10-16 Asia/Tehran
 
 **AUTO_PUBLISH_STATUS: ENABLED_AWAITING_FIRST_REAL_CHANGE. SEC-01: PASS, unchanged.** Automatic publication is armed and its real enabled idle path is verified. The latest observed legitimate snapshot remains203, already published; no changed-content promotion was manufactured. This section supersedes the historical IN PROGRESS/CHECK_ONLY/OPEN notes below.

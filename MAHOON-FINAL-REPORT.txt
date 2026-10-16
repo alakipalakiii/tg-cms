@@ -1,3 +1,36 @@
+FINAL NATIVE SCHEDULE ACCEPTANCE206 — 2026-10-16T18:22:23.123844+00:00 UTC
+BREAKER_REPAIR: PASS. AUTO_PUBLISH_STATUS: ENABLED_AND_VERIFIED.
+Native schedule38919224649 SUCCESS; actual proof outputsPASS; breakerCLOSED; PUBLISH enabled.
+Latest206=published206;1860 records;4265 routes. Journal201 active/pending=null.
+Website 15b81db8-10a5-40d3-97d3-b4c9c813b6b5 at100%; deployment 20c8652e-d637-495a-8659-b6a7e63499ed.
+State commit dc88a49ebdcff2e0537dca34bc406a313d79c054; canonical closure 5d07f5b2ef933037bdcf9c10046d1610a37a50bb.
+12 seals/6 remote blobs/9 raw hashes validated; one APPLIED per operation;rollback0;204 history unchanged.
+Only DB1931 added since205;1859 prior records unchanged. API/security/credentials preserved.
+Idle20538908441267 SUCCESS/no mutations remains the no-duplicate proof. No idle206 claim.
+Fixea489c68b2403159f842c230a10d3dc05afbed44; supported recovery2f76ec30b07f67d4d6db605e522aa0969491d709.
+Full proof seals, run links and final cutoff: MAHOON-PLATFORM-AUDIT-AND-OPTIMIZATION-REPORT.md.
+
+EARLIER VERIFIED205 CHECKPOINT BELOW
+
+CURRENT BREAKER REPAIR AND ACCEPTANCE205 — 2026-10-16T13:33:04.108602+00:00 UTC
+BREAKER_REPAIR: PASS. AUTO_PUBLISH_STATUS: ENABLED_AND_VERIFIED. SEC-01: PASS, unchanged.
+Latest detected205 = persisted205 at acceptance cutoff;1859 public records;4263 complete routes200.
+Website versione18cff07-b909-4973-8977-c504d7fe7b8d100%; deploymentc523d854-13fd-46b2-9192-d798609fbf0c; previous204 at0%.
+API708ba338-168e-4f69-aa57-ce5a012e7432 unchanged100%; deployment7103967e-93f5-47e9-81df-42e7447b5943.
+Cause: successful preproof omitted job outputs; actual immutable204 context had outputs={}. Sealed proof was PASS.
+Fixea489c68b2403159f842c230a10d3dc05afbed44; supported recover-a6 commit2f76ec30b07f67d4d6db605e522aa0969491d709; no manual journal edits or repeated204 publication.
+Hosted safety38895585563 SUCCESS/923 tests; normal fresh20538896212436 SUCCESS including watcher; unchanged AUTO_TICK38908441267 SUCCESS/no mutation or deployment.
+Live unpinned20538903409487 SUCCESS/9-of-9, latest public DB1930, audio/video/search/mobile/admin boundary,0JS errors/forbidden dependencies.
+Journal191 validates; active=null,pending=null; SHA25641352c1afda06316f6bd1c867c89a59a75517aae34be9f80c6e486160a9759a3 unchanged through idle.
+Source2f76ec30b07f67d4d6db605e522aa0969491d709; state commit47311b1e9d31888b8efd7853c2f57a045b760403; canonical completion observed at7e6e5fc254c4a8d47ee38f68e129dfdd78df6573.
+Preproofac7a8c4644c0c216bd2a3251dbf7d258846c0ce804875b4d224c0de17b4ebc90; productione50f831ff260159148032e218a5b8179cb5d2a20bb74e2ab88487e4d6f4f915d; persistence370c16f638f4972f966f294ccd3b8e2df7f0fd4754bec61b67dd870d9bb2b728.
+Twelve sealed artifacts, six exact remote state blobs and raw observations independently match live allocation/deployment.
+PUBLISH remains enabled, breakerCLOSED, native cron17,47 * * * * UTC; duplicate Cloudflare cron remains[].
+Only DB1930 was added to public snapshot; all1858 prior records unchanged. Each fresh205 operation APPLIED once;rollback0. Telegram security/credentials/webhook preserved; no real test post or D1 reset.
+Full details and limits: MAHOON-PLATFORM-AUDIT-AND-OPTIMIZATION-REPORT.md; MAHOON-CODEX-HANDOFF.md.
+
+HISTORICAL REPORTS BELOW — CURRENT VALUES ABOVE SUPERSEDE OLD REVISION/POLICY/BREAKER STATES
+
 CURRENT FINAL ACCEPTANCE203 — 2026-10-16 01:17:17 +0330 (Asia/Tehran)
 SEC-01: PASS. Website publication203: COMPLETED. Latest detected203 = published203 at final read.
 Website: https://mahoonartmagazine.ir/post/1928
