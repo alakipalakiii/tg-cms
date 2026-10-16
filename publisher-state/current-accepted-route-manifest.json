@@ -1,6 +1,6 @@
 {
   "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
-  "route_count": 4258,
+  "route_count": 4261,
   "routes": [
     "/",
     "/about",
@@ -1113,6 +1113,7 @@
     "/post/1926",
     "/post/1927",
     "/post/1928",
+    "/post/1929",
     "/post/193",
     "/post/194",
     "/post/195",
@@ -3126,6 +3127,7 @@
     "/post/ما-رازهامون-رو-از-خیلىها-1792074618032",
     "/post/ما-روزمان-را-میگذرانیم-1783460142433",
     "/post/ما-زخمی-آغوشهایی-هستیم-1783489372836",
+    "/post/ما-زندگی-را-انتخاب-نمیکنیم،-1792139409187",
     "/post/ما-فراموشی-را-گناه-میشماریم،-1789662626115",
     "/post/ما-فقط-یک-صبر-داریم-و-1783461838089",
     "/post/ما-مقصر-هیچکدوم-از-آسیبهایی-که-توی-زندگیمون-خوردیم-خودمون-نبودیم،-اما--1783496946806",
@@ -4027,6 +4029,7 @@
     "/tag/%D8%AE%D8%B1%D8%AF%D8%B3%D8%A7%D9%85%D9%88%D8%B1%D8%A7%DB%8C%DB%8C",
     "/tag/%D8%AE%D8%B4%D9%85%E2%80%8C%D9%88%E2%80%8C%D9%87%DB%8C%D8%A7%D9%87%D9%88",
     "/tag/%D8%AE%D8%B4%D9%85_%D9%88_%D9%87%DB%8C%D8%A7%D9%87%D9%88",
+    "/tag/%D8%AE%DB%8C%D8%A7%D9%86%D8%AA",
     "/tag/%D8%AF%D8%A7%D8%B1%DB%8C%D9%88%D8%B4_%D9%81%D8%B1%D9%87%D9%88%D8%AF",
     "/tag/%D8%AF%D8%A7%D8%B3%D8%AA%D8%A7%D9%86_%DA%A9%D9%88%D8%AA%D8%A7%D9%87",
     "/tag/%D8%AF%D8%A7%D8%B3%D8%AA%D8%A7%DB%8C%D9%81%D8%B3%DA%A9%DB%8C",
@@ -4261,10 +4264,10 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4248,
-  "snapshot_derived_route_count": 4175,
-  "snapshot_post_route_count": 3714,
-  "snapshot_tag_route_count": 364,
+  "baseline_route_count": 4258,
+  "snapshot_derived_route_count": 4178,
+  "snapshot_post_route_count": 3716,
+  "snapshot_tag_route_count": 365,
   "snapshot_pagination_route_count": 97,
   "required_category_routes": [
     "/category/دیالوگ ها",
@@ -5300,6 +5303,7 @@
     "/post/1926",
     "/post/1927",
     "/post/1928",
+    "/post/1929",
     "/post/193",
     "/post/194",
     "/post/195",
@@ -7313,6 +7317,7 @@
     "/post/ما-رازهامون-رو-از-خیلىها-1792074618032",
     "/post/ما-روزمان-را-میگذرانیم-1783460142433",
     "/post/ما-زخمی-آغوشهایی-هستیم-1783489372836",
+    "/post/ما-زندگی-را-انتخاب-نمیکنیم،-1792139409187",
     "/post/ما-فراموشی-را-گناه-میشماریم،-1789662626115",
     "/post/ما-فقط-یک-صبر-داریم-و-1783461838089",
     "/post/ما-مقصر-هیچکدوم-از-آسیبهایی-که-توی-زندگیمون-خوردیم-خودمون-نبودیم،-اما--1783496946806",
@@ -7998,8 +8003,7 @@
   ],
   "new_snapshot_routes_missing_from_candidate": [],
   "new_snapshot_tag_routes": [
-    "/tag/%D8%B3%D8%AD%D8%B1_%D8%B1%D8%B3%D8%AA%DA%AF%D8%A7%D8%B1",
-    "/tag/%DA%AF%D8%A7%D9%84%D8%A7%DA%A9%D8%AA%DB%8C%D9%88%D9%86_%D8%AA%D8%A7%D8%A8%DB%8C%D8%AF%D8%B2%D9%87"
+    "/tag/%D8%AE%DB%8C%D8%A7%D9%86%D8%AA"
   ],
   "new_snapshot_tag_routes_missing_from_candidate": [],
   "new_snapshot_pagination_routes": [],
@@ -8088,14 +8092,8 @@
     "/sitemap.xml"
   ],
   "new_snapshot_routes": [
-    "/post/1925",
-    "/post/1926",
-    "/post/1927",
-    "/post/1928",
-    "/post/اگر-از-حرفش-دلخورید-1792081818009",
-    "/post/شمردن-اسکناسها-در-سکوت-شب،-1792093107065",
-    "/post/ما-رازهامون-رو-از-خیلىها-1792074618032",
-    "/post/چه-برفی-میبارد-1792090972613"
+    "/post/1929",
+    "/post/ما-زندگی-را-انتخاب-نمیکنیم،-1792139409187"
   ],
   "new_control_routes": []
 }
