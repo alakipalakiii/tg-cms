@@ -1,6 +1,6 @@
 {
   "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
-  "route_count": 4261,
+  "route_count": 4263,
   "routes": [
     "/",
     "/about",
@@ -1115,6 +1115,7 @@
     "/post/1928",
     "/post/1929",
     "/post/193",
+    "/post/1930",
     "/post/194",
     "/post/195",
     "/post/196",
@@ -2600,6 +2601,7 @@
     "/post/درگیر-باشید-1783494032559",
     "/post/درگیر-لحظات-خوب-و-بد-نشو-1783489259725",
     "/post/دریاهای-آرام،-ملوان-های-خوبی-نمیسازند-1783497110968",
+    "/post/دست-های-تو-1792150209162",
     "/post/دل-بستن-به-دیگری-کار-بزرگی-است؛-1791448325007",
     "/post/دلا-نزد-کسی-بنشین-1789497183824",
     "/post/دلت-به-حال-مُرده-ها-نسوزه-1783485661163",
@@ -4264,9 +4266,9 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4258,
-  "snapshot_derived_route_count": 4178,
-  "snapshot_post_route_count": 3716,
+  "baseline_route_count": 4261,
+  "snapshot_derived_route_count": 4180,
+  "snapshot_post_route_count": 3718,
   "snapshot_tag_route_count": 365,
   "snapshot_pagination_route_count": 97,
   "required_category_routes": [
@@ -5305,6 +5307,7 @@
     "/post/1928",
     "/post/1929",
     "/post/193",
+    "/post/1930",
     "/post/194",
     "/post/195",
     "/post/196",
@@ -6790,6 +6793,7 @@
     "/post/درگیر-باشید-1783494032559",
     "/post/درگیر-لحظات-خوب-و-بد-نشو-1783489259725",
     "/post/دریاهای-آرام،-ملوان-های-خوبی-نمیسازند-1783497110968",
+    "/post/دست-های-تو-1792150209162",
     "/post/دل-بستن-به-دیگری-کار-بزرگی-است؛-1791448325007",
     "/post/دلا-نزد-کسی-بنشین-1789497183824",
     "/post/دلت-به-حال-مُرده-ها-نسوزه-1783485661163",
@@ -8002,9 +8006,7 @@
     "/post/۷-تکنیک-ژاپنی-برای-مقابله-با-تنبلی-1783486077683"
   ],
   "new_snapshot_routes_missing_from_candidate": [],
-  "new_snapshot_tag_routes": [
-    "/tag/%D8%AE%DB%8C%D8%A7%D9%86%D8%AA"
-  ],
+  "new_snapshot_tag_routes": [],
   "new_snapshot_tag_routes_missing_from_candidate": [],
   "new_snapshot_pagination_routes": [],
   "new_snapshot_pagination_routes_missing_from_candidate": [],
@@ -8092,8 +8094,8 @@
     "/sitemap.xml"
   ],
   "new_snapshot_routes": [
-    "/post/1929",
-    "/post/ما-زندگی-را-انتخاب-نمیکنیم،-1792139409187"
+    "/post/1930",
+    "/post/دست-های-تو-1792150209162"
   ],
   "new_control_routes": []
 }
