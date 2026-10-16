@@ -1,0 +1,160 @@
+{
+  "contract": "MAHOON_LOCAL_CLEANUP_V1",
+  "at": "2026-10-16T19:41:08.468938+00:00",
+  "status": "COMPLETED_WITH_PROTECTED_EXCEPTIONS_AND_POLICY_BLOCKED_FINAL_TEST_COPY",
+  "canonical_root": "C:\\Users\\mehdi karani\\MAHOON",
+  "source_commit": "bc66fe9a0f6ae42152d9d5048f37ace9aec89eef",
+  "accepted_production_reference_commit": "202df2ec78e69b27896e323cc8c4972354d8c619",
+  "initial_name_matched_inventory": {
+    "locations": 326,
+    "logical_bytes": 40349356883,
+    "files": 532877,
+    "hardlink_names_detected": 29954
+  },
+  "final_related_inventory_excluding_unrelated_salon_and_this_task_temp": {
+    "locations": 303,
+    "logical_bytes": 5939585152,
+    "files": 112046
+  },
+  "canonical_footprint": {
+    "bytes": 615281803,
+    "files": 2089
+  },
+  "deleted_old_artifact_batches": [
+    {
+      "manifest": "deletion-results.json",
+      "targets": 104,
+      "files": 268044,
+      "logical_bytes": 14334965729
+    },
+    {
+      "manifest": "deletion-results-2.json",
+      "targets": 466,
+      "files": 28838,
+      "logical_bytes": 4448287037
+    },
+    {
+      "manifest": "dedup-deletions.jsonl",
+      "targets": 64754,
+      "files": 64754,
+      "logical_bytes": 13474292971
+    },
+    {
+      "manifest": "dedup-deletions-4.jsonl",
+      "targets": 9701,
+      "files": 9701,
+      "logical_bytes": 2469751993
+    }
+  ],
+  "old_artifact_files_deleted": 371337,
+  "old_artifact_logical_bytes_deleted": 34727297730,
+  "worktrees_removed_supported_git": 28,
+  "archived_worktree_head_refs": 31,
+  "essential_preservation": {
+    "historical_source_files": 2683,
+    "historical_source_bytes": 32105039,
+    "unique_media_files": 631,
+    "unique_media_bytes": 577906936,
+    "media_archive_sha256": "eaf08f85800fe943184689753eaa2a32aa299ba0d85e5ae665dc2d6d23ae607f",
+    "original_brand_files": 9,
+    "original_brand_bytes": 8784462,
+    "all_content_hash_verified": true
+  },
+  "protected_legacy_data_moved": {
+    "files": 6183,
+    "bytes": 1040231809,
+    "path": "C:\\Users\\mehdi karani\\AppData\\Local\\MAHOON-Protected-Review-20261016",
+    "not_counted_as_disk_space_recovered": true
+  },
+  "retained_review_inventory": {
+    "locations": 302,
+    "files": 109957,
+    "logical_bytes": 5324303349,
+    "full_inventory": "local-output/inventory.json"
+  },
+  "blocked_actions": [
+    {
+      "action": "Delete verified disposable final archive transfer copy",
+      "path": "C:\\Users\\mehdi karani\\AppData\\Local\\Temp\\mahoon-cleanup-20261016\\verified-final-archive-copy.zip",
+      "bytes": 578258357,
+      "sha256": "EAF08F85800FE943184689753EAA2A32AA299BA0D85E5AE665DC2D6D23AE607F",
+      "status": "RETAINED_POLICY_BLOCKED",
+      "reason": "Automatic approval review rejected both guarded removal forms: blocked by policy. No bypass attempted. Task directory retained rather than recursively deleting the denied target."
+    }
+  ],
+  "volume_observations": [
+    {
+      "drive": "C",
+      "before_free_bytes": 178214952960,
+      "after_free_bytes": 205602648064,
+      "net_free_change_bytes": 27387695104
+    },
+    {
+      "drive": "E",
+      "before_free_bytes": 291721625600,
+      "after_free_bytes": 291495608320,
+      "net_free_change_bytes": -226017280
+    }
+  ],
+  "tests": {
+    "full_publisher": {
+      "run": 923,
+      "failures": 0,
+      "skipped": 3,
+      "seconds": 532.565
+    },
+    "focused_publisher": 50,
+    "launcher_tests": 4,
+    "canonical_build": "PASS",
+    "local_workerd_D1_telegram": "PASS",
+    "transfer_setup_verify_build_boundary_and_launchers": "PASS",
+    "final_archive_transfer_copy_hash": "PASS",
+    "git_fsck": "PASS",
+    "submodules": 0,
+    "lfs_pointers": 0,
+    "production_source_workflow_state_changes": []
+  },
+  "production": {
+    "observation_utc": "2026-10-16T19:26:32.067056+00:00",
+    "revision": 206,
+    "journal_generation": 201,
+    "active": null,
+    "pending": null,
+    "policy": "PUBLISH",
+    "breaker": "CLOSED",
+    "website_version": "15b81db8-10a5-40d3-97d3-b4c9c813b6b5",
+    "deployment": "20c8652e-d637-495a-8659-b6a7e63499ed",
+    "api_version": "708ba338-168e-4f69-aa57-ce5a012e7432",
+    "mutations": 0
+  },
+  "limits": [
+    "Disk free deltas are live observed volume changes; concurrent unrelated activity prevents attributing every byte solely to MAHOON. E had unrelated write activity.",
+    "Logical deletion and moved bytes are not claimed as actual recovered physical space; hard links and retained copies are accounted for by separate volume observations.",
+    "Active Codex/session/common Git, private profiles, backups, independent bot sources, security receipts and ownership-ambiguous material are retained.",
+    "Final verified temporary ZIP deletion was blocked by automatic approval; no recursive parent delete or alternative deletion bypass was attempted.",
+    "Shared global tools, credentials, Codex shared state and reparse points were not removed."
+  ],
+  "cleanup_task_retained_footprint": {
+    "path": "C:\\Users\\mehdi karani\\AppData\\Local\\Temp\\mahoon-cleanup-20261016",
+    "files": 77,
+    "bytes": 662923939,
+    "reason": "Verified final test ZIP removal blocked by automatic approval; exact audit state retained, no recursive delete of denied target."
+  },
+  "final_total_including_cleanup_task_logical_bytes": 6602509091,
+  "exact_path_manifest_archive": {
+    "path": "local-archive/cleanup-audit-manifests.zip",
+    "sha256": "b0abc07a448dc01810f3327b954b34d9c7dda3f179060e554f17da0b17c3e961",
+    "bytes": 5132938,
+    "contains_exact_original_paths_classifications_and_actual_results": true
+  },
+  "git_history_additional_preservation": {
+    "original_local_branches_preserved": 28,
+    "safe_stashes_as_inert_commits": 4,
+    "sensitive_untracked_stash_payloads_held_original_only": 1,
+    "tracked_code_patch_from_held_stash_preserved": true,
+    "credential_value_read": false,
+    "potential_credential_blob_absent_in_portable_objects": true,
+    "origin_head": "main",
+    "original_stash_stack_unchanged": true
+  }
+}
