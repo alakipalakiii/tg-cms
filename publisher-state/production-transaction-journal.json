@@ -18,18 +18,22 @@
           {
             "attempt_id": "47cb73a9-6137-4624-a394-d2aae63492c0",
             "attempt_number": 1,
-            "evidence": null,
+            "evidence": {
+              "reference": "e50c29ae1caeb645ca0de3eabdce62c103c20c09784869e2b3fe2a9db665bea1",
+              "sha256": "b60ad0cb73ebde7d16266de644acde1e33df7e524cc20f469e6093a6b054152c",
+              "type": "mutation_result_artifact"
+            },
             "intent_artifact_sha256": "c118ba40995d9057cfffa04860da32a7ba9bcab416a61054ebd955356ae3e2d9",
             "intent_at": "2026-10-17T09:43:01.991683+00:00",
             "intent_state": "RECORDED",
-            "result_at": null,
-            "result_digest": null,
-            "result_state": "NOT_REPORTED"
+            "result_at": "2026-10-17T09:43:57.768353+00:00",
+            "result_digest": "01df7907513861ead25df0fd783d3ec61eab725d9e1fa2d315f32be609bd30ee",
+            "result_state": "APPLIED"
           }
         ],
         "intent_state": "RECORDED",
         "operation_id": "f6deecbceffd35810ce7e8b850a9b96327bb8a4ed624dae9a3f5a8266429c0cf",
-        "result_state": "NOT_REPORTED"
+        "result_state": "APPLIED"
       },
       "promote": {
         "attempts": [],
@@ -68,7 +72,7 @@
     },
     "proof_evidence_sha256": null,
     "recovery_status": "NONE",
-    "state": "intent_recorded",
+    "state": "operation_reported",
     "state_commit_sha": null,
     "transitions": [
       {
@@ -95,16 +99,21 @@
         "from": "operation_reported",
         "timestamp": "2026-10-17T09:43:01.991701+00:00",
         "to": "intent_recorded"
+      },
+      {
+        "from": "intent_recorded",
+        "timestamp": "2026-10-17T09:43:57.768376+00:00",
+        "to": "operation_reported"
       }
     ],
     "trigger_sources": [
       "schedule"
     ],
-    "updated_at": "2026-10-17T09:43:01.991704+00:00",
+    "updated_at": "2026-10-17T09:43:57.768380+00:00",
     "worker": "mahoon-art-magazine"
   },
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 206,
+  "generation": 207,
   "history": [
     {
       "build_bundle_sha256": null,
