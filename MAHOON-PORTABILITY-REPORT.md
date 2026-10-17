@@ -1,5 +1,7 @@
 # گزارش قابلیت انتقال MAHOON
 
+> سابقهٔ انتقال قبلی: MAIN مستقل جای پوشهٔ C را گرفته است؛ راهنمای جاری در `MAHOON-TRANSFER-GUIDE-FA.md` و نتایج آزمون تازه در BACKUP/FINAL-VERIFICATION-RESULT.json است. آرشیوهای غیرعملیاتی به BACKUP منتقل شده‌اند و dependency MAIN نیستند.
+
 **PORTABILITY: PASS — با آزمون واقعی مسیر دیگر در ویندوز.**
 
 پوشهٔ مرجع: **`C:\Users\mehdi karani\MAHOON`**. commit پیاده‌سازی: `bc66fe9a0f6ae42152d9d5048f37ace9aec89eef`. وضعیت cleanup کامل را جداگانه در [گزارش پاک‌سازی](MAHOON-CLEANUP-REPORT.md) بخوانید؛ مانع policy حذف یک کپی آزمایشی، عملکرد بستهٔ قابل‌حمل را مختل نمی‌کند.

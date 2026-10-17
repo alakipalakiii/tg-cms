@@ -35,6 +35,10 @@ try {
     } elseif ($Mode -eq 'Verify') {
         if (!(Test-Path -LiteralPath (Join-Path $site 'node_modules\astro'))) { throw 'DEPENDENCIES_MISSING: run MAHOON-SETUP.cmd first.' }
         New-Item -ItemType Directory -Path $output -Force | Out-Null
+        $localTemp = Join-Path $output 'temp'
+        New-Item -ItemType Directory -Path $localTemp -Force | Out-Null
+        $env:TEMP = $localTemp
+        $env:TMP = $localTemp
         $env:PUBLIC_MAHOON_SNAPSHOT_BINDING = '1'
         $env:ASTRO_TELEMETRY_DISABLED = '1'
         $env:MAHOON_RUN_BROWSER_TESTS = '0'

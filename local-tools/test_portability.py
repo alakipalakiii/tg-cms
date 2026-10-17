@@ -19,7 +19,9 @@ class PortableLaunchers(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_start_from_unrelated_working_directory(self):
-        with tempfile.TemporaryDirectory(prefix='mahoon-launcher-') as other:
+        output = ROOT / 'local-output'
+        output.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='mahoon-launcher-', dir=output) as other:
             result = subprocess.run(
                 [os.environ['COMSPEC'], '/d', '/c', 'call', str(ROOT / 'MAHOON-START.cmd')],
                 cwd=other, env={**os.environ, 'MAHOON_NONINTERACTIVE': '1'},
@@ -40,6 +42,12 @@ class PortableLaunchers(unittest.TestCase):
             text = path.read_text(encoding='utf8')
             for old in ('C:\\Users\\', 'C:/Users/', 'mahoon-finalize', 'm11e-r86b-runner-clean'):
                 self.assertNotIn(old, text, str(path))
+
+    def test_verify_temp_is_inside_project_only(self):
+        text = SCRIPT.read_text(encoding='utf8')
+        self.assertIn("$localTemp = Join-Path $output 'temp'", text)
+        self.assertIn('$env:TEMP = $localTemp', text)
+        self.assertIn('$env:TMP = $localTemp', text)
 
 
 if __name__ == '__main__':

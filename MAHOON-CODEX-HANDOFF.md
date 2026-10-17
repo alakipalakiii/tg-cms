@@ -1,6 +1,6 @@
 # Local Windows workspace handoff
 
-The authoritative development workspace is the self-contained `MAHOON` folder containing this file. Start with [the Persian transfer guide](MAHOON-TRANSFER-GUIDE-FA.md), [cleanup report](MAHOON-CLEANUP-REPORT.md) and [portability report](MAHOON-PORTABILITY-REPORT.md). The current older Codex conversation/worktree is retained for session safety; do not use historical checkouts for new development. `local-archive` is intentionally private and excluded from Git, so a full folder transfer must include it and `.git`. Protected review material outside the folder must not be uploaded or imported as credentials/configuration. Local setup/verification performs no production mutation.
+The authoritative development workspace is the self-contained `MAIN` folder containing this file (currently `E:\Project\Mahoon\MAIN`). Copy MAIN including `.git` to continue elsewhere; BACKUP is not a runtime, build or test dependency. Start with [the Persian transfer guide](MAHOON-TRANSFER-GUIDE-FA.md). Nonoperational historical archives and the final migration reports are in the separate BACKUP folder; older cleanup/portability reports below describe earlier cutoffs. The older active Codex conversation/worktrees and sensitive review material remain protected exceptions, never credentials/configuration to import. Local setup/verification performs no production mutation; VERIFY uses project-local temporary output.
 
 # Final readback — native scheduled publication206 verified
 
