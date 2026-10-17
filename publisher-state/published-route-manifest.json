@@ -1,6 +1,6 @@
 {
   "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
-  "route_count": 4269,
+  "route_count": 4271,
   "routes": [
     "/",
     "/about",
@@ -1118,6 +1118,7 @@
     "/post/1930",
     "/post/1931",
     "/post/1932",
+    "/post/1933",
     "/post/194",
     "/post/195",
     "/post/196",
@@ -2626,6 +2627,7 @@
     "/post/دکتر-فورد-بهت-که-گفتم،-1783487937443",
     "/post/دیدارِ-دو-شخصیت،-1789203371743",
     "/post/دیر-یا-زود،-1784365513473",
+    "/post/دیگر-1792236609241",
     "/post/ذهن-همان-طور-به-کتاب-نیاز-دارد-که-1783460356225",
     "/post/ذهنهای-بزرگ-هدف-دارن-1783488043421",
     "/post/رابطهی-فکری-،-1792225809190",
@@ -4272,9 +4274,9 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4265,
-  "snapshot_derived_route_count": 4186,
-  "snapshot_post_route_count": 3722,
+  "baseline_route_count": 4269,
+  "snapshot_derived_route_count": 4188,
+  "snapshot_post_route_count": 3724,
   "snapshot_tag_route_count": 367,
   "snapshot_pagination_route_count": 97,
   "required_category_routes": [
@@ -5316,6 +5318,7 @@
     "/post/1930",
     "/post/1931",
     "/post/1932",
+    "/post/1933",
     "/post/194",
     "/post/195",
     "/post/196",
@@ -6824,6 +6827,7 @@
     "/post/دکتر-فورد-بهت-که-گفتم،-1783487937443",
     "/post/دیدارِ-دو-شخصیت،-1789203371743",
     "/post/دیر-یا-زود،-1784365513473",
+    "/post/دیگر-1792236609241",
     "/post/ذهن-همان-طور-به-کتاب-نیاز-دارد-که-1783460356225",
     "/post/ذهنهای-بزرگ-هدف-دارن-1783488043421",
     "/post/رابطهی-فکری-،-1792225809190",
@@ -8016,10 +8020,7 @@
     "/post/۷-تکنیک-ژاپنی-برای-مقابله-با-تنبلی-1783486077683"
   ],
   "new_snapshot_routes_missing_from_candidate": [],
-  "new_snapshot_tag_routes": [
-    "/tag/%D8%B1%D9%88%D9%8A%D8%A7%D9%89_%D8%AA%D8%A8%D8%AA",
-    "/tag/%D9%81%D8%B1%D9%8A%D8%A8%D8%A7_%D9%88%D9%81%D9%89"
-  ],
+  "new_snapshot_tag_routes": [],
   "new_snapshot_tag_routes_missing_from_candidate": [],
   "new_snapshot_pagination_routes": [],
   "new_snapshot_pagination_routes_missing_from_candidate": [],
@@ -8107,8 +8108,8 @@
     "/sitemap.xml"
   ],
   "new_snapshot_routes": [
-    "/post/1932",
-    "/post/رابطهی-فکری-،-1792225809190"
+    "/post/1933",
+    "/post/دیگر-1792236609241"
   ],
   "new_control_routes": []
 }
