@@ -36,23 +36,27 @@
           {
             "attempt_id": "cf0d65ae-0ab6-422f-8890-ffdac9a0005f",
             "attempt_number": 1,
-            "evidence": null,
+            "evidence": {
+              "reference": "4865beeb1da736b844d06366664047b2e909c30a3e9e3124c3e99448193c65b9",
+              "sha256": "2a23cf8ba2382fd2e9742f0abffb53d374444c251dae3715da2d99c03f22ba0f",
+              "type": "mutation_result_artifact"
+            },
             "intent_artifact_sha256": "cc15db4b8ee7520d38adb34eb89019ff8fa9270cd802b385ac339e1d2a9183ab",
             "intent_at": "2026-10-17T09:40:42.240747+00:00",
             "intent_state": "RECORDED",
-            "result_at": null,
-            "result_digest": null,
-            "result_state": "NOT_REPORTED"
+            "result_at": "2026-10-17T09:42:28.936471+00:00",
+            "result_digest": "97389fa0d40832af8ac433f332426d4c0ae1ca4d060f17e829d28a1cc67c4751",
+            "result_state": "APPLIED"
           }
         ],
         "intent_state": "RECORDED",
         "operation_id": "304cb6b7ab9f55e2576ef068a25f6d6f9e9bb3a07968a8d236352172c99efa5f",
-        "result_state": "NOT_REPORTED"
+        "result_state": "APPLIED"
       }
     },
     "proof_evidence_sha256": null,
     "recovery_status": "NONE",
-    "state": "intent_recorded",
+    "state": "operation_reported",
     "state_commit_sha": null,
     "transitions": [
       {
@@ -69,16 +73,21 @@
         "from": "build_ready",
         "timestamp": "2026-10-17T09:40:42.240765+00:00",
         "to": "intent_recorded"
+      },
+      {
+        "from": "intent_recorded",
+        "timestamp": "2026-10-17T09:42:28.936495+00:00",
+        "to": "operation_reported"
       }
     ],
     "trigger_sources": [
       "schedule"
     ],
-    "updated_at": "2026-10-17T09:40:42.240767+00:00",
+    "updated_at": "2026-10-17T09:42:28.936499+00:00",
     "worker": "mahoon-art-magazine"
   },
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 204,
+  "generation": 205,
   "history": [
     {
       "build_bundle_sha256": null,
