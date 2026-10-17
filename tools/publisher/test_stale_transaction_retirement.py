@@ -388,6 +388,14 @@ class StaleRetirementV2Tests(unittest.TestCase):
                 self.assertEqual(2, cli.main(argv))
         self.assertEqual(3, self.repo.journal()["generation"])
 
+    def test_cli_v2_rejects_equal_or_older_public_revision(self):
+        generation, digest = self.repo.gen_and_digest()
+        for revision in (117, 118):
+            with mock.patch.object(cli, "fetch_public_content_revision",
+                    return_value=(revision, "2026-10-17T00:00:00Z", {})), redirect_stdout(io.StringIO()):
+                self.assertEqual(2, cli.main(self._argv(expected_generation=generation, journal_sha256=digest)))
+        self.assertEqual(3, self.repo.journal()["generation"])
+
     def test_cli_without_generation_uses_legacy_109_path_and_rejects_118(self):
         # The legacy path is still wired to the revision-109 transaction only.
         argv = self._argv(transaction_id=TX118, expected_revision=118)

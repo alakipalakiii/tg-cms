@@ -1561,6 +1561,8 @@ def main(argv: list[str] | None = None) -> int:
             if args.expected_generation is not None or args.journal_sha256 is not None:
                 if args.expected_generation is None or args.journal_sha256 is None:
                     raise ValueError("--expected-generation and --journal-sha256 must be supplied together")
+                if public_revision <= args.expected_revision:
+                    raise ValueError("PUBLIC_REVISION_NOT_NEWER_THAN_STALE_ADMISSION")
                 output = writer.retire_stale_admitted_v2(
                     args.transaction_id, args.expected_revision,
                     expected_generation=args.expected_generation,

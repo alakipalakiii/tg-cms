@@ -116,6 +116,9 @@ def a6_failure(results: Mapping[str, dict], journal_path: Path) -> str | None:
         return "journal-invalid"
     if journal["active"] is not None or journal["pending"] is not None:
         return "journal-incomplete"
+    from publisher.superseded_build import verified_retirement
+    if results.get("build-validate", {}).get("outputs", {}).get("superseded") == "true":
+        return None if verified_retirement(results, journal) else "superseded-retirement-unproven"
     if (results.get("admission", {}).get("outputs", {}).get("decision") in {"ADMITTED", "COALESCED"}
             and results.get("final-persistence", {}).get("result") != "success"):
         return "final-persistence"

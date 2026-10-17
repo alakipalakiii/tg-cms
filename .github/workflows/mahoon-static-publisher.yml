@@ -979,6 +979,8 @@ jobs:
   build-validate:
     needs: [admission, resume-admission, scheduled-policy-preflight]
     if: ${{ always() && (((inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'ADMITTED') || (inputs.mode != 'RESUME_ADMITTED' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED' && (inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0')) || (inputs.resume_source_run_id != '' && inputs.resume_source_run_id != null && inputs.resume_source_run_id != '0' && needs.admission.result == 'success' && needs.admission.outputs.decision == 'COALESCED')) }}
+    outputs:
+      superseded: ${{ steps.pre-revision.outputs.superseded == 'true' || steps.post-revision.outputs.superseded == 'true' }}
     runs-on: ubuntu-latest
     permissions: { contents: read }
     steps:
@@ -1007,6 +1009,7 @@ jobs:
           PYTHONPATH: code/tools/publisher:code/tools:code
           RESUME_SOURCE_RUN_ID: ${{ inputs.resume_source_run_id }}
           SOURCE_ADMISSION_SHA: ${{ inputs.resume_source_admission_sha }}
+          AUTOMATIC_TICK: ${{ github.event_name == 'schedule' || inputs.mode == 'AUTO_TICK' }}
           RESUME_MODE: ${{ inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE' }}
           POST_PROMOTION_FINALIZE: ${{ inputs.mode == 'POST_PROMOTION_FINALIZE' }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -1044,10 +1047,12 @@ jobs:
           print(f"RESUME_CARRIED_FORWARD=run{os.environ['RESUME_SOURCE_RUN_ID']} rev{active['content_revision']} tx{active['logical_transaction_id'][:16]}")
           PY
       - name: Validate current admission and public revision before build
+        id: pre-revision
         if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
           EXECUTION_SHA: ${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}
+          AUTOMATIC_TICK: ${{ github.event_name == 'schedule' || inputs.mode == 'AUTO_TICK' }}
           RESUME_MODE: ${{ inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE' }}
         run: |
           python - <<'PY'
@@ -1078,16 +1083,24 @@ jobs:
           current, _changed_at, _meta = fetch_public_content_revision()
           if os.environ['RESUME_MODE'].lower() == 'true':
               assert current == revision['payload']['revision'], f'RESUME_PUBLIC_REVISION_MISMATCH:{current}'
+          if current != revision['payload']['revision']:
+              from publisher.superseded_build import revision_disposition
+              disposition = revision_disposition(revision['payload']['revision'], current,
+                  automatic=os.environ.get('AUTOMATIC_TICK') == 'true', resume=os.environ['RESUME_MODE'].lower() == 'true')
+              if disposition == 'SUPERSEDED':
+                  with open(os.environ['GITHUB_OUTPUT'], 'a') as out: out.write('superseded=true\n')
+                  print('PUBLIC_REVISION_CHANGED_BEFORE_BUILD:SUPERSEDED:' + str(current))
+                  raise SystemExit(0)
           assert current == revision['payload']['revision'], f'PUBLIC_REVISION_CHANGED_BEFORE_BUILD:{current}'
           print(f"PRE_BUILD_REVISION_STABLE={current}")
           PY
       - uses: actions/setup-node@v4
-        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
+        if: ${{ (inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0') && steps.pre-revision.outputs.superseded != 'true' }}
         with: { node-version: 22 }
       - run: npm ci --prefix code/website/dreary-disk
-        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
+        if: ${{ (inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0') && steps.pre-revision.outputs.superseded != 'true' }}
       - name: Build and validate without Cloudflare credentials
-        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
+        if: ${{ (inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0') && steps.pre-revision.outputs.superseded != 'true' }}
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
           PUBLISHER_MODE: BUILD_VALIDATE
@@ -1097,10 +1110,12 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: cd code && python tools/m9/publisher_runner.py
       - name: Recheck public content revision before build artifact handoff
-        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
+        id: post-revision
+        if: ${{ (inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0') && steps.pre-revision.outputs.superseded != 'true' }}
         env:
           PYTHONPATH: code/tools/publisher:code/tools:code
           EXECUTION_SHA: ${{ (inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && inputs.resume_source_sha || needs.scheduled-policy-preflight.outputs.source_sha }}
+          AUTOMATIC_TICK: ${{ github.event_name == 'schedule' || inputs.mode == 'AUTO_TICK' }}
           RESUME_MODE: ${{ inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE' }}
           MAHOON_PUBLIC_CONTENT_REVISION_API: https://mahoon-content-revision.morentoofficial.workers.dev/public/content-revision-v1
         run: |
@@ -1113,11 +1128,19 @@ jobs:
           current, _changed_at, _meta = fetch_public_content_revision()
           if os.environ['RESUME_MODE'].lower() == 'true':
               assert current == revision['payload']['revision'], f'RESUME_PUBLIC_REVISION_MISMATCH:{current}'
+          if current != revision['payload']['revision']:
+              from publisher.superseded_build import revision_disposition
+              disposition = revision_disposition(revision['payload']['revision'], current,
+                  automatic=os.environ.get('AUTOMATIC_TICK') == 'true', resume=os.environ['RESUME_MODE'].lower() == 'true')
+              if disposition == 'SUPERSEDED':
+                  with open(os.environ['GITHUB_OUTPUT'], 'a') as out: out.write('superseded=true\n')
+                  print('PUBLIC_REVISION_CHANGED_DURING_BUILD:SUPERSEDED:' + str(current))
+                  raise SystemExit(0)
           assert current == revision['payload']['revision'], f'PUBLIC_REVISION_CHANGED_DURING_BUILD:{current}'
           print(f"POST_BUILD_REVISION_STABLE={current}")
           PY
       - name: Upload the sealed build bundle
-        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
+        if: ${{ (inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0') && steps.pre-revision.outputs.superseded != 'true' && steps.post-revision.outputs.superseded != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: a6-build-${{ github.run_id }}
@@ -1131,7 +1154,7 @@ jobs:
             code/runner-build/published-route-manifest.json
           if-no-files-found: error
       - name: Retain small sealed build metadata for independent content acceptance
-        if: ${{ inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0' }}
+        if: ${{ (inputs.resume_source_run_id == '' || inputs.resume_source_run_id == null || inputs.resume_source_run_id == '0') && steps.pre-revision.outputs.superseded != 'true' && steps.post-revision.outputs.superseded != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: a6-build-metadata-${{ github.run_id }}
@@ -1145,7 +1168,7 @@ jobs:
 
   build-ready-write:
     needs: [build-validate, admission, resume-admission, scheduled-policy-preflight]
-    if: ${{ !cancelled() && ((needs.build-validate.result == 'success' && needs.admission.result == 'success') || ((inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && needs.build-validate.result == 'success' && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED')) }}
+    if: ${{ !cancelled() && needs.build-validate.outputs.superseded != 'true' && ((needs.build-validate.result == 'success' && needs.admission.result == 'success') || ((inputs.mode == 'RESUME_ADMITTED' || inputs.mode == 'POST_PROMOTION_FINALIZE') && needs.build-validate.result == 'success' && needs.resume-admission.result == 'success' && needs.resume-admission.outputs.decision == 'ADMITTED')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
@@ -3202,8 +3225,47 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: 'a6-rollback-recovered-result-${{ github.run_id }}', path: recovered-rollback-result.json, if-no-files-found: error }
 
+  superseded-build-retirement:
+    needs: [scheduled-policy-preflight, build-validate, build-ready-write, upload-intent-write, cloudflare-upload-operation, upload-result-write, zero-percent-intent-write, cloudflare-zero-percent-operation, zero-percent-result-write, pre-promotion-proof, promote-intent-write, cloudflare-promote-operation, promote-result-write, production-proof, final-state-materialization, final-persistence, rollback-intent-write, cloudflare-rollback-operation, rollback-result-write]
+    if: ${{ always() && !cancelled() && (github.event_name == 'schedule' || inputs.mode == 'AUTO_TICK') && needs.build-validate.result == 'success' && needs.build-validate.outputs.superseded == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: write, actions: read }
+    outputs:
+      status: ${{ steps.retire.outputs.status }}
+      generation: ${{ steps.retire.outputs.generation }}
+      journal_sha256: ${{ steps.retire.outputs.journal_sha256 }}
+      retired_transaction_id: ${{ steps.retire.outputs.retired_transaction_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ needs.scheduled-policy-preflight.outputs.source_sha }}', path: code, fetch-depth: 0, persist-credentials: false }
+      - uses: actions/checkout@v4
+        with: { ref: main, path: state, fetch-depth: 0 }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-revision-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-admission-${{ github.run_id }}', path: handoff }
+      - uses: actions/download-artifact@v4
+        with: { name: 'a6-execution-source-${{ github.run_id }}', path: handoff }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Prove skipped mutation jobs and durably retire the pristine admission
+        id: retire
+        env:
+          PYTHONPATH: code/tools:code
+          GH_TOKEN: ${{ github.token }}
+          EXECUTION_SHA: ${{ needs.scheduled-policy-preflight.outputs.source_sha }}
+        run: |
+          python -m publisher.superseded_build --repository state \
+            --revision handoff/revision-resolution.json --admission handoff/admission.json \
+            --execution-context handoff/execution-source.json --source-sha "$EXECUTION_SHA" \
+            --run-id "$GITHUB_RUN_ID" | tee retirement-evidence.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: 'a6-superseded-retirement-${{ github.run_id }}', path: retirement-evidence.json, if-no-files-found: error }
+
   scheduled-circuit-breaker:
-    needs: [scheduled-policy-preflight, journal-bootstrap, journal-resume-verify, revision-resolve, admission, resume-admission, build-validate, build-ready-write, production-baseline-reconciliation, upload-intent-write, cloudflare-upload-operation, upload-result-write, resume-source-carryforward, resume-zero-carryforward, resume-upload-bridge, upload-recovery-readback-observe, upload-recovery-decision, upload-reconcile-recovery-decision, upload-create-recovered-result, zero-percent-intent-write, cloudflare-zero-percent-operation, zero-percent-result-write, zero-recovery-readback-observe, zero-recovery-decision, zero-reconcile-recovery-decision, zero-create-recovered-result, pre-promotion-proof, resume-preproof-carryforward, promote-intent-write, cloudflare-promote-operation, promote-result-write, resume-promote-carryforward, promote-recovery-readback-observe, promote-recovery-decision, promote-reconcile-recovery-decision, promote-create-recovered-result, production-proof, final-state-materialization, final-persistence, rollback-intent-write, cloudflare-rollback-operation, rollback-result-write, rollback-recovery-readback-observe, rollback-recovery-decision, rollback-reconcile-recovery-decision, rollback-create-recovered-result]
+    needs: [superseded-build-retirement, scheduled-policy-preflight, journal-bootstrap, journal-resume-verify, revision-resolve, admission, resume-admission, build-validate, build-ready-write, production-baseline-reconciliation, upload-intent-write, cloudflare-upload-operation, upload-result-write, resume-source-carryforward, resume-zero-carryforward, resume-upload-bridge, upload-recovery-readback-observe, upload-recovery-decision, upload-reconcile-recovery-decision, upload-create-recovered-result, zero-percent-intent-write, cloudflare-zero-percent-operation, zero-percent-result-write, zero-recovery-readback-observe, zero-recovery-decision, zero-reconcile-recovery-decision, zero-create-recovered-result, pre-promotion-proof, resume-preproof-carryforward, promote-intent-write, cloudflare-promote-operation, promote-result-write, resume-promote-carryforward, promote-recovery-readback-observe, promote-recovery-decision, promote-reconcile-recovery-decision, promote-create-recovered-result, production-proof, final-state-materialization, final-persistence, rollback-intent-write, cloudflare-rollback-operation, rollback-result-write, rollback-recovery-readback-observe, rollback-recovery-decision, rollback-reconcile-recovery-decision, rollback-create-recovered-result]
     if: ${{ always() && (github.event_name == 'schedule' || inputs.mode == 'AUTO_TICK') && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
