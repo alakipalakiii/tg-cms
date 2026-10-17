@@ -1,6 +1,6 @@
 {
   "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
-  "route_count": 4265,
+  "route_count": 4269,
   "routes": [
     "/",
     "/about",
@@ -1117,6 +1117,7 @@
     "/post/193",
     "/post/1930",
     "/post/1931",
+    "/post/1932",
     "/post/194",
     "/post/195",
     "/post/196",
@@ -2627,6 +2628,7 @@
     "/post/دیر-یا-زود،-1784365513473",
     "/post/ذهن-همان-طور-به-کتاب-نیاز-دارد-که-1783460356225",
     "/post/ذهنهای-بزرگ-هدف-دارن-1783488043421",
+    "/post/رابطهی-فکری-،-1792225809190",
     "/post/راه-1783496857590",
     "/post/راه-ارتباطی-با-ما-1786947469956",
     "/post/راه-ارتباطی-با-ما-1787342242885",
@@ -4059,6 +4061,7 @@
     "/tag/%D8%B1%D9%88%D9%85%D9%86%E2%80%8C%D8%B1%D9%88%D9%84%D8%A7%D9%86",
     "/tag/%D8%B1%D9%88%D9%85%D9%86%E2%80%8C%DA%AF%D8%A7%D8%B1%DB%8C",
     "/tag/%D8%B1%D9%88%D9%85%D9%86_%DA%AF%D8%A7%D8%B1%DB%8C",
+    "/tag/%D8%B1%D9%88%D9%8A%D8%A7%D9%89_%D8%AA%D8%A8%D8%AA",
     "/tag/%D8%B1%DA%98_%D9%82%D8%B1%D9%85%D8%B2",
     "/tag/%D8%B2%D9%87%D8%B1%D8%A7_%D8%B4%DA%A9%D9%88%D8%B1%DB%8C",
     "/tag/%D8%B2%D9%88%DB%8C%D8%A7_%D9%BE%DB%8C%D8%B1%D8%B2%D8%A7%D8%AF",
@@ -4115,6 +4118,7 @@
     "/tag/%D9%81%D8%B1%D9%86%D8%A7%D9%86%D8%AF%D9%88_%D9%BE%D8%B3%D9%88%D8%A7",
     "/tag/%D9%81%D8%B1%D9%88%D8%BA%E2%80%8C_%D9%81%D8%B1%D8%AE%D8%B2%D8%A7%D8%AF",
     "/tag/%D9%81%D8%B1%D9%88%D8%BA_%D9%81%D8%B1%D8%AE%D8%B2%D8%A7%D8%AF",
+    "/tag/%D9%81%D8%B1%D9%8A%D8%A8%D8%A7_%D9%88%D9%81%D9%89",
     "/tag/%D9%81%D8%B1%D9%8A%D8%AF%D9%88%D9%86_%D9%85%D8%B4%D9%8A%D8%B1%DB%8C",
     "/tag/%D9%81%D8%B1%DB%8C%D8%AF%D9%88%D9%86_%D9%85%D8%B4%DB%8C%D8%B1%DB%8C",
     "/tag/%D9%81%D9%84%D8%B3%D9%81%D9%87_%D8%AA%D9%86%D9%87%D8%A7%DB%8C%DB%8C",
@@ -4268,10 +4272,10 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4263,
-  "snapshot_derived_route_count": 4182,
-  "snapshot_post_route_count": 3720,
-  "snapshot_tag_route_count": 365,
+  "baseline_route_count": 4265,
+  "snapshot_derived_route_count": 4186,
+  "snapshot_post_route_count": 3722,
+  "snapshot_tag_route_count": 367,
   "snapshot_pagination_route_count": 97,
   "required_category_routes": [
     "/category/دیالوگ ها",
@@ -5311,6 +5315,7 @@
     "/post/193",
     "/post/1930",
     "/post/1931",
+    "/post/1932",
     "/post/194",
     "/post/195",
     "/post/196",
@@ -6821,6 +6826,7 @@
     "/post/دیر-یا-زود،-1784365513473",
     "/post/ذهن-همان-طور-به-کتاب-نیاز-دارد-که-1783460356225",
     "/post/ذهنهای-بزرگ-هدف-دارن-1783488043421",
+    "/post/رابطهی-فکری-،-1792225809190",
     "/post/راه-1783496857590",
     "/post/راه-ارتباطی-با-ما-1786947469956",
     "/post/راه-ارتباطی-با-ما-1787342242885",
@@ -8010,7 +8016,10 @@
     "/post/۷-تکنیک-ژاپنی-برای-مقابله-با-تنبلی-1783486077683"
   ],
   "new_snapshot_routes_missing_from_candidate": [],
-  "new_snapshot_tag_routes": [],
+  "new_snapshot_tag_routes": [
+    "/tag/%D8%B1%D9%88%D9%8A%D8%A7%D9%89_%D8%AA%D8%A8%D8%AA",
+    "/tag/%D9%81%D8%B1%D9%8A%D8%A8%D8%A7_%D9%88%D9%81%D9%89"
+  ],
   "new_snapshot_tag_routes_missing_from_candidate": [],
   "new_snapshot_pagination_routes": [],
   "new_snapshot_pagination_routes_missing_from_candidate": [],
@@ -8098,8 +8107,8 @@
     "/sitemap.xml"
   ],
   "new_snapshot_routes": [
-    "/post/1931",
-    "/post/همه-ما-دلمون-میشکنه-1792161009233"
+    "/post/1932",
+    "/post/رابطهی-فکری-،-1792225809190"
   ],
   "new_control_routes": []
 }
