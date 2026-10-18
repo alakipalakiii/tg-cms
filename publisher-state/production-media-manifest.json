@@ -8280,8 +8280,8 @@
   "stats": {
     "mode": "REQUIRED_SET_ONLY",
     "required_distinct": 640,
-    "published": 620,
-    "new": 1,
+    "published": 621,
+    "new": 0,
     "fallback": 19,
     "unresolved": 0,
     "source_redownloads": 0,

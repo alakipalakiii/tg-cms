@@ -4286,7 +4286,7 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4281,
+  "baseline_route_count": 4283,
   "snapshot_derived_route_count": 4200,
   "snapshot_post_route_count": 3734,
   "snapshot_tag_route_count": 369,
@@ -8129,9 +8129,6 @@
     "/search",
     "/sitemap.xml"
   ],
-  "new_snapshot_routes": [
-    "/post/1938",
-    "/post/وجدان-چیه؟-1792333809230"
-  ],
+  "new_snapshot_routes": [],
   "new_control_routes": []
 }
