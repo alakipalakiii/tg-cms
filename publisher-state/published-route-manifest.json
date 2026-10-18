@@ -1,6 +1,6 @@
 {
   "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
-  "route_count": 4275,
+  "route_count": 4278,
   "routes": [
     "/",
     "/about",
@@ -1121,6 +1121,7 @@
     "/post/1933",
     "/post/1934",
     "/post/1935",
+    "/post/1936",
     "/post/194",
     "/post/195",
     "/post/196",
@@ -2068,6 +2069,7 @@
     "/post/ابری-که-رو-دریا-میباره،-1783487157595",
     "/post/احساس-خیلی-خوبیه-که-بدونی-داری-1783488179566",
     "/post/احساس-عجیبی-است؛-1783494594258",
+    "/post/از-تمام-دشواری-هایی-که-آدم-باید-1792312209296",
     "/post/از-دادنِ-کتابی-به-دیگری-1783488495248",
     "/post/از-شمس-تبریزی-پرسیدن-1786348510327",
     "/post/از-میانِ-همه-دروغگوهای-عالم،-1783498428679",
@@ -4199,6 +4201,7 @@
     "/tag/%D9%87%D8%A7%DB%8C%D9%86%D8%B1%DB%8C%D8%B4_%D8%A8%D9%84",
     "/tag/%D9%87%D8%B1%D9%85%D8%A7%D9%86%E2%80%8C%D9%87%D8%B1%D8%B3%D9%87",
     "/tag/%D9%87%D8%B1%D9%85%D8%A7%D9%86_%D9%87%D8%B3%D9%87",
+    "/tag/%D9%87%D8%B2%D8%A7%D8%B1_%D8%AE%D9%88%D8%B1%D8%B4%DB%8C%D8%AF_%D8%AA%D8%A7%D8%A8%D8%A7%D9%86",
     "/tag/%D9%87%D9%85%D8%A7_%DA%A9%D8%B4%D8%AA%DA%AF%D8%B1",
     "/tag/%D9%87%D9%85%D9%87%E2%80%8C%D9%86%D8%A7%D9%85%D9%87%D8%A7",
     "/tag/%D9%87%D9%86%D8%B1_%D8%B9%D8%B4%D9%82_%D9%88%D8%B1%D8%B2%DB%8C%D8%AF%D9%86",
@@ -4278,10 +4281,10 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4271,
-  "snapshot_derived_route_count": 4192,
-  "snapshot_post_route_count": 3728,
-  "snapshot_tag_route_count": 367,
+  "baseline_route_count": 4275,
+  "snapshot_derived_route_count": 4195,
+  "snapshot_post_route_count": 3730,
+  "snapshot_tag_route_count": 368,
   "snapshot_pagination_route_count": 97,
   "required_category_routes": [
     "/category/دیالوگ ها",
@@ -5325,6 +5328,7 @@
     "/post/1933",
     "/post/1934",
     "/post/1935",
+    "/post/1936",
     "/post/194",
     "/post/195",
     "/post/196",
@@ -6272,6 +6276,7 @@
     "/post/ابری-که-رو-دریا-میباره،-1783487157595",
     "/post/احساس-خیلی-خوبیه-که-بدونی-داری-1783488179566",
     "/post/احساس-عجیبی-است؛-1783494594258",
+    "/post/از-تمام-دشواری-هایی-که-آدم-باید-1792312209296",
     "/post/از-دادنِ-کتابی-به-دیگری-1783488495248",
     "/post/از-شمس-تبریزی-پرسیدن-1786348510327",
     "/post/از-میانِ-همه-دروغگوهای-عالم،-1783498428679",
@@ -8028,7 +8033,9 @@
     "/post/۷-تکنیک-ژاپنی-برای-مقابله-با-تنبلی-1783486077683"
   ],
   "new_snapshot_routes_missing_from_candidate": [],
-  "new_snapshot_tag_routes": [],
+  "new_snapshot_tag_routes": [
+    "/tag/%D9%87%D8%B2%D8%A7%D8%B1_%D8%AE%D9%88%D8%B1%D8%B4%DB%8C%D8%AF_%D8%AA%D8%A7%D8%A8%D8%A7%D9%86"
+  ],
   "new_snapshot_tag_routes_missing_from_candidate": [],
   "new_snapshot_pagination_routes": [],
   "new_snapshot_pagination_routes_missing_from_candidate": [],
@@ -8116,10 +8123,8 @@
     "/sitemap.xml"
   ],
   "new_snapshot_routes": [
-    "/post/1934",
-    "/post/1935",
-    "/post/بگذار-تا-گذشته-1792254609161",
-    "/post/من-هیچوقت-احساس-تنهایی-نکردم،-1792247409242"
+    "/post/1936",
+    "/post/از-تمام-دشواری-هایی-که-آدم-باید-1792312209296"
   ],
   "new_control_routes": []
 }
