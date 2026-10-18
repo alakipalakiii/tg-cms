@@ -1,6 +1,6 @@
 {
   "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
-  "route_count": 4278,
+  "route_count": 4281,
   "routes": [
     "/",
     "/about",
@@ -1122,6 +1122,7 @@
     "/post/1934",
     "/post/1935",
     "/post/1936",
+    "/post/1937",
     "/post/194",
     "/post/195",
     "/post/196",
@@ -3667,6 +3668,7 @@
     "/post/هیچوقت-نمیتوانی-چیزی-را-که-قرار-است-1783487251737",
     "/post/هیچچیز-قویتر-از-قلبی-که-شکسته-1783870474382",
     "/post/هیچکس-سرش-آنقدر-شلوغ-نیست-1783460950364",
+    "/post/و-اگر-بر-تو-ببندد-همه-رهها-و-گذرها-1792323009162",
     "/post/و-اگر-من-زنده-نماندم-1783489185697",
     "/post/و-ای-کاش-همه-ی-چشم-هایی-که-1783485623237",
     "/post/و-این-روزها-1783495107842",
@@ -4176,6 +4178,7 @@
     "/tag/%D9%85%D9%88%D8%A7%D8%AC%D9%87%D9%87_%D8%A8%D8%A7_%D9%85%D8%B1%DA%AF",
     "/tag/%D9%85%D9%88%D8%B1%DA%AF%D8%A7%D9%86_%D9%81%D8%B1%D9%8A%D9%85%D9%86",
     "/tag/%D9%85%D9%88%D9%84%D8%A7%D9%86%D8%A7",
+    "/tag/%D9%85%D9%88%D9%84%D9%88%DB%8C",
     "/tag/%D9%85%DB%8C%D8%AF%D9%85%D8%A7%D8%B1%DA%86",
     "/tag/%D9%85%DB%8C%D8%B4%D9%84_%D9%81%D9%88%DA%A9%D9%88",
     "/tag/%D9%85%DB%8C%D9%84%D8%A7%D9%86_%DA%A9%D9%88%D9%86%D8%AF%D8%B1%D8%A7",
@@ -4281,10 +4284,10 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4275,
-  "snapshot_derived_route_count": 4195,
-  "snapshot_post_route_count": 3730,
-  "snapshot_tag_route_count": 368,
+  "baseline_route_count": 4278,
+  "snapshot_derived_route_count": 4198,
+  "snapshot_post_route_count": 3732,
+  "snapshot_tag_route_count": 369,
   "snapshot_pagination_route_count": 97,
   "required_category_routes": [
     "/category/دیالوگ ها",
@@ -5329,6 +5332,7 @@
     "/post/1934",
     "/post/1935",
     "/post/1936",
+    "/post/1937",
     "/post/194",
     "/post/195",
     "/post/196",
@@ -7874,6 +7878,7 @@
     "/post/هیچوقت-نمیتوانی-چیزی-را-که-قرار-است-1783487251737",
     "/post/هیچچیز-قویتر-از-قلبی-که-شکسته-1783870474382",
     "/post/هیچکس-سرش-آنقدر-شلوغ-نیست-1783460950364",
+    "/post/و-اگر-بر-تو-ببندد-همه-رهها-و-گذرها-1792323009162",
     "/post/و-اگر-من-زنده-نماندم-1783489185697",
     "/post/و-ای-کاش-همه-ی-چشم-هایی-که-1783485623237",
     "/post/و-این-روزها-1783495107842",
@@ -8034,7 +8039,7 @@
   ],
   "new_snapshot_routes_missing_from_candidate": [],
   "new_snapshot_tag_routes": [
-    "/tag/%D9%87%D8%B2%D8%A7%D8%B1_%D8%AE%D9%88%D8%B1%D8%B4%DB%8C%D8%AF_%D8%AA%D8%A7%D8%A8%D8%A7%D9%86"
+    "/tag/%D9%85%D9%88%D9%84%D9%88%DB%8C"
   ],
   "new_snapshot_tag_routes_missing_from_candidate": [],
   "new_snapshot_pagination_routes": [],
@@ -8123,8 +8128,8 @@
     "/sitemap.xml"
   ],
   "new_snapshot_routes": [
-    "/post/1936",
-    "/post/از-تمام-دشواری-هایی-که-آدم-باید-1792312209296"
+    "/post/1937",
+    "/post/و-اگر-بر-تو-ببندد-همه-رهها-و-گذرها-1792323009162"
   ],
   "new_control_routes": []
 }
