@@ -1,6 +1,6 @@
 {
   "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
-  "route_count": 4346,
+  "route_count": 4348,
   "routes": [
     "/",
     "/about",
@@ -1154,6 +1154,7 @@
     "/post/1962",
     "/post/1963",
     "/post/1964",
+    "/post/1965",
     "/post/197",
     "/post/198",
     "/post/199",
@@ -3731,6 +3732,7 @@
     "/post/وقتی-اعماق-روحتو-درک-كنم-1783460213059",
     "/post/وقتی-افکار-منفی-1791307745040",
     "/post/وقتی-اول-شروع-به-خبرچینی-کردم،-1783460457049",
+    "/post/وقتی-برگِ-زرردی-1792945809293",
     "/post/وقتی-بزرگ-میشی-1783494604351",
     "/post/وقتی-بعد-از-یک-شکست-دوباره-1791527424519",
     "/post/وقتی-به-ساعت-مرگ-میاندیشم،-1783489193197",
@@ -4349,9 +4351,9 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4342,
-  "snapshot_derived_route_count": 4266,
-  "snapshot_post_route_count": 3786,
+  "baseline_route_count": 4346,
+  "snapshot_derived_route_count": 4268,
+  "snapshot_post_route_count": 3788,
   "snapshot_tag_route_count": 379,
   "snapshot_pagination_route_count": 101,
   "required_category_routes": [
@@ -5428,6 +5430,7 @@
     "/post/1962",
     "/post/1963",
     "/post/1964",
+    "/post/1965",
     "/post/197",
     "/post/198",
     "/post/199",
@@ -8005,6 +8008,7 @@
     "/post/وقتی-اعماق-روحتو-درک-كنم-1783460213059",
     "/post/وقتی-افکار-منفی-1791307745040",
     "/post/وقتی-اول-شروع-به-خبرچینی-کردم،-1783460457049",
+    "/post/وقتی-برگِ-زرردی-1792945809293",
     "/post/وقتی-بزرگ-میشی-1783494604351",
     "/post/وقتی-بعد-از-یک-شکست-دوباره-1791527424519",
     "/post/وقتی-به-ساعت-مرگ-میاندیشم،-1783489193197",
@@ -8242,10 +8246,8 @@
     "/sitemap.xml"
   ],
   "new_snapshot_routes": [
-    "/post/1963",
-    "/post/1964",
-    "/post/آهنگ-نگاه-کن-از-bleumea-1792934326854",
-    "/post/منو-بغل-کن،-1792938609209"
+    "/post/1965",
+    "/post/وقتی-برگِ-زرردی-1792945809293"
   ],
   "new_control_routes": []
 }
