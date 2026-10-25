@@ -72,6 +72,82 @@ class LocalBare:
 
 
 class PersistenceDiagnosticTests(unittest.TestCase):
+    def test_only_network_reads_retry_and_stop_after_three_attempts(self):
+        failure = subprocess.CompletedProcess([], 128, stdout="", stderr="synthetic secret")
+        success = subprocess.CompletedProcess([], 0, stdout="synthetic", stderr="")
+        for command in ("ls-remote", "fetch"):
+            with self.subTest(command=command), mock.patch.object(
+                repository.subprocess, "run", side_effect=[failure, failure, success]) as run, \
+                 mock.patch.object(repository.time, "sleep") as sleep:
+                self.assertEqual(success, repository._git(Path.cwd(), command, "origin"))
+                self.assertEqual(3, run.call_count)
+                self.assertEqual([mock.call(1), mock.call(2)], sleep.call_args_list)
+                self.assertEqual(1, len({tuple(call.args[0]) for call in run.call_args_list}))
+            with self.subTest(exhausted=command), mock.patch.object(
+                repository.subprocess, "run", return_value=failure) as run, \
+                 mock.patch.object(repository.time, "sleep"):
+                with self.assertRaises(repository.RepositoryPersistenceError):
+                    repository._git(Path.cwd(), command, "origin")
+                self.assertEqual(3, run.call_count)
+        for command in ("commit", "add", "push", "rev-parse"):
+            with self.subTest(command=command), mock.patch.object(
+                repository.subprocess, "run", return_value=failure) as run, \
+                 mock.patch.object(repository.time, "sleep") as sleep:
+                with self.assertRaises(repository.RepositoryPersistenceError):
+                    repository._git(Path.cwd(), command)
+                self.assertEqual(1, run.call_count)
+                sleep.assert_not_called()
+
+    def test_semantically_invalid_remote_ref_does_not_retry(self):
+        with mock.patch.object(repository.subprocess, "run", return_value=
+                subprocess.CompletedProcess([], 0, stdout="ambiguous", stderr="")) as run, \
+             mock.patch.object(repository.time, "sleep") as sleep:
+            with self.assertRaises(repository.RepositoryPersistenceError):
+                repository._remote_head(Path.cwd(), "origin", "main")
+            self.assertEqual(1, run.call_count)
+            sleep.assert_not_called()
+
+    def test_push_does_not_repeat_on_advanced_unknown_or_merge_parent(self):
+        candidate, parent, other = "a" * 40, "b" * 40, "c" * 40
+        for readback, ancestry in [
+            (other, f"{candidate} {parent}"),
+            (repository.RepositoryPersistenceError("remote unreadable"), f"{candidate} {parent}"),
+            (parent, f"{candidate} {parent} {other}"),
+            (parent, candidate),
+        ]:
+            calls = []
+            def git(root, *args, **kwargs):
+                calls.append(args)
+                if args[0] == "push":
+                    raise repository.RepositoryPersistenceError("synthetic transport failure")
+                return subprocess.CompletedProcess([], 0, stdout=ancestry, stderr="")
+            remote = mock.Mock(side_effect=readback) if isinstance(readback, Exception) else mock.Mock(return_value=readback)
+            with self.subTest(readback=str(readback), ancestry=ancestry), \
+                 mock.patch.object(repository, "_git", side_effect=git), \
+                 mock.patch.object(repository, "_remote_head", remote), \
+                 mock.patch.object(repository.time, "sleep") as sleep:
+                with self.assertRaises(repository.RepositoryPersistenceError):
+                    repository._push(Path.cwd(), "origin", "main", candidate)
+                self.assertEqual(1, sum(args[0] == "push" for args in calls))
+                sleep.assert_not_called()
+
+    def test_exhausted_push_repeats_same_candidate_only_once(self):
+        candidate, parent = "a" * 40, "b" * 40
+        calls = []
+        def git(root, *args, **kwargs):
+            calls.append(args)
+            if args[0] == "push":
+                raise repository.RepositoryPersistenceError("synthetic transport failure")
+            return subprocess.CompletedProcess([], 0, stdout=f"{candidate} {parent}", stderr="")
+        with mock.patch.object(repository, "_git", side_effect=git), \
+             mock.patch.object(repository, "_remote_head", return_value=parent), \
+             mock.patch.object(repository.time, "sleep") as sleep:
+            with self.assertRaises(repository.RepositoryPersistenceError):
+                repository._push(Path.cwd(), "origin", "main", candidate)
+            self.assertEqual([("push", "origin", f"{candidate}:refs/heads/main")] * 2,
+                             [args for args in calls if args[0] == "push"])
+            sleep.assert_called_once_with(1)
+
     def test_git_failure_reports_only_fixed_command_and_exit_code(self):
         secret = "Bearer synthetic-secret https://user:password@example.invalid/private"
         for arguments, command in [
@@ -119,6 +195,47 @@ class RemoteLifecycleBridgeTests(unittest.TestCase):
 
     def _admit(self, revision: int = REVISION, source: str = "github-schedule"):
         return self.git.writer().admit_revision(revision, source, "synthetic-run", str(uuid.uuid4()))
+
+    def test_push_success_lost_ack_and_transport_retry_preserve_one_transition(self):
+        real_git = repository._git
+        for outcome, expected_pushes in (("success", 1), ("lost-ack", 1), ("transport", 2), ("lost-ack-retry", 2)):
+            child = self.root / outcome
+            child.mkdir()
+            local = LocalBare(child)
+            seed = run_git(local.root, "rev-parse", "HEAD")
+            pushes = []
+            def git(root, *args, **kwargs):
+                if args[0] == "push":
+                    pushes.append(args)
+                    if len(pushes) == 1 and outcome in {"transport", "lost-ack-retry"}:
+                        raise repository.RepositoryPersistenceError("synthetic transport failure")
+                    result = real_git(root, *args, **kwargs)
+                    if outcome == "lost-ack" or outcome == "lost-ack-retry" and len(pushes) == 2:
+                        raise repository.RepositoryPersistenceError("synthetic lost acknowledgement")
+                    return result
+                return real_git(root, *args, **kwargs)
+            with self.subTest(outcome=outcome), mock.patch.object(repository, "_git", side_effect=git), \
+                 mock.patch.object(repository.time, "sleep") as sleep:
+                decision, _tx, generation, _digest = local.writer().admit_revision(REVISION, "synthetic")
+                self.assertEqual(expected_pushes - 1, sleep.call_count)
+            commit = run_git(local.root, "rev-parse", "HEAD")
+            state, _, _ = local.journal().snapshot()
+            self.assertEqual(("ADMITTED", 1), (decision, generation))
+            self.assertEqual(1, len(state["active"]["transitions"]))
+            self.assertEqual("1", run_git(local.root, "rev-list", "--count", f"{seed}..{commit}"))
+            self.assertEqual(expected_pushes, len(pushes))
+            self.assertEqual({("push", "origin", f"{commit}:refs/heads/main")}, set(pushes))
+            self.assertEqual(commit, run_git(local.root, "ls-remote", "origin", "refs/heads/main").split()[0])
+
+    def test_depth_one_checkout_can_verify_and_push_new_journal_commit(self):
+        shallow = self.root / "shallow"
+        run_git(self.root, "clone", "--depth", "1", "--branch", "main", self.git.bare.as_uri(), str(shallow))
+        self.assertEqual("true", run_git(shallow, "rev-parse", "--is-shallow-repository"))
+        _decision, _tx, generation, _digest = repository.GitJournalWriter(shallow, WORKER).admit_revision(
+            REVISION, "synthetic")
+        commit = run_git(shallow, "rev-parse", "HEAD")
+        self.assertEqual(1, generation)
+        self.assertEqual({repository.JOURNAL_PATH}, repository._commit_paths(shallow, commit))
 
     def _intent(self, *, revision: int = REVISION, build_digest: str | None = None,
                 generation: int | None = None) -> dict:

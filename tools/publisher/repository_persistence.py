@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Mapping
 
@@ -79,12 +80,17 @@ def _sha256(value: object) -> bool:
 
 
 def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-    try:
-        result = subprocess.run(
-            ["git", *args], cwd=root, check=False, capture_output=True, text=True, encoding="utf-8",
-        )
-    except OSError as exc:
-        raise RepositoryPersistenceError("git executable is unavailable") from exc
+    attempts = 3 if args and args[0] in {"ls-remote", "fetch"} else 1
+    for attempt in range(attempts):
+        try:
+            result = subprocess.run(
+                ["git", *args], cwd=root, check=False, capture_output=True, text=True, encoding="utf-8",
+            )
+        except OSError as exc:
+            raise RepositoryPersistenceError("git executable is unavailable") from exc
+        if not result.returncode or attempt == attempts - 1:
+            break
+        time.sleep(attempt + 1)
     if check and result.returncode:
         command = next((arg for arg in args if arg in _GIT_COMMANDS), "other")
         raise RepositoryPersistenceError(
@@ -223,10 +229,24 @@ def _branch_head(root: Path, branch: str) -> str:
 
 
 def _push(root: Path, remote: str, branch: str, commit: str) -> None:
-    # No force option, retry, or ref rewrite is permitted.
-    _git(root, "push", remote, f"{commit}:refs/heads/{branch}")
-    if _remote_head(root, remote, branch) != commit:
-        raise RepositoryPersistenceError("remote did not read back the exact pushed commit")
+    # Repeat only the same commit from its unchanged sole parent; never recreate a transition.
+    for attempt in range(2):
+        try:
+            _git(root, "push", remote, f"{commit}:refs/heads/{branch}")
+        except RepositoryPersistenceError:
+            remote_head = _remote_head(root, remote, branch)
+            if remote_head == commit:
+                return
+            if attempt:
+                raise
+            parents = _git(root, "rev-list", "--parents", "-n", "1", commit).stdout.split()
+            if parents != [commit, remote_head]:
+                raise
+            time.sleep(1)
+        else:
+            if _remote_head(root, remote, branch) != commit:
+                raise RepositoryPersistenceError("remote did not read back the exact pushed commit")
+            return
 
 
 class GitRepositoryWriter:
