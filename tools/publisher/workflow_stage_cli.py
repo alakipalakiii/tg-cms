@@ -24,7 +24,7 @@ from publisher import proof_recovery_runner as recovery
 from publisher import recovery_readback as recovery_readback
 from publisher import effective_mutation_result as effective_result
 from publisher import production_proof_runner as production_proof
-from publisher.repository_persistence import GitJournalWriter, GitRepositoryWriter
+from publisher.repository_persistence import GitJournalWriter, GitRepositoryWriter, safe_repository_error_reason
 from publisher.transaction_journal import TransactionJournal, journal_digest
 from publisher.content_revision import DEFAULT_ENDPOINT as REVISION_ENDPOINT
 from publisher.content_revision import fetch_public_content_revision
@@ -1838,10 +1838,11 @@ def main(argv: list[str] | None = None) -> int:
                      and output.get("status") == "FAIL") else 0
     except Exception as exc:
         # Exception messages from external backends may contain sensitive diagnostics.
-        safe_reason = None
-        if type(exc).__name__ in {"ObservationRejected", "ArtifactContractError", "ProductionProofRejected", "MaterializationRejected", "ProofRecoveryRejected", "PersistenceBlocked"}:
+        safe_reason = safe_repository_error_reason(exc)
+        if safe_reason is None and type(exc).__name__ in {"ObservationRejected", "ArtifactContractError", "ProductionProofRejected", "MaterializationRejected", "ProofRecoveryRejected", "PersistenceBlocked"}:
             from publisher.proof_observation_runner import _sanitize_browser_value
             safe_reason = _sanitize_browser_value(" ".join(str(exc).split()))[:300]
+        if safe_reason is not None:
             print("WORKFLOW_STAGE_BLOCKED: " + type(exc).__name__ + " — " + safe_reason, file=sys.stderr)
         else:
             print("WORKFLOW_STAGE_BLOCKED: " + type(exc).__name__, file=sys.stderr)

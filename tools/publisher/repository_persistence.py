@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -28,6 +29,47 @@ class RepositoryPersistenceError(PersistenceBlocked):
     """Repository state could not be committed or verified without overwriting."""
 
 
+_GIT_COMMANDS = frozenset({
+    "add", "branch", "cat-file", "check-ref-format", "commit", "diff", "diff-tree",
+    "fetch", "log", "ls-remote", "ls-tree", "merge-base", "push", "rev-list",
+    "rev-parse", "show", "status",
+})
+_SAFE_DIAGNOSTIC_REASONS = frozenset({
+    "git executable is unavailable",
+    "remote branch identity is missing or ambiguous",
+    "repository root is not the Git worktree root",
+    "repository is not on the expected branch",
+    "local HEAD is invalid",
+    "remote did not read back the exact pushed commit",
+    "remote journal head changed; reread and retry from a fresh checkout",
+    "remote journal is invalid or unreadable",
+    "local journal does not exactly match the remote journal",
+    "journal does not own the build transaction",
+    "conflicting build bundle is already recorded",
+    "pre-existing staged changes block journal commit",
+    "remote journal head changed before commit",
+    "journal commit must contain only the journal file",
+    "journal commit scope or ancestry is invalid",
+    "journal remote ref differs from the exact commit",
+    "journal remote readback differs from local journal",
+    "committed remote journal failed validation",
+    "remote journal readback differs from the committed transition",
+})
+
+
+def safe_repository_error_reason(error: Exception) -> str | None:
+    """Expose trusted guard text and Git categories without backend diagnostics."""
+    if type(error) is not RepositoryPersistenceError:
+        return None
+    reason = str(error)
+    if reason in _SAFE_DIAGNOSTIC_REASONS:
+        return reason
+    match = re.fullmatch(r"git persistence command failed \[([a-z-]+), exit (-?[0-9]+)\]", reason)
+    if match and match[1] in _GIT_COMMANDS | {"other"}:
+        return reason
+    return None
+
+
 def _sha40(value: object) -> bool:
     return isinstance(value, str) and len(value) == 40 and all(ch in _SHA40 for ch in value)
 
@@ -44,7 +86,9 @@ def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
     except OSError as exc:
         raise RepositoryPersistenceError("git executable is unavailable") from exc
     if check and result.returncode:
-        raise RepositoryPersistenceError("git persistence command failed")
+        command = next((arg for arg in args if arg in _GIT_COMMANDS), "other")
+        raise RepositoryPersistenceError(
+            f"git persistence command failed [{command}, exit {int(result.returncode)}]")
     return result
 
 

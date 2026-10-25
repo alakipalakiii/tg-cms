@@ -71,6 +71,35 @@ class LocalBare:
         return TransactionJournal.from_file(self.root / repository.JOURNAL_PATH, WORKER)
 
 
+class PersistenceDiagnosticTests(unittest.TestCase):
+    def test_git_failure_reports_only_fixed_command_and_exit_code(self):
+        secret = "Bearer synthetic-secret https://user:password@example.invalid/private"
+        for arguments, command in [
+            (("push", secret, "main"), "push"),
+            (("-c", "user.name=" + secret, "commit", "-m", secret), "commit"),
+            ((secret,), "other"),
+        ]:
+            with self.subTest(command=command), mock.patch.object(
+                repository.subprocess, "run", return_value=subprocess.CompletedProcess(
+                    [], 128, stdout=secret, stderr=secret)):
+                with self.assertRaises(repository.RepositoryPersistenceError) as caught:
+                    repository._git(Path.cwd(), *arguments)
+                expected = f"git persistence command failed [{command}, exit 128]"
+                self.assertEqual(expected, str(caught.exception))
+                self.assertEqual(expected, repository.safe_repository_error_reason(caught.exception))
+                self.assertNotIn(secret, str(caught.exception))
+
+    def test_untrusted_errors_and_command_categories_remain_hidden(self):
+        for error in [
+            repository.RepositoryPersistenceError("Bearer synthetic-secret"),
+            repository.RepositoryPersistenceError("git persistence command failed [credential, exit 128]"),
+            repository.RepositoryPersistenceError("git persistence command failed [push, exit 128] password=secret"),
+            ValueError("remote journal head changed before commit"),
+        ]:
+            with self.subTest(error=type(error).__name__):
+                self.assertIsNone(repository.safe_repository_error_reason(error))
+
+
 class RemoteLifecycleBridgeTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="mahoon-a54-")
@@ -295,6 +324,33 @@ class RemoteLifecycleBridgeTests(unittest.TestCase):
                              "--source", "github", "--output", str(output)])
         self.assertEqual(2, code)
         self.assertFalse(output.exists())
+
+    def test_cli_reports_trusted_persistence_reason_without_receipt_or_backend_secrets(self):
+        revision_file = self._write_json("revision.json", self._revision())
+        output = self.root / "receipt.json"
+        old_head = run_git(self.git.root, "rev-parse", "HEAD")
+        old_journal = (self.git.root / repository.JOURNAL_PATH).read_bytes()
+        for reason, visible in [
+            ("remote journal head changed before commit", True),
+            ("git persistence command failed [push, exit 128]", True),
+            ("Bearer synthetic-secret password=private", False),
+        ]:
+            writer = mock.Mock(root=self.git.root)
+            writer.admit_revision.side_effect = repository.RepositoryPersistenceError(reason)
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with self.subTest(reason=reason), mock.patch.object(cli, "_writer", return_value=writer), \
+                 contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = cli.main(["admit", "--revision", str(revision_file),
+                                 "--repository", str(self.git.root), "--source", "github",
+                                 "--output", str(output)])
+            self.assertEqual(2, code)
+            self.assertFalse(output.exists())
+            self.assertEqual("", stdout.getvalue())
+            self.assertEqual(visible, reason in stderr.getvalue())
+            self.assertNotIn("synthetic-secret", stderr.getvalue())
+            self.assertNotIn("password=", stderr.getvalue())
+            self.assertEqual(old_head, run_git(self.git.root, "rev-parse", "HEAD"))
+            self.assertEqual(old_journal, (self.git.root / repository.JOURNAL_PATH).read_bytes())
 
     def test_build_ready_requires_admission_and_is_idempotent(self):
         decision, txid, _, _ = self._admit()
