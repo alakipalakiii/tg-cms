@@ -1,8 +1,10 @@
 import json
+import socket
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 
 from core import PromotionGuard, delta, fingerprint, route_gate
@@ -14,6 +16,7 @@ from post_deploy_validator import validate_zero_origin
 from state import persist_checked, persist_after_public_pass
 from delta_build_adapter import sha_cloud
 from content_transport import classify_error, SAFE_HEADERS
+import content_transport
 from state_machine import (live_static_baseline, promotion_precondition,
                            verify_promotion_precondition, verify_promoted_static)
 from error_contract import PublisherStageError, build_error, safe_details
@@ -216,6 +219,50 @@ class PublisherFullSuite(unittest.TestCase):
     def test_90_no_arbitrary_factory_kwargs_remain(self):
         source = Path("tools/m9/publisher_runner.py").read_text(encoding="utf-8")
         self.assertNotRegex(source, r"build_error\([^\n]*\*\*(?:detail|details|error|context)")
+
+
+class ContentTransportTests(unittest.TestCase):
+    def test_bare_timeouts_are_read_timeouts_and_wrapped_timeouts_remain_connect_timeouts(self):
+        for error in (TimeoutError("The read operation timed out"), socket.timeout()):
+            with self.subTest(error=repr(error)):
+                self.assertEqual("READ_TIMEOUT", classify_error(error))
+                self.assertEqual("CONNECT_TIMEOUT", classify_error(URLError(error)))
+        self.assertEqual("CONTRACT_FAILURE", classify_error(ValueError("invalid contract")))
+
+    def test_body_read_timeout_retries_then_returns_complete_json(self):
+        response = MagicMock(status=200, headers={"Content-Type": "application/json"})
+        response.__enter__.return_value = response
+        response.read.side_effect = [TimeoutError("The read operation timed out"), b'{"ok": true}']
+        opener = MagicMock(return_value=response)
+        with patch("content_transport.time.sleep") as sleep:
+            payload, metadata = content_transport.fetch_json("https://example.invalid/public", opener=opener)
+        self.assertEqual({"ok": True}, payload)
+        self.assertEqual(2, opener.call_count)
+        self.assertEqual("READ_TIMEOUT", metadata["attempts"][0]["failure_class"])
+        self.assertEqual(2, metadata["attempt"])
+        self.assertEqual(len(b'{"ok": true}'), metadata["response_bytes"])
+        sleep.assert_called_once_with(content_transport.RETRY_DELAYS[0])
+        self.assertNotIn("Authorization", opener.call_args.args[0].headers)
+
+    def test_body_read_timeouts_exhaust_existing_budget_and_403_never_retries(self):
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.side_effect = TimeoutError("The read operation timed out")
+        opener = MagicMock(return_value=response)
+        with patch("content_transport.time.sleep") as sleep:
+            with self.assertRaises(RuntimeError) as caught:
+                content_transport.fetch_json("https://example.invalid/public", opener=opener)
+        failure = json.loads(str(caught.exception))
+        self.assertEqual("READ_TIMEOUT", failure["failure_class"])
+        self.assertEqual(len(content_transport.RETRY_DELAYS), opener.call_count)
+        self.assertEqual(len(content_transport.RETRY_DELAYS) - 1, sleep.call_count)
+        forbidden = MagicMock(side_effect=HTTPError("https://example.invalid/public", 403, "Forbidden", {}, None))
+        with patch("content_transport.time.sleep") as sleep:
+            with self.assertRaises(RuntimeError) as caught:
+                content_transport.fetch_json("https://example.invalid/public", opener=forbidden)
+            self.assertEqual("HTTP_403", json.loads(str(caught.exception))["failure_class"])
+            forbidden.assert_called_once()
+            sleep.assert_not_called()
 
 
 if __name__ == "__main__":

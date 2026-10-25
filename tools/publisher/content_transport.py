@@ -26,6 +26,7 @@ def classify_error(exc: Exception) -> str:
         if isinstance(reason, OSError) and "timed out" in str(reason).lower(): return "READ_TIMEOUT"
         if "ssl" in str(reason).lower(): return "TLS_FAILURE"
         return "TRANSPORT_FAILED_BEFORE_HTTP"
+    if isinstance(exc, (socket.timeout, TimeoutError)): return "READ_TIMEOUT"
     if isinstance(exc, json.JSONDecodeError): return "INVALID_JSON"
     return "CONTRACT_FAILURE"
 
