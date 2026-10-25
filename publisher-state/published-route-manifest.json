@@ -4351,7 +4351,7 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4346,
+  "baseline_route_count": 4348,
   "snapshot_derived_route_count": 4268,
   "snapshot_post_route_count": 3788,
   "snapshot_tag_route_count": 379,
@@ -8245,9 +8245,6 @@
     "/search",
     "/sitemap.xml"
   ],
-  "new_snapshot_routes": [
-    "/post/1965",
-    "/post/وقتی-برگِ-زرردی-1792945809293"
-  ],
+  "new_snapshot_routes": [],
   "new_control_routes": []
 }
