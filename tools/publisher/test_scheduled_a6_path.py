@@ -108,6 +108,20 @@ class ScheduledA6PathTests(unittest.TestCase):
         self.assertTrue(self.enabled("build-ready-write", c))
         self.assertFalse(self.enabled("build-ready-write", c, cancelled=True))
 
+    def test_embedded_build_guard_accepts_authorized_presentation_and_content_only(self):
+        import ast
+        step = next(step for step in self.jobs["build-validate"]["steps"]
+                    if step.get("name") == "Validate current admission and public revision before build")
+        script = step["run"].split("python - <<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+        assertions = [node for node in ast.parse(script).body if isinstance(node, ast.Assert)
+                      and "revision['payload']['decision']" in ast.unparse(node.test)]
+        self.assertEqual(len(assertions), 1)
+        code = compile(ast.fix_missing_locations(ast.Module(body=assertions, type_ignores=[])), "workflow-build-guard", "exec")
+        for decision in ("CHANGED", "PRESENTATION_CHANGED"):
+            exec(code, {}, {"revision": {"payload": {"decision": decision}}})
+        with self.assertRaises(AssertionError):
+            exec(code, {}, {"revision": {"payload": {"decision": "UNCHANGED"}}})
+
     def test_presentation_release_requires_the_explicit_manual_opt_in(self):
         c = self.context("workflow_dispatch", "PUBLISH", changed="PRESENTATION_CHANGED")
         c["inputs.ready"] = "YES"

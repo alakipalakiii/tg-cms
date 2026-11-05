@@ -1075,7 +1075,7 @@ jobs:
           source = os.environ['EXECUTION_SHA']
           revision = artifact_transport.read_artifact('handoff/revision-resolution.json', expected_type='revision_resolution', expected_source_sha=source)
           admission = artifact_transport.read_artifact('handoff/admission.json', expected_type='admission_receipt', expected_transaction=revision['transaction'], expected_source_sha=source, referenced_artifacts=artifact_transport.references(revision))
-          assert revision['payload']['decision'] == 'CHANGED'
+          assert revision['payload']['decision'] in {'CHANGED', 'PRESENTATION_CHANGED'}
           # COALESCED is valid when mark_terminal promoted a pending tx to active admitted
           # and the PUBLISH re-admits the same tx, landing in a clean admitted state.
           assert admission['payload']['decision'] in {'ADMITTED', 'COALESCED'}
