@@ -40,18 +40,22 @@
           {
             "attempt_id": "92643fc0-1134-4bd2-acda-8fd5b77b3da8",
             "attempt_number": 1,
-            "evidence": null,
+            "evidence": {
+              "reference": "919cc5919905c0fe606518399e608257b99aee340b4f1e5313105e1c739aedc5",
+              "sha256": "90eb733ed10083ce97f1582f0df8ae92f4168c70248ec98b490aafec073b51af",
+              "type": "mutation_result_artifact"
+            },
             "intent_artifact_sha256": "2fc7e3ae1a6ba3791659710a49220937cb47ae9955f2d4a439fc89388c414700",
             "intent_at": "2026-11-05T22:01:16.128072+00:00",
             "intent_state": "RECORDED",
-            "result_at": null,
-            "result_digest": null,
-            "result_state": "NOT_REPORTED"
+            "result_at": "2026-11-05T22:03:22.449297+00:00",
+            "result_digest": "91f71c3bf4903370a89a958b08c7c90d8214af8a738fcbf3ff0237dcca2993a9",
+            "result_state": "APPLIED"
           }
         ],
         "intent_state": "RECORDED",
         "operation_id": "3f9b362814ba6a1482afa103c48b94b6e29cab0f0f997f12019bfc0d518d3ae1",
-        "result_state": "NOT_REPORTED"
+        "result_state": "APPLIED"
       },
       "rollback": {
         "attempts": [],
@@ -85,7 +89,7 @@
     "presentation_source_sha": "5ac11c1f005882853cdf99fa87baf1b2d0122bf5",
     "proof_evidence_sha256": null,
     "recovery_status": "NONE",
-    "state": "intent_recorded",
+    "state": "operation_reported",
     "state_commit_sha": null,
     "transitions": [
       {
@@ -122,16 +126,21 @@
         "from": "operation_reported",
         "timestamp": "2026-11-05T22:01:16.128091+00:00",
         "to": "intent_recorded"
+      },
+      {
+        "from": "intent_recorded",
+        "timestamp": "2026-11-05T22:03:22.449318+00:00",
+        "to": "operation_reported"
       }
     ],
     "trigger_sources": [
       "workflow_dispatch"
     ],
-    "updated_at": "2026-11-05T22:01:16.128093+00:00",
+    "updated_at": "2026-11-05T22:03:22.449321+00:00",
     "worker": "mahoon-art-magazine"
   },
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 356,
+  "generation": 357,
   "history": [
     {
       "build_bundle_sha256": null,
