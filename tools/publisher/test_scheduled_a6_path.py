@@ -108,6 +108,18 @@ class ScheduledA6PathTests(unittest.TestCase):
         self.assertTrue(self.enabled("build-ready-write", c))
         self.assertFalse(self.enabled("build-ready-write", c, cancelled=True))
 
+    def test_presentation_release_requires_the_explicit_manual_opt_in(self):
+        c = self.context("workflow_dispatch", "PUBLISH", changed="PRESENTATION_CHANGED")
+        c["inputs.ready"] = "YES"
+        self.assertFalse(self.enabled("admission", c))
+        c["inputs.presentation_release"] = True
+        self.assertTrue(self.enabled("admission", c))
+        c["inputs.ready"] = "NO"
+        self.assertFalse(self.enabled("admission", c))
+        c = self.context("schedule", changed="PRESENTATION_CHANGED")
+        c["inputs.presentation_release"] = True
+        self.assertFalse(self.enabled("admission", c))
+
     def test_build_baseline_and_proof_failures_block_mutation_or_persistence(self):
         for prerequisite, target in (("build-validate", "build-ready-write"),
                                      ("production-baseline-reconciliation", "upload-intent-write"),

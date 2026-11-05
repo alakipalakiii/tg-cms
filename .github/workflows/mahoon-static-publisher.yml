@@ -851,7 +851,7 @@ jobs:
 
   admission:
     needs: [scheduled-policy-preflight, revision-resolve]
-    if: ${{ always() && needs.revision-resolve.result == 'success' && contains(fromJSON('["CHANGED","PRESENTATION_CHANGED"]'), needs.revision-resolve.outputs.decision) && ((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true')) }}
+    if: ${{ always() && needs.revision-resolve.result == 'success' && (needs.revision-resolve.outputs.decision == 'CHANGED' || (needs.revision-resolve.outputs.decision == 'PRESENTATION_CHANGED' && github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES' && inputs.presentation_release)) && ((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     outputs:

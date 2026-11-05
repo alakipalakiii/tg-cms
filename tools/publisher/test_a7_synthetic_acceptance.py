@@ -37,7 +37,7 @@ import test_workflow_stage_cli as stage_cli_tests
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/mahoon-static-publisher.yml"
-A6_ACCEPTED_WORKFLOW_SHA = 'cd3ff63523173dfde4e5b596fb5d0a7b45a2a87622f1c8a7744e71b0727d6f66'
+A6_ACCEPTED_WORKFLOW_SHA = 'c024a91cbed1510189ea6aae39b4b5b61a29d564ff0bbc298ed97778a32d3dda'
 
 
 def _run_case(case_type, method: str) -> None:
@@ -321,6 +321,14 @@ class A7SyntheticAcceptanceTests(unittest.TestCase):
         self.assertIn(b"CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}", raw)
         workflow = yaml.load(raw, Loader=yaml.BaseLoader)
         self.assertIn("workflow_dispatch", workflow["on"])
+        release = workflow["on"]["workflow_dispatch"]["inputs"]["presentation_release"]
+        self.assertEqual("boolean", release["type"])
+        self.assertEqual("false", release["default"])
+        resolver = next(step for step in workflow["jobs"]["revision-resolve"]["steps"]
+                        if step.get("name") == "Resolve revision for a new transaction")
+        self.assertEqual("${{ inputs.mode }}", resolver["env"]["PUBLISHER_MODE"])
+        self.assertEqual("${{ inputs.ready }}", resolver["env"]["MAHOON_PUBLISH_READY"])
+        self.assertIn("--presentation-release", resolver["run"])
         self.assertEqual([{"cron": "17,47 * * * *"}], workflow["on"]["schedule"])
         self.assertEqual("mahoon-production-publisher", workflow["concurrency"]["group"])
         self.assertEqual("false", workflow["concurrency"]["cancel-in-progress"])
