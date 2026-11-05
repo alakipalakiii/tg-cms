@@ -1,7 +1,63 @@
 {
-  "active": null,
+  "active": {
+    "build_bundle_sha256": null,
+    "content_revision": 341,
+    "created_at": "2026-11-05T20:58:28.062001+00:00",
+    "execution_attempts": [
+      {
+        "attempt_id": "1",
+        "run_id": "42108201130",
+        "source": "workflow_dispatch",
+        "timestamp": "2026-11-05T20:58:28.062001+00:00"
+      }
+    ],
+    "logical_transaction_id": "9bb23d85f4d1c594588ccd248e2e138f540f5fae77d85075823d84ad3f973b2b",
+    "operations": {
+      "deploy_zero_percent": {
+        "attempts": [],
+        "intent_state": "NOT_STARTED",
+        "operation_id": "c50e1967078d0e29d0ae43a8dffa42c6f6a301f11e012ed9f1c28bd069c0137b",
+        "result_state": "NOT_REPORTED"
+      },
+      "promote": {
+        "attempts": [],
+        "intent_state": "NOT_STARTED",
+        "operation_id": "3f9b362814ba6a1482afa103c48b94b6e29cab0f0f997f12019bfc0d518d3ae1",
+        "result_state": "NOT_REPORTED"
+      },
+      "rollback": {
+        "attempts": [],
+        "intent_state": "NOT_STARTED",
+        "operation_id": "c37ad7adabc3dfd9d81852a1344180707cd86de6911c2e52a193b388cfe39bde",
+        "result_state": "NOT_REPORTED"
+      },
+      "upload_version": {
+        "attempts": [],
+        "intent_state": "NOT_STARTED",
+        "operation_id": "35f82f45d8495d694480ca60d29a00e37862f9a7c5e69e9f828b0909b9e8a580",
+        "result_state": "NOT_REPORTED"
+      }
+    },
+    "presentation_source_sha": "5ac11c1f005882853cdf99fa87baf1b2d0122bf5",
+    "proof_evidence_sha256": null,
+    "recovery_status": "NONE",
+    "state": "admitted",
+    "state_commit_sha": null,
+    "transitions": [
+      {
+        "from": null,
+        "timestamp": "2026-11-05T20:58:28.062001+00:00",
+        "to": "admitted"
+      }
+    ],
+    "trigger_sources": [
+      "workflow_dispatch"
+    ],
+    "updated_at": "2026-11-05T20:58:28.062001+00:00",
+    "worker": "mahoon-art-magazine"
+  },
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 349,
+  "generation": 350,
   "history": [
     {
       "build_bundle_sha256": null,
