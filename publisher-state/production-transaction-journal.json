@@ -36,24 +36,28 @@
           {
             "attempt_id": "d77e2888-90db-4f98-a667-1b73e80aa037",
             "attempt_number": 1,
-            "evidence": null,
+            "evidence": {
+              "reference": "50451bb042a63b586c3d89c24a78448bd4c44dc5ea2204e3b7ad69c48fc3783d",
+              "sha256": "be5700e146c36295fb52f15825d54713b0f5853d6dbea0cc4dc30183c13f44d5",
+              "type": "mutation_result_artifact"
+            },
             "intent_artifact_sha256": "83e5fd21ba3295f90ee2daed382d69dca2cc5935c37ccf8f71d0256c11b643c0",
             "intent_at": "2026-11-05T21:21:30.875172+00:00",
             "intent_state": "RECORDED",
-            "result_at": null,
-            "result_digest": null,
-            "result_state": "NOT_REPORTED"
+            "result_at": "2026-11-05T21:24:54.293910+00:00",
+            "result_digest": "8660d0439cc06ad17dc6b9061a3d578ee14395bc7f6b810b8fc0568e3bd2ac5e",
+            "result_state": "APPLIED"
           }
         ],
         "intent_state": "RECORDED",
         "operation_id": "35f82f45d8495d694480ca60d29a00e37862f9a7c5e69e9f828b0909b9e8a580",
-        "result_state": "NOT_REPORTED"
+        "result_state": "APPLIED"
       }
     },
     "presentation_source_sha": "5ac11c1f005882853cdf99fa87baf1b2d0122bf5",
     "proof_evidence_sha256": null,
     "recovery_status": "NONE",
-    "state": "intent_recorded",
+    "state": "operation_reported",
     "state_commit_sha": null,
     "transitions": [
       {
@@ -70,16 +74,21 @@
         "from": "build_ready",
         "timestamp": "2026-11-05T21:21:30.875191+00:00",
         "to": "intent_recorded"
+      },
+      {
+        "from": "intent_recorded",
+        "timestamp": "2026-11-05T21:24:54.293930+00:00",
+        "to": "operation_reported"
       }
     ],
     "trigger_sources": [
       "workflow_dispatch"
     ],
-    "updated_at": "2026-11-05T21:21:30.875194+00:00",
+    "updated_at": "2026-11-05T21:24:54.293933+00:00",
     "worker": "mahoon-art-magazine"
   },
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 352,
+  "generation": 353,
   "history": [
     {
       "build_bundle_sha256": null,
