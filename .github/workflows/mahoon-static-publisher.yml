@@ -20,6 +20,11 @@ on:
         default: "NO"
         type: choice
         options: ["NO", "YES"]
+      presentation_release:
+        description: "Explicitly rebuild the website code at the unchanged public content revision (manual PUBLISH + ready YES only)"
+        required: false
+        default: false
+        type: boolean
       transaction_id:
         description: "Exact transaction ID when resuming an existing bundle"
         required: false
@@ -815,7 +820,7 @@ jobs:
           artifact_revision = artifact["payload"]["revision"]
           assert artifact_revision == active_revision, \
               f"artifact revision {artifact_revision} does not match active journal revision {active_revision}"
-          assert artifact["payload"]["decision"] == "CHANGED", "revision decision is not CHANGED"
+          assert artifact["payload"]["decision"] in {"CHANGED", "PRESENTATION_CHANGED"}, "revision decision does not authorize a build"
           public_revision, _changed_at, _meta = fetch_public_content_revision()
           if in_flight:
               assert public_revision >= active_revision, \
@@ -828,7 +833,14 @@ jobs:
           PY
       - name: Resolve revision for a new transaction
         if: ${{ inputs.mode != 'RESUME_ADMITTED' && inputs.mode != 'POST_PROMOTION_FINALIZE' }}
-        run: python code/tools/publisher/workflow_stage_cli.py resolve-revision --published-state state/publisher-state/production-content-fingerprint.json --source-sha '${{ needs.scheduled-policy-preflight.outputs.source_sha }}' --output revision-resolution.json
+        env:
+          PRESENTATION_RELEASE: ${{ inputs.presentation_release == true && 'YES' || 'NO' }}
+          PUBLISHER_MODE: ${{ inputs.mode }}
+          MAHOON_PUBLISH_READY: ${{ inputs.ready }}
+        run: |
+          release_args=()
+          if [ "$PRESENTATION_RELEASE" = "YES" ]; then release_args+=(--presentation-release); fi
+          python code/tools/publisher/workflow_stage_cli.py resolve-revision --published-state state/publisher-state/production-content-fingerprint.json --source-sha '${{ needs.scheduled-policy-preflight.outputs.source_sha }}' --output revision-resolution.json "${release_args[@]}"
       - id: revision-decision
         run: python -c "import json,os; d=json.load(open('revision-resolution.json')); open(os.environ['GITHUB_OUTPUT'],'a').write('decision='+d['payload']['decision']+'\n')"
       - uses: actions/upload-artifact@v4
@@ -839,7 +851,7 @@ jobs:
 
   admission:
     needs: [scheduled-policy-preflight, revision-resolve]
-    if: ${{ always() && needs.revision-resolve.result == 'success' && needs.revision-resolve.outputs.decision == 'CHANGED' && ((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true')) }}
+    if: ${{ always() && needs.revision-resolve.result == 'success' && contains(fromJSON('["CHANGED","PRESENTATION_CHANGED"]'), needs.revision-resolve.outputs.decision) && ((github.event_name == 'schedule' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PUBLISH' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'PROMOTE_AND_VALIDATE' && inputs.ready == 'YES') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'AUTO_TICK' && vars.PUBLISHER_MODE_SCHEDULED == 'PUBLISH' && needs.scheduled-policy-preflight.outputs.publish_allowed == 'true')) }}
     runs-on: ubuntu-latest
     permissions: { contents: write }
     outputs:

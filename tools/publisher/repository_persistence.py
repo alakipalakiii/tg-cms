@@ -489,12 +489,13 @@ class GitJournalWriter:
         return remote, generation, digest
 
     def admit_revision(self, revision: int, source: str, run_id: str = "",
-                       attempt_id: str = "") -> tuple[str, str, int, str]:
+                       attempt_id: str = "", *, presentation_source_sha: str | None = None) -> tuple[str, str, int, str]:
         self._confirm_current()
         journal = self._journal()
         state, generation, digest = journal.snapshot()
         decision, transaction_id = journal.admit(
             revision, source, run_id, attempt_id,
+            **({"presentation_source_sha": presentation_source_sha} if presentation_source_sha is not None else {}),
             expected_generation=generation, expected_digest=digest,
         )
         next_generation, next_digest, _commit = self._commit_and_verify()

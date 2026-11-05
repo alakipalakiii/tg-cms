@@ -72,12 +72,17 @@ def _uuid(value: object) -> bool:
         return False
 
 
-def logical_transaction_id(worker: str, revision: int) -> str:
+def logical_transaction_id(worker: str, revision: int, presentation_source_sha: str | None = None) -> str:
     if not isinstance(worker, str) or not worker or worker != worker.strip():
         raise JournalInvalid("worker identity is required")
     if not _is_int(revision) or revision < 1:
         raise JournalInvalid("content revision must be a positive integer")
-    return hashlib.sha256(f"{worker}\0{revision}".encode("utf-8")).hexdigest()
+    identity = f"{worker}\0{revision}"
+    if presentation_source_sha is not None:
+        if not isinstance(presentation_source_sha, str) or len(presentation_source_sha) != 40 or any(c not in "0123456789abcdef" for c in presentation_source_sha):
+            raise JournalInvalid("presentation source SHA is invalid")
+        identity += f"\0presentation\0{presentation_source_sha}"
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()
 
 
 def _operation_id(tx_id: str, operation: str) -> str:
@@ -170,10 +175,14 @@ def _validate_transaction(tx: object, worker: str, *, pending: bool = False) -> 
         "recovery_status", "build_bundle_sha256", "proof_evidence_sha256",
         "state_commit_sha", "created_at", "updated_at",
     }
+    if isinstance(tx, dict) and "presentation_source_sha" in tx:
+        expected.add("presentation_source_sha")
+        if not isinstance(tx["presentation_source_sha"], str):
+            raise JournalInvalid("presentation source SHA is invalid")
     if not isinstance(tx, dict) or set(tx) != expected:
         raise JournalInvalid("transaction record schema is invalid")
     revision = tx["content_revision"]
-    tx_id = logical_transaction_id(worker, revision)
+    tx_id = logical_transaction_id(worker, revision, tx.get("presentation_source_sha"))
     if tx["worker"] != worker or tx["logical_transaction_id"] != tx_id:
         raise JournalInvalid("logical transaction identity mismatch")
     state = tx["state"]
@@ -421,11 +430,12 @@ class TransactionJournal:
                     raise
         raise JournalConflict("journal update exceeded bounded CAS retries")
 
-    def _record(self, revision: int, source: str, run_id: str, attempt_id: str, state: str) -> dict:
+    def _record(self, revision: int, source: str, run_id: str, attempt_id: str, state: str, presentation_source_sha: str | None = None) -> dict:
         stamp = self.clock()
-        tx_id = logical_transaction_id(self.worker, revision)
+        tx_id = logical_transaction_id(self.worker, revision, presentation_source_sha)
         return {
             "logical_transaction_id": tx_id,
+            **({"presentation_source_sha": presentation_source_sha} if presentation_source_sha is not None else {}),
             "worker": self.worker,
             "content_revision": revision,
             "state": state,
@@ -464,8 +474,8 @@ class TransactionJournal:
     def _unresolved(tx: dict) -> bool:
         return any(op["attempts"] and op["attempts"][-1]["result_state"] in {"NOT_REPORTED", "UNKNOWN"} for op in tx["operations"].values())
 
-    def admit(self, revision: int, source: str, run_id: str = "", attempt_id: str = "", *, expected_generation: int | None = None, expected_digest: str | None = None) -> tuple[str, str]:
-        tx_id = logical_transaction_id(self.worker, revision)
+    def admit(self, revision: int, source: str, run_id: str = "", attempt_id: str = "", *, presentation_source_sha: str | None = None, expected_generation: int | None = None, expected_digest: str | None = None) -> tuple[str, str]:
+        tx_id = logical_transaction_id(self.worker, revision, presentation_source_sha)
         if not isinstance(source, str) or not source.strip():
             raise JournalInvalid("trigger source is required")
 
@@ -483,9 +493,9 @@ class TransactionJournal:
             if any(item["logical_transaction_id"] == tx_id and item["state"] == "completed" for item in journal["history"]):
                 return "COALESCED_COMPLETED"
             if active is None:
-                journal["active"] = self._record(revision, source, run_id, attempt_id, "admitted")
+                journal["active"] = self._record(revision, source, run_id, attempt_id, "admitted", presentation_source_sha)
                 return "ADMITTED"
-            if revision <= active["content_revision"]:
+            if presentation_source_sha is not None or revision <= active["content_revision"]:
                 return "STALE"
             if pending and revision <= pending["content_revision"]:
                 if revision == pending["content_revision"]:

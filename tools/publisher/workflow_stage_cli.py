@@ -131,7 +131,7 @@ def validate_artifact_file(path: str | Path, expected_type: str | None = None,
 
 def create_revision_resolution(published_state_path: str | Path, *, worker: str = DEFAULT_WORKER,
                                source_sha: str | None = None, endpoint: str | None = None,
-                               fetcher=None) -> dict:
+                               fetcher=None, presentation_release: bool = False) -> dict:
     state = _json(published_state_path)
     published = state.get("published_content_revision")
     if isinstance(published, bool) or not isinstance(published, int) or published < 1:
@@ -146,16 +146,25 @@ def create_revision_resolution(published_state_path: str | Path, *, worker: str 
     kwargs = {"endpoint": REVISION_ENDPOINT}
     if fetcher is not None:
         kwargs["fetcher"] = fetcher
+    if presentation_release and not (
+        os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+        and os.environ.get("MAHOON_PUBLISH_READY") == "YES"
+        and os.environ.get("PUBLISHER_MODE") == "PUBLISH"
+    ):
+        raise ValueError("presentation release requires an explicitly approved manual PUBLISH")
     revision, changed_at, _metadata = fetch_public_content_revision(**kwargs)
+    release_source = source if presentation_release and revision == published else None
     tx = {"worker": worker, "content_revision": revision,
-          "logical_transaction_id": contracts.logical_transaction_id(worker, revision)}
+          "logical_transaction_id": contracts.logical_transaction_id(worker, revision, release_source)}
+    if release_source is not None:
+        tx["presentation_source_sha"] = release_source
     value = _envelope("revision_resolution", {"producer": {"source_sha": source}}, tx, {
         "revision": revision,
         "published_revision": published,
         "changed_at": changed_at,
         "endpoint_id": "mahoon-content-revision-v1",
         "request_count": 1,
-        "decision": "UNCHANGED" if revision == published else "CHANGED",
+        "decision": "PRESENTATION_CHANGED" if release_source else "UNCHANGED" if revision == published else "CHANGED",
     }, "revision-resolver")
     return contracts.validate_artifact(value, expected_transaction=tx, expected_source_sha=source)
 
@@ -165,15 +174,17 @@ def create_admission_receipt(revision_path: str | Path, journal_path: str | Path
                              remote_writer: GitJournalWriter | None = None) -> dict:
     revision = _read(revision_path, "revision_resolution")
     rp = revision["payload"]
-    if rp["decision"] != "CHANGED":
+    if rp["decision"] not in {"CHANGED", "PRESENTATION_CHANGED"}:
         raise ValueError("only a changed revision may be admitted for publishing")
     worker = revision["transaction"]["worker"]
     journal = TransactionJournal.from_file(Path(journal_path), worker)
+    release_options = ({"presentation_source_sha": revision["transaction"]["presentation_source_sha"]}
+                       if "presentation_source_sha" in revision["transaction"] else {})
     if remote_writer is None:
-        decision, _tx_id = journal.admit(rp["revision"], source, run_id, attempt_id)
+        decision, _tx_id = journal.admit(rp["revision"], source, run_id, attempt_id, **release_options)
     else:
         decision, _tx_id, _generation, _digest = remote_writer.admit_revision(
-            rp["revision"], source, run_id, attempt_id,
+            rp["revision"], source, run_id, attempt_id, **release_options,
         )
     value, generation, digest = journal.snapshot()
     active, pending = value["active"], value["pending"]
@@ -936,6 +947,7 @@ def _parser() -> argparse.ArgumentParser:
     resolve.add_argument("--published-state", default="publisher-state/published-static-state.json")
     resolve.add_argument("--output", required=True)
     resolve.add_argument("--source-sha")
+    resolve.add_argument("--presentation-release", action="store_true")
 
     bootstrap = commands.add_parser("bootstrap-journal")
     bootstrap.add_argument("--repository", required=True)
@@ -1599,7 +1611,7 @@ def main(argv: list[str] | None = None) -> int:
             output = {"status": "VALID", "artifact_type": value["artifact_type"],
                       "artifact_sha256": value["artifact_sha256"]}
         elif args.command == "resolve-revision":
-            value = create_revision_resolution(args.published_state, source_sha=args.source_sha)
+            value = create_revision_resolution(args.published_state, source_sha=args.source_sha, presentation_release=args.presentation_release)
             transport.write_artifact(args.output, value, expected_type="revision_resolution")
             output = {"status": value["payload"]["decision"],
                       "artifact_sha256": value["artifact_sha256"]}

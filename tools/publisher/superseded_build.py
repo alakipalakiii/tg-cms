@@ -63,7 +63,7 @@ def retire(repository: Path, revision_path: Path, admission_path: Path, context_
     for seal in (revision, admission):
         if seal["producer"]["workflow_run_id"] != run_id or seal["producer"]["run_attempt"] != 1:
             raise ValueError("snapshot belongs to another execution")
-    if revision["payload"]["decision"] != "CHANGED" or admission["payload"]["decision"] != "ADMITTED":
+    if revision["payload"]["decision"] not in {"CHANGED", "PRESENTATION_CHANGED"} or admission["payload"]["decision"] != "ADMITTED":
         raise ValueError("retirement requires a fresh admission")
     tx_id = revision["transaction"]["logical_transaction_id"]
     if admission["payload"]["active_transaction_id"] != tx_id:

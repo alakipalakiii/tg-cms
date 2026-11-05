@@ -31,7 +31,7 @@ RECOVERY_DECISIONS = frozenset({
     "RECONCILED_APPLIED", "RECONCILED_NOT_APPLIED", "BLOCKED_UNKNOWN",
 })
 ADMISSION_DECISIONS = frozenset({"ADMITTED", "COALESCED", "DEFERRED", "SUPERSEDED"})
-REVISION_DECISIONS = frozenset({"UNCHANGED", "CHANGED"})
+REVISION_DECISIONS = frozenset({"UNCHANGED", "CHANGED", "PRESENTATION_CHANGED"})
 ENDPOINT_IDS = frozenset({"mahoon-content-revision-v1"})
 STATE_FILE_PATHS = frozenset({
     "publisher-state/production-content-fingerprint.json",
@@ -156,10 +156,15 @@ def canonical_json_bytes(value: Any) -> bytes:
         raise ArtifactContractError("value cannot be canonically encoded") from exc
 
 
-def logical_transaction_id(worker: str, content_revision: int) -> str:
+def logical_transaction_id(worker: str, content_revision: int, presentation_source_sha: str | None = None) -> str:
     _nonempty_string(worker, "worker")
     _positive_int(content_revision, "content_revision")
-    return hashlib.sha256(f"{worker}\0{content_revision}".encode("utf-8")).hexdigest()
+    identity = f"{worker}\0{content_revision}"
+    if presentation_source_sha is not None:
+        if not isinstance(presentation_source_sha, str) or not _SOURCE_SHA_RE.fullmatch(presentation_source_sha):
+            raise ArtifactContractError("presentation source SHA is invalid")
+        identity += f"\0presentation\0{presentation_source_sha}"
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()
 
 
 def operation_id_for(logical_id: str, operation_name: str) -> str:
@@ -537,6 +542,10 @@ def _validate_payload(artifact_type: str, payload: object, transaction: Mapping[
             raise ArtifactContractError("request_count must equal 1")
         if result["decision"] not in REVISION_DECISIONS:
             raise ArtifactContractError("revision decision is invalid")
+        if (result["decision"] == "PRESENTATION_CHANGED") != ("presentation_source_sha" in transaction):
+            raise ArtifactContractError("presentation decision and transaction identity must match")
+        if result["decision"] == "PRESENTATION_CHANGED" and result["published_revision"] != revision:
+            raise ArtifactContractError("presentation-only release must preserve the published content revision")
         return result
 
     if artifact_type == "admission_receipt":
@@ -728,11 +737,17 @@ def validate_artifact(
             if key in trusted and producer[key] != trusted[key]:
                 raise ArtifactContractError("producer metadata is not trusted")
 
-    transaction = _exact_fields(value["transaction"], _TRANSACTION_FIELDS, "transaction")
+    tx_fields = _TRANSACTION_FIELDS
+    if isinstance(value["transaction"], dict) and "presentation_source_sha" in value["transaction"]:
+        tx_fields = tx_fields | {"presentation_source_sha"}
+    transaction = _exact_fields(value["transaction"], tx_fields, "transaction")
+    presentation_source = transaction.get("presentation_source_sha")
+    if "presentation_source_sha" in transaction and presentation_source != producer["source_sha"]:
+        raise ArtifactContractError("presentation transaction must bind the executable source SHA")
     worker = _nonempty_string(transaction["worker"], "transaction.worker")
     revision = _positive_int(transaction["content_revision"], "transaction.content_revision")
     _sha256(transaction["logical_transaction_id"], "logical_transaction_id")
-    if transaction["logical_transaction_id"] != logical_transaction_id(worker, revision):
+    if transaction["logical_transaction_id"] != logical_transaction_id(worker, revision, presentation_source):
         raise ArtifactContractError("logical transaction ID does not match worker and revision")
     if expected_transaction is not None and dict(expected_transaction) != transaction:
         raise ArtifactContractError("transaction does not match expected identity")

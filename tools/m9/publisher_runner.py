@@ -102,7 +102,7 @@ def _build_authorization() -> tuple[dict, dict, str]:
         expected_source_sha=source_sha,
         expected_parents={"revision_resolution_sha256": revision["artifact_sha256"]},
     )
-    if revision["payload"]["decision"] != "CHANGED":
+    if revision["payload"]["decision"] not in {"CHANGED", "PRESENTATION_CHANGED"}:
         raise BuildBoundaryError("BUILD_REQUIRES_CHANGED_REVISION")
     # COALESCED is a valid receipt when mark_terminal promoted a pending tx to
     # active admitted and the PUBLISH re-admitted the same tx without progress.

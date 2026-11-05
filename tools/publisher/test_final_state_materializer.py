@@ -33,9 +33,15 @@ OLD_INDEX = (json.dumps({"contract": "IMMUTABLE_MEDIA_INDEX_V1", "entries": [
 ]}, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
 
 
-def _fixture(root: Path):
+def _fixture(root: Path, *, presentation: bool = False):
     f = proof_fixtures.ProofRecoveryRunnerTests()
     f.setUp()
+    if presentation:
+        f.tx["presentation_source_sha"] = proof_fixtures.SOURCE_SHA
+        f.tx["logical_transaction_id"] = contracts.logical_transaction_id(
+            f.tx["worker"], f.tx["content_revision"], proof_fixtures.SOURCE_SHA)
+        f.receipt = proof_fixtures.artifact("admission_receipt", {
+            **f.receipt["payload"], "active_transaction_id": f.tx["logical_transaction_id"]}, f.tx)
     f.posts = [
         {"id": 3, "slug": "one", "text": "one", "media_file_id": "old-media", "media_type": "photo"},
         {"id": 4, "slug": "two", "text": "two", "media_file_id": "new-media", "media_type": "photo"},
@@ -228,6 +234,16 @@ class FinalStateMaterializerTests(unittest.TestCase):
         self.assertNotIn("missing-media", by_id)
         self.assertEqual(media_bootstrap.serialize_index({row["source_identifier"]: row for row in rows}),
                          self.f.output["publisher-state/immutable-media-index.json"])
+
+    def test_presentation_release_preserves_content_revision_through_full_proof_and_persistence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = _fixture(Path(directory), presentation=True)
+            fingerprint = json.loads(fixture.output["publisher-state/production-content-fingerprint.json"])
+            self.assertEqual(fingerprint["published_content_revision"], fixture.tx["content_revision"])
+            proof, bundle, _files, _hashes = validate_finalization_inputs(
+                fixture.proof, fixture.bundle, fixture.results, fixture.output, 0)
+            self.assertEqual(proof["transaction"], fixture.tx)
+            self.assertEqual(bundle["transaction"]["presentation_source_sha"], proof_fixtures.SOURCE_SHA)
 
     def test_final_persistence_preflight_accepts_exact_materialized_mapping(self):
         proof, bundle, files, hashes = validate_finalization_inputs(
