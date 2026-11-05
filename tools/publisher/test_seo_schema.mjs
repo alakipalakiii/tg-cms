@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { stripTypeScriptTypes } from 'node:module';
+const source = await readFile(new URL('../../website/dreary-disk/src/lib/seoSchema.ts', import.meta.url), 'utf8');
+const config = await readFile(new URL('../../website/dreary-disk/src/config.ts', import.meta.url), 'utf8');
+const configUrl = 'data:text/javascript,' + encodeURIComponent(stripTypeScriptTypes(config));
+const compiled = stripTypeScriptTypes(source).replace('"../config"', JSON.stringify(configUrl));
+const { makeArticleSchema, stringifySchema } = await import('data:text/javascript,' + encodeURIComponent(compiled));
+const missing = makeArticleSchema({ title: 'هنر', body: 'روایت هنر', url: 'https://mahoonartmagazine.ir/post/test' });
+assert.equal('datePublished' in missing, false);
+assert.equal('dateModified' in missing, false);
+assert.equal('datePublished' in makeArticleSchema({ datePublished: 'invalid' }), false);
+assert.equal(makeArticleSchema({ datePublished: '2026-11-05 10:00:00' }).datePublished, '2026-11-05T10:00:00.000Z');
+assert.equal(makeArticleSchema({ datePublished: '2026-11-05T10:00:00Z' }).dateModified, '2026-11-05T10:00:00.000Z');
+assert.equal(makeArticleSchema({ datePublished: '2026-11-05 10:00:00+03:30' }).datePublished, '2026-11-05T06:30:00.000Z');
+assert.equal(stringifySchema({ text: '</script><script>alert(1)</script>' }).includes('</script>'), false);
+console.log('SEO schema checks passed: deterministic UTC/offset dates, no fake freshness, safe JSON-LD.');

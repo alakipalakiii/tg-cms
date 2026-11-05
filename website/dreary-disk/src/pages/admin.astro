@@ -30,6 +30,8 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         --bg: #21110f;
         --surface: #fffaf2;
         --ink: #1b1712;
+        --dark: #2a1713;
+        color-scheme: light;
         --muted: #75645c;
         --line: rgba(74, 9, 13, 0.1);
         --accent: #6d0f14;
@@ -44,7 +46,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         --danger: #b84242;
         --green: #2f855a;
         --blue: #2b6cb0;
-        --shadow: 0 22px 60px rgba(74, 9, 13, 0.1);
+        --shadow: 0 12px 36px rgba(74, 9, 13, 0.08);
         --shadow-row: 0 14px 38px rgba(74, 9, 13, 0.07);
         --glass: rgba(255, 250, 242, 0.72);
         --radius-xl: 28px;
@@ -82,8 +84,8 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         position: static;
         z-index: 50;
         border-bottom: 1px solid rgba(255, 248, 239, 0.1);
-        background: rgba(17, 24, 39, 0.88);
-        backdrop-filter: blur(18px);
+        background: #4a090d;
+        backdrop-filter: none;
       }
 
       .topbar-inner {
@@ -144,12 +146,12 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         justify-content: center;
         gap: 8px;
         white-space: nowrap;
-        backdrop-filter: blur(14px);
+        backdrop-filter: none;
         box-shadow: 0 10px 26px rgba(74, 9, 13, 0.06);
       }
 
       .btn:hover {
-        transform: translateY(-2px);
+        transform: none;
       }
 
       .btn:disabled {
@@ -214,6 +216,17 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         box-shadow: 0 34px 110px rgba(0, 0, 0, 0.28);
       }
 
+      .admin-back-link { display: block; margin-top: 20px; color: var(--accent); }
+      .login-card .btn { width: 100%; min-height: 48px; }
+      .admin-page :where(input, select, textarea) { font-size: 16px; }
+      .admin-page [hidden] { display: none !important; }
+      .admin-page .admin-btn { min-height: 44px; }
+      .admin-page .admin-nav a { min-height: 44px; }
+      .admin-page .admin-sidebar { max-height: calc(100dvh - 32px); overflow-y: auto; }
+      .admin-page .editor-tabs { overflow-x: auto; flex-wrap: nowrap; padding: 5px; }
+      .admin-page .editor-tab-btn { flex-shrink: 0; }
+      .admin-page .seo-preview { margin-bottom: 20px; overflow-wrap: anywhere; }
+      .admin-page .admin-help { color: #66514a; line-height: 1.9; }
       .login-card h1 {
         margin: 18px 0 10px;
         font-size: 32px;
@@ -366,8 +379,8 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         padding: 18px 20px;
         border: 1px solid rgba(74, 9, 13, 0.08);
         border-radius: 24px;
-        background: rgba(255, 250, 242, 0.86);
-        backdrop-filter: blur(16px);
+        background: #fffaf2;
+        backdrop-filter: none;
         box-shadow: var(--shadow);
       }
 
@@ -487,11 +500,11 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       .stat-card {
         position: relative;
         overflow: hidden;
-        background: linear-gradient(135deg, #6d0f14, #4a090d);
-        border: 1px solid rgba(255, 248, 239, 0.14);
-        border-radius: var(--radius-lg);
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-md);
         padding: 20px;
-        box-shadow: 0 18px 52px rgba(0, 0, 0, 0.14);
+        box-shadow: var(--shadow-soft);
       }
 
       .stat-card i {
@@ -503,34 +516,30 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         display: grid;
         place-items: center;
         border-radius: 12px;
-        color: #fff8ef;
-        background: rgba(255, 248, 239, 0.14);
-        border: 1px solid rgba(255, 248, 239, 0.16);
+        color: var(--accent);
+        background: #f0e1d8;
+        border: 1px solid var(--line);
         font-style: normal;
       }
 
       .stat-card strong {
         display: block;
         font-size: 34px;
-        color: #fff8ef;
+        color: var(--accent);
       }
 
       .stat-card span {
         display: block;
         margin-top: 6px;
-        color: rgba(255, 248, 239, 0.76);
-        font-size: 13px;
+        color: #66514a;
+        font-size: 14px;
         font-weight: 700;
       }
 
-      .stat-card-published { background: linear-gradient(135deg, #2f855a, #244f3a); }
-      .stat-card-draft { background: linear-gradient(135deg, #b7791f, #6d4211); }
-      .stat-card-deleted { background: linear-gradient(135deg, #b84242, #6d0f14); }
-      .stat-card-media { background: linear-gradient(135deg, #2b6cb0, #1f3f68); }
-      .stat-card-text { background: linear-gradient(135deg, #6d0f14, #2a1713); }
-      .stat-card-latest { background: linear-gradient(135deg, #2a1713, #111827); }
-      .stat-card-tags { background: linear-gradient(135deg, #8a632d, #4a090d); }
 
+      .stat-card-total { background: var(--accent); }
+      .stat-card-total :is(strong, span, i) { color: #fff8ef; }
+      .stat-card-total i { background: #8a3438; }
       .dashboard-insights,
       .admin-sections {
         display: grid;
@@ -736,7 +745,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         border-radius: 24px;
         box-shadow: var(--shadow);
         overflow: hidden;
-        backdrop-filter: blur(14px);
+        backdrop-filter: none;
       }
 
       .panel-head {
@@ -1013,7 +1022,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         text-decoration: none;
         white-space: nowrap;
         cursor: pointer;
-        backdrop-filter: blur(14px);
+        backdrop-filter: none;
         box-shadow: 0 10px 24px rgba(74, 9, 13, 0.06);
         transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
       }
@@ -1426,7 +1435,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
       .editor-meta {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: 8px;
         margin-bottom: 16px;
       }
@@ -1789,7 +1798,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           flex-direction: column;
           border-radius: 24px;
           padding: 18px;
-          position: sticky;
+          position: relative;
           top: 0;
         }
 
@@ -1805,8 +1814,11 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         }
 
         .stats {
-          grid-template-columns: 1fr;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
+        .stat-card { padding: 16px 12px; }
+        .stat-card i { position: static; margin-bottom: 8px; }
+        .stat-card strong { font-size: 28px; }
 
         .filters {
           grid-template-columns: 1fr;
@@ -1924,20 +1936,21 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
     <main class="page">
       <div class="container">
         <section class="login-wrap" id="loginView">
-          <div class="login-card">
+          <form class="login-card" id="loginForm">
             <span class="badge">ورود مدیر</span>
             <h1>ورود به پنل مدیریت</h1>
             <p>ورود به پنل مدیریت ماهون</p>
 
-            <div class="message" id="loginMessage"></div>
+            <div class="message" id="loginMessage" role="status" aria-live="polite"></div>
 
             <div class="field">
               <label for="tokenInput">رمز مدیریت</label>
-              <input class="admin-input input" id="tokenInput" type="password" placeholder="ADMIN_TOKEN را وارد کن" />
+              <input class="admin-input input" id="tokenInput" type="password" name="admin-token" autocomplete="current-password" required placeholder="رمز مدیریت را وارد کنید" />
             </div>
 
-            <button class="admin-btn btn btn-primary" id="loginBtn" type="button">ورود به پنل</button>
-          </div>
+            <button class="admin-btn btn btn-primary" id="loginBtn" type="submit">ورود به پنل</button>
+            <a class="admin-back-link" href="/">بازگشت به سایت ماهون</a>
+          </form>
         </section>
 
         <section class="dashboard" id="dashboardView">
@@ -2052,15 +2065,15 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                 </div>
 
                 <div class="filters">
-                  <input class="admin-input input" id="searchInput" type="search" placeholder="جستجو در پست‌ها..." />
+                  <input class="admin-input input" id="searchInput" aria-label="جستجو در مطالب" type="search" placeholder="جستجو در پست‌ها..." />
 
-                  <select class="admin-select select" id="statusFilter">
+                  <select class="admin-select select" id="statusFilter" aria-label="وضعیت انتشار">
                     <option value="all">همه وضعیت‌ها</option>
                     <option value="published">منتشر شده</option>
                     <option value="draft">منتشر نشده</option>
                   </select>
 
-                  <select class="admin-select select" id="mediaFilter">
+                  <select class="admin-select select" id="mediaFilter" aria-label="نوع محتوا">
                     <option value="all">همه محتواها</option>
                     <option value="media">دارای فایل</option>
                     <option value="photo">عکس</option>
@@ -2069,7 +2082,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                     <option value="text">بدون فایل</option>
                   </select>
 
-                  <select class="admin-select select" id="sortFilter">
+                  <select class="admin-select select" id="sortFilter" aria-label="ترتیب مطالب">
                     <option value="newest">جدیدترین</option>
                     <option value="oldest">قدیمی‌ترین</option>
                     <option value="id">کد مطلب</option>
@@ -2140,7 +2153,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
                   <div class="switch-line">
                     <span>انتشار در سایت</span>
-                    <input class="admin-checkbox switch-input" id="isPublished" type="checkbox" checked />
+                    <input class="admin-checkbox switch-input" id="isPublished" aria-label="انتشار در سایت" type="checkbox" checked />
                   </div>
 
                   <div class="field">
@@ -2155,7 +2168,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                   <div class="media-uploader">
                     <div class="media-uploader-row">
                       <input class="admin-input input"
-                        id="mediaFile"
+                        id="mediaFile" aria-label="انتخاب فایل مطلب"
                         type="file"
                         accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar"
                       />
@@ -2170,7 +2183,11 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                 </div>
 
                 <div class="editor-tab-panel" data-editor-panel="seo">
-                  <h3 class="tab-title">تنظیمات SEO</h3>
+                  <h3 class="tab-title">سئوی خودکار</h3>
+                  <p class="admin-help">عنوان و توضیح از متن مطلب ساخته می‌شوند. برای به‌روزرسانی خودکار، فیلدها را خالی بگذارید؛ مقدار دلخواه شما اولویت دارد.</p>
+                  <div class="seo-preview" aria-label="پیش‌نمایش نتیجه جستجو">
+                    <b id="editorSeoTitle"></b><small id="editorSeoUrl"></small><p id="editorSeoDescription"></p>
+                  </div>
 
                   <div class="field">
                     <label for="seoTitle">SEO Title</label>
@@ -2422,7 +2439,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                       <label for="homeAdRightImageInput">عکس تبلیغ راست</label>
                       <input class="admin-input input" id="homeAdRightImageInput" type="url" dir="ltr" placeholder="https://... یا آپلود کن" />
                       <small class="admin-help">پیشنهاد: 1600×900px یا 1200×675px، فرمت JPG/WebP، حجم بهتر زیر 1MB.</small>
-                      <input class="admin-input input" type="file" accept="image/*" data-site-ad-file="home_ad_right_image" />
+                      <input class="admin-input input" type="file" accept="image/*" aria-label="انتخاب عکس تبلیغ راست" data-site-ad-file="home_ad_right_image" />
                       <div class="tool-panel">
                         <button class="admin-btn btn btn-line" type="button" data-site-ad-upload="home_ad_right_image">آپلود عکس راست</button>
                         <button class="admin-btn btn btn-danger" type="button" data-site-ad-clear="home_ad_right_image">حذف عکس راست</button>
@@ -2433,7 +2450,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                       <label for="homeAdLeftImageInput">عکس تبلیغ چپ</label>
                       <input class="admin-input input" id="homeAdLeftImageInput" type="url" dir="ltr" placeholder="https://... یا آپلود کن" />
                       <small class="admin-help">پیشنهاد: 1600×900px یا 1200×675px، نسبت 16:9، با حاشیه امن از اطراف.</small>
-                      <input class="admin-input input" type="file" accept="image/*" data-site-ad-file="home_ad_left_image" />
+                      <input class="admin-input input" type="file" accept="image/*" aria-label="انتخاب عکس تبلیغ چپ" data-site-ad-file="home_ad_left_image" />
                       <div class="tool-panel">
                         <button class="admin-btn btn btn-line" type="button" data-site-ad-upload="home_ad_left_image">آپلود عکس چپ</button>
                         <button class="admin-btn btn btn-danger" type="button" data-site-ad-clear="home_ad_left_image">حذف عکس چپ</button>
@@ -2620,7 +2637,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
     <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
 
-    <dialog class="confirm-dialog" id="confirmDialog">
+    <dialog class="confirm-dialog" id="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
       <form method="dialog">
         <h2 id="confirmTitle">تأیید عملیات</h2>
         <p id="confirmMessage">آیا مطمئن هستید؟</p>
@@ -2815,6 +2832,8 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       let analyticsLoaded = false;
       let editorDirty = false;
       let editorBaseline = "";
+      let siteCopyBaseline = null;
+      let siteCopyRequestSerial = 0;
       let messageTimer = null;
       let authRecoveryShown = false;
 
@@ -2943,10 +2962,6 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             showActivePostsView();
           }
 
-          if (key === "create") {
-            clearEditor();
-            setEditorTab("content");
-          }
 
           if (key === "site-copy") {
             await loadSiteCopy();
@@ -2972,6 +2987,26 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         adminSidebar?.classList.remove("is-open");
         adminDrawerBackdrop?.classList.remove("is-open");
         sidebarToggle?.setAttribute("aria-expanded", "false");
+        adminSidebar.inert = matchMedia("(max-width: 900px)").matches;
+      }
+
+      async function allowEditorReset() {
+        if (!editorDirty) return true;
+        const discard = await confirmAction({
+          title: "تغییرات ذخیره نشده",
+          message: "تغییرات این مطلب ذخیره نشده است. تغییرات کنار گذاشته شوند؟",
+          confirmText: "کنار گذاشتن تغییرات"
+        });
+        if (discard) resetEditorDirty();
+        return discard;
+      }
+
+      async function openEditor(post, tab = "content") {
+        if (!(await allowEditorReset())) return;
+        selectPost(post);
+        setEditorTab(tab);
+        await showAdminSection("create", { skipModeChange: true });
+        postText.focus();
       }
 
       function showMessage(element, text, type = "ok") {
@@ -3002,9 +3037,11 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       function confirmAction({ title, message, confirmText = "تأیید", requireValue = "" }) {
         if (!confirmDialog || typeof confirmDialog.showModal !== "function") {
           if (!window.confirm(`${title}\n\n${message}`)) return Promise.resolve(false);
-          return Promise.resolve(true);
+          return Promise.resolve(!requireValue || window.prompt("کد ثابت مطلب را وارد کنید")?.trim() === String(requireValue));
         }
 
+        if (confirmDialog.open) return Promise.resolve(false);
+        confirmDialog.returnValue = "";
         confirmTitle.textContent = title;
         confirmMessage.textContent = message;
         confirmOkBtn.textContent = confirmText;
@@ -3167,6 +3204,18 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
           field.value = value;
         });
+        siteCopyBaseline = JSON.stringify(collectSiteCopyForm());
+      }
+
+      function siteCopyHasChanges() {
+        return siteCopyBaseline !== null && JSON.stringify(collectSiteCopyForm()) !== siteCopyBaseline;
+      }
+
+      async function allowAdminExit() {
+        if (!editorDirty && !siteCopyHasChanges()) return true;
+        const discard = await confirmAction({ title: "تغییرات ذخیره نشده", message: "تغییرات فرم‌های مدیریت ذخیره نشده است. از پنل خارج شوید؟", confirmText: "خروج بدون ذخیره" });
+        if (discard) { resetEditorDirty(); siteCopyBaseline = null; }
+        return discard;
       }
 
       function collectSiteCopyForm() {
@@ -3305,6 +3354,10 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       });
 
       async function loadSiteCopy() {
+        if (siteCopyHasChanges()) return;
+        saveSiteCopyBtn.disabled = true;
+        Object.values(siteCopyFields).forEach(field => { if (field) field.disabled = true; });
+        const requestId = ++siteCopyRequestSerial;
         if (!getToken()) {
           siteCopyState.textContent = "نیازمند ورود";
           fillSiteCopyForm();
@@ -3315,11 +3368,15 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
         try {
           const data = await api("/admin/site-settings", { method: "GET", timeoutMs: SITE_COPY_TIMEOUT_MS });
+          if (requestId !== siteCopyRequestSerial) return;
           fillSiteCopyForm(data.settings || {});
+          Object.values(siteCopyFields).forEach(field => { if (field) field.disabled = false; });
           siteCopyState.textContent = "بارگذاری شد";
+          saveSiteCopyBtn.disabled = false;
         } catch (error) {
+          if (requestId !== siteCopyRequestSerial) return;
           fillSiteCopyForm();
-          siteCopyState.textContent = "fallback";
+          siteCopyState.textContent = "دریافت ناموفق؛ ذخیره غیرفعال است";
           showMessage(siteCopyMessage, userFriendlyError(error, "تنظیمات سایت بارگذاری نشد؛ متن‌های پیش‌فرض نمایش داده شدند."), "error");
         }
       }
@@ -3461,7 +3518,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         if (!value) return "";
 
         try {
-          const date = new Date(value.replace(" ", "T") + "Z");
+          const date = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value.replace(" ", "T") : value.replace(" ", "T") + "Z");
 
           return new Intl.DateTimeFormat("fa-IR", {
             year: "numeric",
@@ -3606,6 +3663,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           loginMessage.className = "message";
           loginMessage.textContent = "";
           tokenInput.value = "";
+          toastStack.replaceChildren();
 
           showDashboard();
           await loadPosts();
@@ -4936,11 +4994,24 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
       function setEditorTab(name) {
         document.querySelectorAll("[data-editor-tab]").forEach(tab => {
-          tab.classList.toggle("active", tab.getAttribute("data-editor-tab") === name);
+          const active = tab.getAttribute("data-editor-tab") === name;
+          const key = tab.getAttribute("data-editor-tab");
+          tab.classList.toggle("active", active);
+          tab.id = `editor-tab-${key}`;
+          tab.setAttribute("role", "tab");
+          tab.setAttribute("aria-selected", String(active));
+          tab.setAttribute("aria-controls", `editor-panel-${key}`);
+          tab.tabIndex = active ? 0 : -1;
         });
 
         document.querySelectorAll("[data-editor-panel]").forEach(panel => {
-          panel.classList.toggle("active", panel.getAttribute("data-editor-panel") === name);
+          const key = panel.getAttribute("data-editor-panel");
+          const active = key === name;
+          panel.classList.toggle("active", active);
+          panel.id = `editor-panel-${key}`;
+          panel.setAttribute("role", "tabpanel");
+          panel.setAttribute("aria-labelledby", `editor-tab-${key}`);
+          panel.hidden = !active;
         });
       }
 
@@ -5002,6 +5073,10 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       function updatePreview() {
         const parsed = parseContent(postText.value || "");
 
+        const seo = ensureSeoForPost({ text: postText.value, seo_title: seoTitle.value.trim(), seo_description: seoDescription.value.trim() });
+        document.getElementById("editorSeoTitle").textContent = seo.seo_title;
+        document.getElementById("editorSeoDescription").textContent = seo.seo_description;
+        document.getElementById("editorSeoUrl").textContent = window.location.origin + "/post/" + (postSlug.value.trim() || makeSlugFromText(postText.value));
         previewTitle.textContent = parsed.title || "عنوان پست";
         previewContent.textContent = parsed.content || "متن پست اینجا نمایش داده می‌شود.";
         previewStatus.textContent = isPublished.checked ? "منتشر شده" : "منتشر نشده";
@@ -5738,8 +5813,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           const id = Number(editButton.getAttribute("data-edit-id"));
           const post = posts.find(item => Number(item.id) === id);
           if (post) {
-            selectPost(post);
-            showAdminSection("create", { skipModeChange: true });
+            openEditor(post);
           }
           return;
         }
@@ -5791,9 +5865,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         const id = Number(row.getAttribute("data-row-id"));
         const post = posts.find(item => Number(item.id) === id);
 
-        if (post) {
-          selectPost(post);
-        }
+        if (post) openEditor(post);
       });
 
       postsPagination.addEventListener("click", async event => {
@@ -6039,11 +6111,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             const id = Number(editButton.getAttribute("data-edit-id"));
             const post = findLoadedPostById(id);
             if (post) {
-              selectPost(post);
-              const target = editButton.getAttribute("data-editor-target");
-              if (target) setEditorTab(target);
-              showAdminSection("create", { skipModeChange: true });
-              document.getElementById("editorTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              openEditor(post, editButton.getAttribute("data-editor-target") || "content");
             }
             return;
           }
@@ -6054,25 +6122,25 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         });
       });
 
-      loginBtn.addEventListener("click", async () => {
-        const token = tokenInput.value.trim();
+      document.getElementById("loginForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (loginBtn.disabled) return;
+        setButtonLoading(loginBtn, true, "در حال بررسی…");
+        try {
+          const token = tokenInput.value.trim();
 
-        if (!token) {
-          showMessage(loginMessage, "رمز مدیریت را وارد کن.", "error");
-          return;
-        }
+          if (!token) {
+            showMessage(loginMessage, "رمز مدیریت را وارد کن.", "error");
+            return;
+          }
 
-        setToken(token);
-        await testLogin();
+          setToken(token);
+          await testLogin();
+        } finally { setButtonLoading(loginBtn, false); }
       });
 
-      tokenInput.addEventListener("keydown", event => {
-        if (event.key === "Enter") {
-          loginBtn.click();
-        }
-      });
-
-      logoutBtn.addEventListener("click", () => {
+      logoutBtn.addEventListener("click", async () => {
+        if (!(await allowAdminExit())) return;
         clearToken();
         showLogin();
       });
@@ -6156,14 +6224,23 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         tab.addEventListener("click", () => setEditorTab(tab.getAttribute("data-editor-tab")));
       });
 
-      newPostBtn.addEventListener("click", () => showAdminSection("create"));
-      clearBtn.addEventListener("click", clearEditor);
+      newPostBtn.addEventListener("click", async () => {
+        if (!(await allowEditorReset())) return;
+        clearEditor();
+        setEditorTab("content");
+        showAdminSection("create");
+      });
+      clearBtn.addEventListener("click", async () => { if (await allowEditorReset()) clearEditor(); });
       saveBtn.addEventListener("click", savePost);
       deleteBtn.addEventListener("click", deletePost);
       duplicateBtn.addEventListener("click", duplicatePost);
       completeSeoBtn.addEventListener("click", completeMissingSeo);
       saveSiteCopyBtn.addEventListener("click", saveSiteCopy);
-      reloadSiteCopyBtn.addEventListener("click", loadSiteCopy);
+      reloadSiteCopyBtn.addEventListener("click", async () => {
+        if (siteCopyHasChanges() && !(await confirmAction({title: "تغییرات ذخیره نشده", message: "متن‌های ویرایش‌شده کنار گذاشته و تنظیمات دوباره دریافت شوند؟", confirmText: "دریافت دوباره"}))) return;
+        siteCopyBaseline = null;
+        await loadSiteCopy();
+      });
 
       /* mahoon-admin-analytics-listener-fix-v1 */
       analyticsRefreshBtn?.addEventListener("click", () => loadAnalyticsReport(true));
@@ -6176,7 +6253,8 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       document.querySelector("[data-copy-selected-id]")?.addEventListener("click", () => copyValue(postId.value, "ID انتخاب‌شده کپی شد."));
       document.querySelector("[data-copy-selected-slug]")?.addEventListener("click", () => copyValue(postSlug.value, "slug انتخاب‌شده کپی شد."));
       document.querySelector("[data-refresh-local]")?.addEventListener("click", loadPosts);
-      document.querySelector("[data-clear-token]")?.addEventListener("click", () => {
+      document.querySelector("[data-clear-token]")?.addEventListener("click", async () => {
+        if (!(await allowAdminExit())) return;
         clearToken();
         updateLocalState();
         showLogin();
@@ -6241,7 +6319,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         updatePreview();
       });
 
-      postSlug.addEventListener("input", markEditorDirty);
+      postSlug.addEventListener("input", () => { markEditorDirty(); updatePreview(); });
       isPublished.addEventListener("change", () => {
         markEditorDirty();
         updatePreview();
@@ -6258,7 +6336,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
       mediaFile.addEventListener("change", markEditorDirty);
 
       window.addEventListener("beforeunload", event => {
-        if (!editorDirty) return;
+        if (!editorDirty && !siteCopyHasChanges()) return;
 
         event.preventDefault();
         event.returnValue = "";
@@ -6269,7 +6347,41 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         showAdminSection(sectionFromHash(), { skipHash: true });
       });
 
+      document.querySelector(".editor-tabs").addEventListener("keydown", event => {
+        const tabs = [...document.querySelectorAll("[data-editor-tab]")];
+        const index = tabs.indexOf(document.activeElement);
+        if (index < 0 || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowLeft" ? 1 : -1) + tabs.length) % tabs.length;
+        setEditorTab(tabs[next].dataset.editorTab);
+        tabs[next].focus();
+      });
+      const mobileSidebar = matchMedia("(max-width: 900px)");
+      function closeDrawer() {
+        adminSidebar.classList.remove("is-open");
+        adminDrawerBackdrop.classList.remove("is-open");
+        sidebarToggle.setAttribute("aria-expanded", "false");
+        adminSidebar.inert = mobileSidebar.matches;
+      }
+      mobileSidebar.addEventListener("change", closeDrawer);
+      sidebarToggle.addEventListener("click", () => {
+        const open = sidebarToggle.getAttribute("aria-expanded") === "true";
+        adminSidebar.inert = !open && mobileSidebar.matches;
+        if (open) adminSidebar.querySelector("a").focus();
+      });
+      adminDrawerBackdrop.addEventListener("click", () => { closeDrawer(); sidebarToggle.focus(); });
+      adminSidebar.addEventListener("keydown", event => {
+        if (!mobileSidebar.matches || !adminSidebar.classList.contains("is-open")) return;
+        if (event.key === "Escape") { closeDrawer(); sidebarToggle.focus(); }
+        if (event.key === "Tab") {
+          const items = [...adminSidebar.querySelectorAll("a,button")];
+          if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items.at(-1).focus(); }
+          else if (!event.shiftKey && document.activeElement === items.at(-1)) { event.preventDefault(); items[0].focus(); }
+        }
+      });
+      closeDrawer();
       clearEditor();
+      setEditorTab("content");
 
       if (getToken()) {
         testLogin();

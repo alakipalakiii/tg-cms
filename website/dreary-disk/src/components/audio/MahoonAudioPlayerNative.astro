@@ -1265,6 +1265,7 @@ const instanceId = "mahoon-audio-" + Math.random().toString(36).slice(2, 10);
         root.querySelectorAll(".js-speed-value").forEach((el) => {
           el.textContent = speedLabel(SPEEDS[speedIndex]);
         });
+        root.querySelectorAll(".js-play").forEach(button => button.setAttribute("aria-label", audio.paused ? "پخش صوت" : "توقف صوت"));
         root.querySelectorAll(".js-play-icon").forEach((svg) => {
           svg.innerHTML = audio.paused
             ? '<path d="M7 4.5v15L19 12 7 4.5Z"/>'
@@ -1276,6 +1277,7 @@ const instanceId = "mahoon-audio-" + Math.random().toString(36).slice(2, 10);
           const visible = !audio.paused && !surfaceVisible;
           sticky.classList.toggle("is-visible", visible);
           sticky.setAttribute("aria-hidden", visible ? "false" : "true");
+          sticky.inert = !visible;
         }
       }
 

@@ -4,7 +4,7 @@
 <!-- MAHOON_STAGE19B_F_R4_R1_EXACT_FROZEN_GLOBAL_SYSTEM -->
 
 <div class="mahoon-r4-theme-control">
-  <button class="mahoon-r4-theme-toggle" type="button" data-mahoon-r4-theme-toggle>
+  <button class="mahoon-r4-theme-toggle" type="button" aria-label="تغییر تم؛ حالت خودکار" data-mahoon-r4-theme-toggle>
     <span aria-hidden="true">◐</span>
     <b data-mahoon-r4-theme-label>خودکار</b>
   </button>
@@ -1066,7 +1066,7 @@
       return (
         !(el instanceof HTMLElement) ||
         el.matches("img,picture,video,canvas,svg,path,source,script,style,link,meta") ||
-        el.closest(".mahoon-frozen-global-scope,[data-mahoon-native-player],.mahoon-r4-theme-control")
+        el.closest(".site-header,.site-footer,.skip-link,.mahoon-frozen-global-scope,[data-mahoon-native-player],.mahoon-r4-theme-control")
       );
     }
 
@@ -1188,6 +1188,10 @@
         el.textContent = label(clean);
       });
 
+      document.querySelectorAll("[data-mahoon-r4-theme-toggle]").forEach(button => {
+        button.setAttribute("aria-label", `تغییر تم؛ حالت ${label(clean)}`);
+        button.setAttribute("title", `حالت ${label(clean)}؛ برای تغییر کلیک کنید`);
+      });
       if (persist) {
         try { localStorage.setItem(THEME_KEY,clean); } catch {}
       }
@@ -1274,6 +1278,17 @@
         return;
       }
 
+      sticky.inert = true;
+      sticky.setAttribute("aria-hidden", "true");
+      modal.inert = true;
+      modal.setAttribute("aria-hidden", "true");
+      modal.setAttribute("role", "dialog");
+      modal.setAttribute("aria-modal", "true");
+      modal.setAttribute("aria-label", "پخش‌کنندهٔ صوتی ماهون");
+      for (const [selector, label] of [[".js-play", "پخش صوت"], ["#expandBtn", "باز کردن پخش‌کننده"], ["#closeBtn", "بستن پخش‌کننده"], [".downloadBtn", "دانلود صوت"], [".shareBtn", "اشتراک‌گذاری"], [".js-back", "۱۰ ثانیه عقب"], [".js-forward", "۱۰ ثانیه جلو"], [".js-speed", "تغییر سرعت پخش"]]) {
+        scope.querySelectorAll(selector).forEach(button => button.setAttribute("aria-label", label));
+      }
+      let modalOpener = null;
       let state=readState();
       let toastTimer=0;
       let inlineVisible=false;
@@ -1387,6 +1402,8 @@
       function redraw() {
         if (!state?.src || !state.engaged) {
           sticky.classList.remove("show");
+          sticky.inert = true;
+          sticky.setAttribute("aria-hidden", "true");
           document.body?.classList.remove("mahoon-r5-r3-dock-visible");
           return;
         }
@@ -1411,6 +1428,9 @@
           Boolean(state.engaged && !inlineVisible && !r5InlineVisible);
 
         sticky.classList.toggle("show",r5DockVisible);
+        sticky.inert = !r5DockVisible;
+        sticky.setAttribute("aria-hidden", String(!r5DockVisible));
+        scope.querySelectorAll(".js-play").forEach(button => button.setAttribute("aria-label", a?.paused ? "پخش صوت" : "توقف صوت"));
         document.body?.classList.toggle(
           "mahoon-r5-r3-dock-visible",
           r5DockVisible
@@ -1512,19 +1532,34 @@
       }
 
       function openModal() {
+        modalOpener = document.activeElement;
+        modal.inert = false;
+        modal.setAttribute("aria-hidden", "false");
         renderMeta();
         modal.classList.add("show");
         modal.scrollTop=0;
         const panel=modal.querySelector(".modalPanel");
         if (panel) panel.scrollTop=0;
         document.body.style.overflow="hidden";
+        modal.querySelector("#closeBtn")?.focus();
         requestAnimationFrame(redraw);
       }
 
       function closeModal() {
+        if (!modal.classList.contains("show")) return;
         modal.classList.remove("show");
+        modal.inert = true;
+        modal.setAttribute("aria-hidden", "true");
         document.body.style.overflow="";
+        if (modalOpener?.isConnected) modalOpener.focus();
       }
+      modal.addEventListener("keydown", event => {
+        if (event.key !== "Tab") return;
+        const buttons = [...modal.querySelectorAll("button,a[href],input,select,[tabindex='0']")].filter(el => el.getClientRects().length && !el.disabled);
+        const first = buttons[0], last = buttons.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      });
 
       scope.querySelectorAll(".js-play").forEach(el=>el.addEventListener("click",toggle));
       scope.querySelectorAll(".js-back").forEach(el=>el.addEventListener("click",()=>seek(-10)));
@@ -1936,6 +1971,7 @@
       setTimeout(bindNative,150);
       setTimeout(bindNative,800);
       document.addEventListener("astro:page-load",()=>{
+        applyTheme(document.documentElement.dataset.mahoonThemeMode || "auto", false);
         nativeAudio=null;
         inlineVisible=false;
         bindNative();
@@ -2088,7 +2124,7 @@
       return (
         !(el instanceof HTMLElement) ||
         el.matches("img,picture,video,canvas,svg,path,source,script,style,link,meta") ||
-        el.closest(".mahoon-frozen-global-scope,[data-mahoon-native-player],.mahoon-r4-theme-control")
+        el.closest(".site-header,.site-footer,.skip-link,.mahoon-frozen-global-scope,[data-mahoon-native-player],.mahoon-r4-theme-control")
       );
     }
 

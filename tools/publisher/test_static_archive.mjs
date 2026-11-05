@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
+import { createRequire, stripTypeScriptTypes } from 'node:module';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { classifyPublicRequest } from './prepromotion_browser_gate.mjs';
@@ -126,17 +126,24 @@ try {
   await assert.rejects(() => decodeImages(page, assert), /cannot be decoded|EncodingError/);
   page.setDefaultTimeout(30000);
   const layout = await readFile(new URL('../../website/dreary-disk/src/layouts/BaseLayout.astro', import.meta.url), 'utf8');
-  const menuScript = [...layout.matchAll(/<script is:inline>([\s\S]*?)<\/script>/g)]
-    .map((match) => match[1]).find((script) => script.includes('document.querySelector(".site-menu-toggle")'));
+  const menuScript = [...layout.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+    .map((match) => match[1]).find((script) => script.includes('function bindNavigation()'));
   assert.ok(menuScript);
-  await page.setContent('<button class="site-menu-toggle" aria-expanded="false">Menu</button><nav id="mainNav"><a href="/">Home</a></nav>');
-  await page.addScriptTag({ content: menuScript });
+  await page.setContent('<header><button class="site-menu-toggle" aria-expanded="false">Menu</button><nav id="mainNav"><a href="/">Home</a></nav></header>');
+  await page.addScriptTag({ content: stripTypeScriptTypes(menuScript) });
   await page.locator('button').focus(); await page.keyboard.press('Enter');
   assert.equal(await page.locator('button').getAttribute('aria-expanded'), 'true');
   await page.locator('a').focus(); await page.keyboard.press('Escape');
   assert.equal(await page.locator('button').getAttribute('aria-expanded'), 'false');
   assert.equal(await page.locator('nav').evaluate((node) => node.classList.contains('is-open')), false);
   assert.equal(await page.locator('button').evaluate((node) => node === document.activeElement), true);
+  await page.evaluate(() => {
+    document.querySelector('header').innerHTML = '<button class="site-menu-toggle" aria-expanded="false">Menu</button><nav id="mainNav"><a href="/">Home</a></nav>';
+    document.dispatchEvent(new Event('astro:page-load'));
+    document.dispatchEvent(new Event('astro:page-load'));
+  });
+  await page.locator('button').click();
+  assert.equal(await page.locator('button').getAttribute('aria-expanded'), 'true', 'Astro swaps bind the new menu exactly once');
   for (const source of ['index.astro', 'posts.astro', 'category/[category].astro']) {
     const html = await readFile(new URL('../../website/dreary-disk/src/pages/' + source, import.meta.url), 'utf8');
     assert.match(html, /<input[^>]+type="search"[^>]+aria-label="[^"]+"/);

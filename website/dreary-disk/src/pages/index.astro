@@ -230,6 +230,7 @@ function safeJson(value: unknown) {
 
       function startTypewriter() {
         const lines = Array.from(document.querySelectorAll(".m-type-line"));
+        if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
         lines.forEach((line) => {
           line.textContent = "";
         });

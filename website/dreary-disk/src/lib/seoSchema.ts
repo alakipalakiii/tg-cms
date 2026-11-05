@@ -44,17 +44,14 @@ function cleanText(value?: string | null, maxLength = 500): string {
     .trim();
 }
 
-function toIsoDate(value?: string | null): string {
-  if (!value) return new Date().toISOString();
+function toIsoDate(value?: string | null): string | undefined {
+  if (!value) return undefined;
 
-  const source = String(value).includes("T")
-    ? String(value)
-    : String(value).replace(" ", "T") + "Z";
-
-  const parsed = new Date(source);
+  const source = String(value).trim().replace(" ", "T");
+  const parsed = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(source) ? source : source + "Z");
 
   if (Number.isNaN(parsed.getTime())) {
-    return new Date().toISOString();
+    return undefined;
   }
 
   return parsed.toISOString();
