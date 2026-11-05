@@ -17,10 +17,23 @@ class WranglerError(RuntimeError):
     pass
 
 
+class AssetUploadSessionRejected(WranglerError):
+    """Pinned Wrangler failed before the Worker version creation request."""
+
+
 def _run(args: list[str], timeout: int = 120) -> str:
     proc = subprocess.run(WRANGLER + args, text=True, capture_output=True,
                           timeout=timeout, env=os.environ.copy(), check=False)
     if proc.returncode:
+        diagnostic = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", proc.stderr or proc.stdout or "")
+        if (WRANGLER == ["npx", "wrangler@4.83.0"] and args[:2] == ["versions", "upload"]
+                and "--name" in args and args.index("--name") + 1 < len(args)
+                and re.fullmatch(r"[0-9a-f]{32}", ACCOUNT)):
+            worker = args[args.index("--name") + 1]
+            requests = re.findall(r"A request to the Cloudflare API \(([^)\r\n]+)\) failed\.", diagnostic)
+            if (requests == [f"/accounts/{ACCOUNT}/workers/scripts/{worker}/assets-upload-session"]
+                    and re.findall(r"\[code:\s*(\d+)\]", diagnostic) == ["10013"]):
+                raise AssetUploadSessionRejected("assets upload session rejected (Cloudflare 10013)")
         raise WranglerError((proc.stderr or proc.stdout or "wrangler failed")[-800:])
     return proc.stdout
 
@@ -65,6 +78,23 @@ def read_deployment(worker_name: str) -> dict:
     return latest
 
 
+def _marked_version(worker_name: str, message: str) -> str | None:
+    try:
+        versions = list_versions(worker_name)
+    except (WranglerError, subprocess.TimeoutExpired):
+        raise WranglerError("upload marker readback failed") from None
+    matches = []
+    for item in versions:
+        if (not isinstance(item, dict) or not isinstance(item.get("id"), str) or not item["id"].strip()
+                or item.get("annotations") is not None and not isinstance(item["annotations"], dict)):
+            raise WranglerError("upload marker readback is malformed")
+        if (item.get("annotations") or {}).get("workers/message") == message:
+            matches.append(item["id"])
+    if len(matches) > 1:
+        raise WranglerError("multiple versions match the exact upload attempt")
+    return matches[0] if matches else None
+
+
 def upload_version(worker_name: str, sealed_artifact_root: str | Path,
                    config_path: str | Path, message: str, tag: str | None = None) -> str:
     root = Path(sealed_artifact_root).resolve()
@@ -73,7 +103,8 @@ def upload_version(worker_name: str, sealed_artifact_root: str | Path,
         raise WranglerError("sealed artifact root required")
     try:
         from .seal_artifact import verify_seal
-        if not verify_seal(root, json.loads(seal.read_text(encoding="utf-8"))):
+        sealed_value = json.loads(seal.read_text(encoding="utf-8"))
+        if not verify_seal(root, sealed_value):
             raise WranglerError("sealed artifact changed after sealing")
     except (OSError, json.JSONDecodeError) as exc:
         raise WranglerError("artifact seal is unreadable") from exc
@@ -94,6 +125,28 @@ def upload_version(worker_name: str, sealed_artifact_root: str | Path,
             "--name", worker_name, "--message", message]
     if tag:
         args += ["--tag", tag]
+    if re.fullmatch(r"MAHOON-A3:[0-9a-f]{64}:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", message):
+        for attempt in range(3):
+            existing = _marked_version(worker_name, message)
+            if existing:
+                return existing
+            if not verify_seal(root, sealed_value):
+                raise WranglerError("sealed artifact changed before upload")
+            try:
+                _run(args, timeout=900)
+            except (WranglerError, subprocess.TimeoutExpired) as exc:
+                existing = _marked_version(worker_name, message)
+                if existing:
+                    return existing
+                # Wrangler 4.83.0 awaits syncAssets before POST /versions; only this phase may repeat.
+                if type(exc) is not AssetUploadSessionRejected or attempt == 2:
+                    raise WranglerError("upload failed without a unique exact-attempt version") from None
+                time.sleep(2 * (attempt + 1))
+                continue
+            existing = _marked_version(worker_name, message)
+            if existing:
+                return existing
+            raise WranglerError("uploaded version ID not found")
     before = {item.get("id") for item in list_versions(worker_name)}
     _run(args, timeout=900)
     for item in list_versions(worker_name):

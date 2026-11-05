@@ -55,6 +55,7 @@ _SAFE_DIAGNOSTIC_REASONS = frozenset({
     "journal remote readback differs from local journal",
     "committed remote journal failed validation",
     "remote journal readback differs from the committed transition",
+    "unknown upload retirement requires no downstream progress",
 })
 
 
@@ -709,6 +710,13 @@ class GitJournalWriter:
             raise RepositoryPersistenceError("active journal slot is not the exact blocked-unknown recovery transaction to retire")
         if set(active["operations"]) != set(OPERATIONS):
             raise RepositoryPersistenceError("retirement operation identities are incomplete")
+        if (active.get("proof_evidence_sha256") is not None
+                or active.get("state_commit_sha") is not None
+                or any(op["intent_state"] != "NOT_STARTED"
+                       or op["result_state"] != "NOT_REPORTED" or op["attempts"]
+                       for name, op in active["operations"].items()
+                       if name != "upload_version")):
+            raise RepositoryPersistenceError("unknown upload retirement requires no downstream progress")
 
         # ponytail: a prior CAS run pushed the commit but the readback failed; the
         # active slot still reads recovery_required while the same tx_id already

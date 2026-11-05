@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from publisher import transaction_journal
 from publisher.repository_persistence import GitJournalWriter, RepositoryPersistenceError
@@ -116,6 +117,46 @@ def _run_gate(jstate: dict) -> bool:
 
 
 class RetireBlockedUnknownRecoveryV2Tests(unittest.TestCase):
+    def test_refuses_downstream_progress_or_final_proof_without_writing(self):
+        with tempfile.TemporaryDirectory() as raw:
+            work = _make_repo(Path(raw))
+            j = _fresh_journal(work)
+            tx_id = _admit_tx(j, 159)
+            _advance_to_blocked_unknown(j, tx_id, "b" * 64)
+            original, generation, _ = j.snapshot()
+            path = work / "publisher-state/production-transaction-journal.json"
+            before = path.read_bytes()
+            head = _git("rev-parse", "HEAD", cwd=work).stdout
+            cases = [(name, field) for name in ("deploy_zero_percent", "promote", "rollback")
+                     for field in ("intent_state", "result_state", "attempts")]
+            cases += [(None, "proof_evidence_sha256"), (None, "state_commit_sha")]
+            for name, field in cases:
+                with self.subTest(operation=name, field=field):
+                    state = json.loads(json.dumps(original))
+                    if name:
+                        state["active"]["operations"][name][field] = {
+                            "intent_state": "RECORDED", "result_state": "UNKNOWN",
+                            "attempts": [original["active"]["operations"]["upload_version"]["attempts"][0]],
+                        }[field]
+                    else:
+                        state["active"][field] = "f" * (40 if field == "state_commit_sha" else 64)
+                    digest = journal_digest(state)
+                    writer = _Writer(work)
+                    with mock.patch.object(writer, "_confirm_current", return_value=(state, generation, digest)), \
+                            mock.patch.object(writer, "_commit_journal") as commit:
+                        with self.assertRaisesRegex(RepositoryPersistenceError, "no downstream progress"):
+                            GitJournalWriter.retire_blocked_unknown_recovery_v2(
+                                writer, tx_id, 159,
+                                expected_generation=generation, expected_digest=digest,
+                                expected_upload_attempt_id=ATT,
+                                expected_upload_operation_id=state["active"]["operations"]["upload_version"]["operation_id"],
+                                expected_upload_intent_sha256="b" * 64,
+                                expected_upload_result_state="UNKNOWN",
+                            )
+                        commit.assert_not_called()
+                    self.assertEqual(path.read_bytes(), before)
+                    self.assertEqual(_git("rev-parse", "HEAD", cwd=work).stdout, head)
+
     def test_retires_exact_blocked_unknown_transaction_unknown_preserved(self):
         with tempfile.TemporaryDirectory() as raw:
             work = _make_repo(Path(raw))
