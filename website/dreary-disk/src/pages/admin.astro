@@ -95,7 +95,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
               </div>
               <section class="admin-section is-active" id="dashboardPanel" data-section="dashboard" data-admin-section="dashboard">
               <div class="admin-intro"><div><span class="eyebrow">میزکار روزانه</span><h2>مجله را با خیال راحت مدیریت کنید.</h2><p>از نوشتن و بازبینی تا انتشار؛ همه‌چیز در یک مسیر روشن.</p></div><time id="workspaceDate" class="badge gray"></time></div>
-              <div class="dashboard-actions"><a href="#create"><strong>نوشتن مطلب جدید</strong><small>ویرایشگر با پیش‌نمایش و سئوی خودکار</small></a><a href="#automation"><strong>قانون انتشار از تلگرام</strong><small>تنظیم هشتگ‌ها و بازبینی خودکار محتوا</small></a><a href="#deleted"><strong>بازگردانی مطالب</strong><small>حذف قابل برگشت با حفظ کد ثابت</small></a></div>
+              <div class="dashboard-actions"><a href="#create" data-start-new><strong>نوشتن مطلب جدید</strong><small>ویرایشگر با پیش‌نمایش و سئوی خودکار</small></a><a href="#automation"><strong>قانون انتشار از تلگرام</strong><small>تنظیم هشتگ‌ها و بازبینی خودکار محتوا</small></a><a href="#deleted"><strong>بازگردانی مطالب</strong><small>حذف قابل برگشت با حفظ کد ثابت</small></a></div>
               <div class="stats">
                 <div class="stat-card stat-card-total"><i>▦</i><strong id="totalCount">0</strong><span>کل مطالب</span></div>
                 <div class="stat-card stat-card-published"><i>✓</i><strong id="publishedCount">0</strong><span>منتشرشده</span></div>
@@ -1547,7 +1547,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
       function parseContent(text) {
         const original = normalizeText(text);
-        const hashtags = Array.from(new Set((original.match(/#[\p{L}\p{N}_]+/gu) || []).map(tag => tag.replace("#", ""))));
+        const hashtags = Array.from(new Set([...original.replace(/https?:\/\/\S+/giu, ' ').matchAll(/(?:^|[^\p{L}\p{N}_\u200c])#([\p{L}\p{N}_\u200c]+)/gu)].map(match => match[1])));
         const urls = Array.from(new Set(original.match(/(https?:\/\/[^\s]+)/g) || []));
         const cleanLines = [];
 
@@ -1561,7 +1561,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
 
           const cleaned = line
             .replace(/(https?:\/\/[^\s]+)/g, "")
-            .replace(/#[\p{L}\p{N}_]+/gu, "")
+            .replace(/#[\p{L}\p{N}_\u200c]+/gu, "")
             .replace(/@[\w.]+/g, "")
             .replace(/[\u25c6\u25c7\u{1F539}\u{1F538}\u25aa\ufe0f•]+/gu, "")
             .replace(/\s+/g, " ")
@@ -1608,7 +1608,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           .replace(/@mahoonartmagazine/giu, "")
           .replace(/https?:\/\/(?:t\.me|telegram\.me|telegram\.dog)\/[^\s]+/giu, "")
           .replace(/https?:\/\/[^\s]+/giu, "")
-          .replace(/#[\p{L}\p{N}_]+/gu, " ")
+          .replace(/#[\p{L}\p{N}_\u200c]+/gu, " ")
           .replace(/[\u25c6\u25c7\u{1F539}\u{1F538}\u25aa\ufe0f•]+/gu, " ")
           .replace(/\s+/g, " ")
           .trim();
@@ -1759,6 +1759,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         const button = document.getElementById('savePolicy');
         if (button.disabled || !activePublicationPolicy) return;
         const policy = collectPublicationPolicy();
+        const expectedRevision = activePublicationPolicy.revision;
         const fields = document.getElementById('policyFields');
         const message = document.getElementById('policyMessage');
         setButtonLoading(button, true, 'در حال بررسی…');
@@ -1769,7 +1770,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             message: `با این قانون، ${formatAdminNumber(preview.affected_count)} مطلب منتشرشده به پیش‌نویس تبدیل می‌شود. مطلبی حذف دائمی نمی‌شود و پیش‌نویس‌های قبلی خودکار منتشر نمی‌شوند.${!policy.allowed_tags.length ? '\nفهرست هشتگ خالی است؛ انتشار همه مطالب متوقف می‌شود.' : ''}`,
             confirmText: 'ذخیره و اعمال قانون' });
           if (!confirmed) return;
-          const data = await api('/admin/publication-policy', { method: 'PATCH', body: JSON.stringify({ policy, expected_revision: activePublicationPolicy.revision }) });
+          const data = await api('/admin/publication-policy', { method: 'PATCH', body: JSON.stringify({ policy, expected_revision: expectedRevision }) });
           activePublicationPolicy = data.policy;
           publicationPolicyDirty = false;
           document.getElementById('policyState').textContent = 'ذخیره شد';
@@ -4426,6 +4427,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           showAdminSection(link.getAttribute("data-section-link"));
         });
       });
+      document.querySelector('[data-start-new]')?.addEventListener('click', event => { event.preventDefault(); newPostBtn.click(); });
 
       refreshBtn.addEventListener("click", () => {
         const activeKey =

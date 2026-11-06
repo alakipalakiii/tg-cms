@@ -1013,22 +1013,24 @@ small {
 }
 .analytics-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 22px;
 }
-.analytics-kpi {
+.analytics-range-select { width: auto; min-width: 156px; }
+.analytics-list { padding: 0 18px; }
+.analytics-kpi-card {
   padding: 20px;
   background: var(--bg);
   border-radius: 8px;
   border: 1px solid var(--line);
 }
-.analytics-kpi strong {
+.analytics-kpi-card strong {
   display: block;
   font-size: 30px;
 }
-.analytics-kpi span,
-.analytics-kpi small {
+.analytics-kpi-card span,
+.analytics-kpi-card small {
   font-size: 12px;
   color: var(--muted);
 }
@@ -1100,31 +1102,28 @@ small {
   white-space: nowrap;
 }
 .analytics-bars {
-  display: flex;
-  align-items: end;
-  gap: 8px;
-  height: 190px;
-  padding-top: 20px;
-  overflow-x: auto;
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  max-height: 460px;
+  overflow: auto;
 }
-.analytics-bar-item {
-  display: flex;
-  flex-direction: column;
+.analytics-bar-row {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr) 42px;
   align-items: center;
-  justify-content: end;
-  min-width: 24px;
-  flex: 1;
-  height: 100%;
-  gap: 5px;
-  font-size: 10px;
+  gap: 12px;
+  font-size: 11px;
   color: var(--muted);
 }
-.analytics-bar {
+.analytics-bar-row > span { direction: ltr; text-align: right; }
+.analytics-bar-row strong { text-align: left; color: var(--ink); }
+.analytics-bar-track { height: 8px; border-radius: 4px; background: var(--cream); overflow: hidden; }
+.analytics-bar-track i {
+  display: block;
+  height: 100%;
   background: var(--accent);
-  border-radius: 4px 4px 0 0;
-  min-height: 3px;
-  width: 100%;
-  max-width: 28px;
+  border-radius: 4px;
 }
 .analytics-note,
 .analytics-caption {
@@ -1422,6 +1421,7 @@ small {
     justify-content: flex-start;
     max-width: none;
   }
+  .admin-row-meta { grid-column: 3 / -1; }
   .dashboard-insights,
   .automation-layout {
     grid-template-columns: 1fr;
@@ -1515,6 +1515,7 @@ small {
   .analytics-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .admin-row-meta { grid-column: 1 / -1; }
   .analytics-card-wide {
     grid-column: auto;
   }
@@ -1608,10 +1609,10 @@ small {
     padding: 8px 10px;
     font-size: 12px;
   }
-  .analytics-kpi {
+  .analytics-kpi-card {
     padding: 14px;
   }
-  .analytics-kpi strong {
+  .analytics-kpi-card strong {
     font-size: 25px;
   }
   .panel-head h2 {
