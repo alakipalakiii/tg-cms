@@ -164,6 +164,7 @@ try {
   const db = await ingestion.getD1Database('DB');
   const schema = await readFile(new URL('../../workers/api/migrations/0003_posts_baseline_and_indexes.sql', import.meta.url), 'utf8');
   await db.batch(schema.split(';').filter((sql) => sql.trim()).map((sql) => db.prepare(sql)));
+  await db.prepare('CREATE TABLE site_settings(key TEXT PRIMARY KEY,value TEXT,updated_at TEXT)').run();
   await db.prepare('CREATE TABLE mahoon_post_tags_v1(post_id INTEGER, tag_norm TEXT, PRIMARY KEY(post_id,tag_norm))').run();
   const deliver = async (body) => {
     const response = await ingestion.dispatchFetch('https://offline.invalid/telegram', { method: 'POST',

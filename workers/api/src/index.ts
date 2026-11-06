@@ -1,4 +1,5 @@
 import { telegramWebhookRejection } from './telegramWebhook';
+import { handlePublicationPolicy, readPublicationPolicy, publicationAllowed, publicationRejection } from './publicationPolicy';
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -1136,6 +1137,11 @@ async function handleTelegramManagementMessage(update, env) {
       return json({ ok: true, command: true, action: "publish_blocked_deleted", id: post.id });
     }
 
+    if (await publicationRejection(env, post.text)) {
+      await sendTelegramMessage(chatId, 'این مطلب هشتگ مجاز انتشار ندارد. قانون انتشار را در پنل بررسی کنید.', env, replyId);
+      return json({ ok: true, command: true, action: 'publish_blocked_hashtag', id: post.id });
+    }
+
     await env.DB.prepare(
       `
       UPDATE posts
@@ -1322,6 +1328,11 @@ ${postSummaryText(post, env)}`,
       });
     }
 
+    if (await publicationRejection(env, post.text)) {
+      await sendTelegramMessage(chatId, 'بازگردانی متوقف شد: مطلب هشتگ مجاز انتشار ندارد. ابتدا قانون انتشار را در پنل بررسی کنید.', env, replyId);
+      return json({ ok: true, command: true, action: 'restore_blocked_hashtag', id: post.id });
+    }
+
     await env.DB.prepare(
       `
       UPDATE posts
@@ -1445,10 +1456,10 @@ ${postSummaryText(fresh, env)}`,
     await env.DB.prepare(
       `
       UPDATE posts
-      SET text = ?, updated_at = CURRENT_TIMESTAMP
+      SET text = ?, is_published = CASE WHEN ? = 1 THEN is_published ELSE 0 END, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
       `
-    ).bind(newText, postId).run();
+    ).bind(newText, await publicationRejection(env, newText) ? 0 : 1, postId).run();
     await mahoonScaleSyncPostTagProjectionV1(env, postId, newText);
 
     const fresh = await getPostById(env, postId);
@@ -2384,6 +2395,113 @@ async function mahoonPublicPostsFullV1(request, env) {
   }
 }
 
+
+// Preserve the paged public export already used by the production publisher.
+function mahoonPublicPostsFullV2JsonV1(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...mahoonPublicPostsFullCorsV1(),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store"
+    }
+  });
+}
+function mahoonPublisherPageSizeV2(url) {
+  const raw = url.searchParams.get("page_size");
+  if (raw === null || raw === "") return 250;
+  if (!/^\d+$/.test(raw)) return null;
+  return Math.max(1, Math.min(Number(raw), 500));
+}
+function mahoonPublisherCursorV2(url) {
+  const raw = url.searchParams.get("cursor");
+  if (raw === null || raw === "") return 0;
+  if (!/^\d+$/.test(raw)) return null;
+  return Number(raw);
+}
+async function mahoonPublicPostsFullV2(request, env) {
+  try {
+    if (!env.DB) {
+      return mahoonPublicPostsFullV2JsonV1({ ok: false, error: "DB binding is missing" }, 500);
+    }
+    const url = new URL(request.url);
+    const pageSize = mahoonPublisherPageSizeV2(url);
+    const cursorId = mahoonPublisherCursorV2(url);
+    if (pageSize === null || cursorId === null) {
+      return mahoonPublicPostsFullV2JsonV1({ ok: false, error: "Invalid page_size or cursor" }, 400);
+    }
+    const publicWhere = `(is_published = 1 OR is_published IS NULL)
+      AND (deleted_at IS NULL OR deleted_at = '')`;
+    const suppliedMax = url.searchParams.get("snapshot_max_id");
+    const suppliedTotal = url.searchParams.get("snapshot_total_count");
+    if (suppliedMax !== null && !/^\d+$/.test(suppliedMax)) {
+      return mahoonPublicPostsFullV2JsonV1({ ok: false, error: "Invalid snapshot_max_id" }, 400);
+    }
+    if (suppliedTotal !== null && !/^\d+$/.test(suppliedTotal)) {
+      return mahoonPublicPostsFullV2JsonV1({ ok: false, error: "Invalid snapshot_total_count" }, 400);
+    }
+    if (cursorId > 0 && (suppliedMax === null || suppliedTotal === null)) {
+      return mahoonPublicPostsFullV2JsonV1({ ok: false, error: "Snapshot metadata is required after the first page" }, 400);
+    }
+    let snapshotMaxId = suppliedMax === null ? null : Number(suppliedMax);
+    let snapshotTotalCount = suppliedTotal === null ? null : Number(suppliedTotal);
+    if (snapshotMaxId === null || snapshotTotalCount === null) {
+      const metadata = await env.DB.prepare(
+        `SELECT MAX(id) AS snapshot_max_id, COUNT(*) AS snapshot_total_count
+         FROM posts WHERE ${publicWhere}`
+      ).first();
+      snapshotMaxId = Number(metadata?.snapshot_max_id || 0);
+      snapshotTotalCount = Number(metadata?.snapshot_total_count || 0);
+    }
+    const publisherColumns = [
+      "id",
+      "text",
+      "slug",
+      "created_at",
+      "updated_at",
+      "is_published",
+      "media_type",
+      "media_file_id",
+      "media_unique_id",
+      "media_mime_type",
+      "media_file_name",
+      "media_duration",
+      "media_width",
+      "media_height",
+      "media_size",
+      "photo_file_id",
+      "photo_unique_id",
+      "photo_width",
+      "photo_height",
+      "seo_title",
+      "seo_description"
+    ].join(", ");
+    const result = await env.DB.prepare(
+      `SELECT ${publisherColumns} FROM posts
+       WHERE ${publicWhere}
+         AND id > ?
+         AND id <= ?
+       ORDER BY id ASC
+       LIMIT ?`
+    ).bind(cursorId, snapshotMaxId, pageSize).all();
+    const items = Array.isArray(result?.results) ? result.results : [];
+    const hasMore = items.length === pageSize;
+    const nextCursor = hasMore && items.length ? Number(items[items.length - 1].id) : null;
+    return mahoonPublicPostsFullV2JsonV1({
+      ok: true,
+      contract: "posts-full-public-v2",
+      snapshot_max_id: snapshotMaxId,
+      snapshot_total_count: snapshotTotalCount,
+      page_size: pageSize,
+      cursor_id: cursorId,
+      items,
+      next_cursor: hasMore ? nextCursor : null,
+      has_more: hasMore
+    });
+  } catch (error) {
+    return mahoonPublicPostsFullV2JsonV1({ ok: false, error: String(error?.message || error) }, 500);
+  }
+}
 
 /* mahoon-scale-v1 */
 const MAHOON_SCALE_AUDIO_BOOK_TAGS_V1 = [
@@ -3336,6 +3454,10 @@ export default {
       return mahoonPublicPostsFullV1(request, env);
     }
 
+    if (url.pathname === "/posts-full-public-v2" && request.method === "GET") {
+      return mahoonPublicPostsFullV2(request, env);
+    }
+
     // mahoon-telegram-webhook-routes-v1
     if ((url.pathname === "/admin/telegram/webhook-info" || url.pathname === "/admin/telegram/webhook-refresh") && request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: mahoonTelegramWebhookCorsV1() });
@@ -3435,6 +3557,19 @@ export default {
             ok: true,
             admin: true
           });
+        }
+
+        if (url.pathname === '/admin/publication-policy' && ['GET', 'POST', 'PATCH'].includes(request.method)) {
+          try {
+            const result = await handlePublicationPolicy(request, env);
+            if ('conflict' in result) return json({ ok: false, error: 'قانون انتشار تغییر کرده است؛ آخرین نسخه را دریافت کنید.' }, 409);
+            return json({ ok: true, ...result });
+          } catch (error) {
+            if (error instanceof SyntaxError || /قانون انتشار معتبر|هر هشتگ/.test(String(error?.message))) {
+              return json({ ok: false, error: String(error.message) }, 400);
+            }
+            throw error;
+          }
         }
 
         if (request.method === "GET" && url.pathname === "/admin/site-settings") {
@@ -3883,11 +4018,17 @@ export default {
           const placeholders = ids.map(() => "?").join(", ");
 
           if (action === "publish") {
+            const { results: selected } = await env.DB.prepare(`SELECT id, text FROM posts WHERE id IN (${placeholders}) AND deleted_at IS NULL`).bind(...ids).all();
+            if (selected.length !== ids.length) return json({ ok: false, error: 'انتخاب شامل مطلب حذف‌شده یا ناموجود است. برای بازگردانی از بخش حذف‌شده‌ها استفاده کنید.' }, 409);
+            const policy = await readPublicationPolicy(env);
+            const blocked = selected.filter(post => !publicationAllowed(post.text, policy)).map(post => post.id);
+            if (blocked.length) return json({ ok: false, error: 'بعضی مطالب هشتگ مجاز انتشار ندارند.', blocked_ids: blocked }, 422);
             await env.DB.prepare(
               `
               UPDATE posts
-              SET is_published = 1, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
+              SET is_published = 1, updated_at = CURRENT_TIMESTAMP
               WHERE id IN (${placeholders})
+              AND deleted_at IS NULL
               `
             ).bind(...ids).run();
 
@@ -3946,6 +4087,8 @@ export default {
           const rawSlug = sanitizeSlug(body.slug || "");
           const slug = rawSlug || makeSlug(title || text);
           const isPublished = body.is_published === false || body.is_published === 0 ? 0 : 1;
+
+          if (isPublished && await publicationRejection(env, text)) return json({ ok: false, error: 'برای انتشار، حداقل یک هشتگ مجاز به متن اضافه کنید.' }, 422);
 
           const slugIsUnique = await ensureUniqueSlug(env, slug);
 
@@ -4032,7 +4175,7 @@ export default {
 
           const existing = await env.DB.prepare(
             `
-            SELECT id
+            SELECT id, text
             FROM posts
             WHERE id = ?
             AND deleted_at IS NOT NULL
@@ -4046,6 +4189,8 @@ export default {
               error: "Post not found or is not deleted"
             }, 404);
           }
+
+          if (await publicationRejection(env, existing.text)) return json({ ok: false, error: 'بازگردانی این مطلب به هشتگ مجاز نیاز دارد. قانون انتشار را بررسی کنید.' }, 422);
 
           const result = await env.DB.prepare(
             `
@@ -4130,6 +4275,8 @@ export default {
           const adminNote = cleanText(body.admin_note);
           const media = mediaFromBody(body);
           const isPublished = body.is_published === false || body.is_published === 0 ? 0 : 1;
+
+          if (isPublished && await publicationRejection(env, text)) return json({ ok: false, error: 'برای انتشار، حداقل یک هشتگ مجاز به متن اضافه کنید.' }, 422);
 
           if (!text) {
             return json({
@@ -4585,6 +4732,8 @@ export default {
         const title = makeTitle(telegramPost.text);
         const excerpt = makeExcerpt(telegramPost.text);
         const slug = makeSlug(title || telegramPost.text);
+        const publicationPolicy = await readPublicationPolicy(env);
+        const allowedByPolicy = publicationAllowed(telegramPost.text, publicationPolicy);
 
         if (telegramPost.is_edited && telegramPost.telegram_message_id) {
           const existing = await env.DB.prepare(
@@ -4620,6 +4769,7 @@ export default {
                 photo_unique_id = ?,
                 photo_width = ?,
                 photo_height = ?,
+                is_published = CASE WHEN ? = 1 THEN is_published ELSE 0 END,
                 updated_at = CURRENT_TIMESTAMP
               WHERE id = ?
               `
@@ -4638,6 +4788,7 @@ export default {
               telegramPost.photo_unique_id,
               telegramPost.photo_width,
               telegramPost.photo_height,
+              allowedByPolicy ? 1 : 0,
               existing.id
             ).run();
             await mahoonScaleSyncPostTagProjectionV1(env, existing.id, telegramPost.text);
@@ -4671,6 +4822,8 @@ export default {
           }
         }
 
+        if (!allowedByPolicy) return json({ ok: true, saved: false, reason: 'Missing allowed publication hashtag' });
+
         const result = await env.DB.prepare(
           `
           INSERT INTO posts (
@@ -4695,7 +4848,7 @@ export default {
             is_published,
             view_count
           )
-          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0
+          SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0
           WHERE NOT EXISTS (
             SELECT 1 FROM posts WHERE telegram_message_id = ? AND chat_id = ?
           )
@@ -4719,6 +4872,7 @@ export default {
           telegramPost.photo_unique_id,
           telegramPost.photo_width,
           telegramPost.photo_height,
+          publicationPolicy.auto_publish ? 1 : 0,
           telegramPost.telegram_message_id,
           telegramPost.chat_id
         ).run();

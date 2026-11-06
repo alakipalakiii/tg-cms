@@ -62,6 +62,8 @@ jobs:
         run: node tools/publisher/platform_audit.mjs --self-test
       - name: Check isolated Telegram boundary regression
         run: node tools/publisher/test_telegram_boundary.mjs
+      - name: Check publication policy against isolated D1 fixtures
+        run: node tools/publisher/test_publication_policy.mjs
       - name: Read prior browser post identities
         if: ${{ inputs.baseline_run_id != '' }}
         uses: actions/download-artifact@v4
