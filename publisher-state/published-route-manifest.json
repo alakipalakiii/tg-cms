@@ -4449,7 +4449,7 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4444,
+  "baseline_route_count": 4446,
   "snapshot_derived_route_count": 4369,
   "snapshot_post_route_count": 3868,
   "snapshot_tag_route_count": 397,
@@ -8420,9 +8420,6 @@
     "/search",
     "/sitemap.xml"
   ],
-  "new_snapshot_routes": [
-    "/post/2005",
-    "/post/گفت-آدم-1793953809308"
-  ],
+  "new_snapshot_routes": [],
   "new_control_routes": []
 }
