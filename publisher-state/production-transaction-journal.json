@@ -36,23 +36,27 @@
           {
             "attempt_id": "8600bfb5-0059-4f33-8ddc-99be5d483f24",
             "attempt_number": 1,
-            "evidence": null,
+            "evidence": {
+              "reference": "a4f341717ff0d0c1a2993a07c68cfe218de4cc54d903b3d94698709241afb69c",
+              "sha256": "cec0db2dc2ff99c5096bd9bfacdf4863952b0d744fb9c5f7a5016b4a9d3bf5be",
+              "type": "mutation_result_artifact"
+            },
             "intent_artifact_sha256": "4e7254f6208f76dbe914f239e96a6859d07b96ebf59af1a6fc73710fdc91843f",
             "intent_at": "2026-11-06T16:51:15.614812+00:00",
             "intent_state": "RECORDED",
-            "result_at": null,
-            "result_digest": null,
-            "result_state": "NOT_REPORTED"
+            "result_at": "2026-11-06T16:53:13.763677+00:00",
+            "result_digest": "70d4c76e234b446edbc9c40108b9b3eda187490ac0bf550da5c82f9f91d6ced1",
+            "result_state": "APPLIED"
           }
         ],
         "intent_state": "RECORDED",
         "operation_id": "3176062372379efd25ebeede4c52df015154684f3275307bc5913a6654457f96",
-        "result_state": "NOT_REPORTED"
+        "result_state": "APPLIED"
       }
     },
     "proof_evidence_sha256": null,
     "recovery_status": "NONE",
-    "state": "intent_recorded",
+    "state": "operation_reported",
     "state_commit_sha": null,
     "transitions": [
       {
@@ -69,16 +73,21 @@
         "from": "build_ready",
         "timestamp": "2026-11-06T16:51:15.614830+00:00",
         "to": "intent_recorded"
+      },
+      {
+        "from": "intent_recorded",
+        "timestamp": "2026-11-06T16:53:13.763703+00:00",
+        "to": "operation_reported"
       }
     ],
     "trigger_sources": [
       "workflow_dispatch"
     ],
-    "updated_at": "2026-11-06T16:51:15.614833+00:00",
+    "updated_at": "2026-11-06T16:53:13.763707+00:00",
     "worker": "mahoon-art-magazine"
   },
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 372,
+  "generation": 373,
   "history": [
     {
       "build_bundle_sha256": null,
