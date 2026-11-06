@@ -1,6 +1,6 @@
 {
   "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
-  "route_count": 4444,
+  "route_count": 4446,
   "routes": [
     "/",
     "/about",
@@ -1198,6 +1198,7 @@
     "/post/2002",
     "/post/2003",
     "/post/2004",
+    "/post/2005",
     "/post/201",
     "/post/202",
     "/post/203",
@@ -3927,6 +3928,7 @@
     "/post/گر-دیدنت-نباشد،-1783495070998",
     "/post/گریستم؛-برای-ما-که-پاییز-نیامده-ریختیم-1783489050396",
     "/post/گریه-کردن-تنهایی-ممکنه؛-1783463340775",
+    "/post/گفت-آدم-1793953809308",
     "/post/گفت-برو-1783498356701",
     "/post/گفت-دنیا-پوچ-و-بیارزش-است-1792571409965",
     "/post/گفت-سلامتی-و-آرامش-میخواهی؟-1783486772585",
@@ -4448,8 +4450,8 @@
     "/tag/Stephen_William_Hawking"
   ],
   "baseline_route_count": 4444,
-  "snapshot_derived_route_count": 4367,
-  "snapshot_post_route_count": 3866,
+  "snapshot_derived_route_count": 4369,
+  "snapshot_post_route_count": 3868,
   "snapshot_tag_route_count": 397,
   "snapshot_pagination_route_count": 104,
   "required_category_routes": [
@@ -5570,6 +5572,7 @@
     "/post/2002",
     "/post/2003",
     "/post/2004",
+    "/post/2005",
     "/post/201",
     "/post/202",
     "/post/203",
@@ -8299,6 +8302,7 @@
     "/post/گر-دیدنت-نباشد،-1783495070998",
     "/post/گریستم؛-برای-ما-که-پاییز-نیامده-ریختیم-1783489050396",
     "/post/گریه-کردن-تنهایی-ممکنه؛-1783463340775",
+    "/post/گفت-آدم-1793953809308",
     "/post/گفت-برو-1783498356701",
     "/post/گفت-دنیا-پوچ-و-بیارزش-است-1792571409965",
     "/post/گفت-سلامتی-و-آرامش-میخواهی؟-1783486772585",
@@ -8416,6 +8420,9 @@
     "/search",
     "/sitemap.xml"
   ],
-  "new_snapshot_routes": [],
+  "new_snapshot_routes": [
+    "/post/2005",
+    "/post/گفت-آدم-1793953809308"
+  ],
   "new_control_routes": []
 }
