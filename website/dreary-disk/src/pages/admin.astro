@@ -728,7 +728,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
                       <article><h3>پذیرش و ویرایش پیام‌ها</h3><p>پیام کانال باید هشتگ مجاز داشته باشد. برداشتن هشتگ مجاز از پیام موجود، آن را پیش‌نویس می‌کند. انتشار دستی و گروهی هم همین قانون را رعایت می‌کنند.</p></article>
                       <article><h3>سئو و نگهداری پیش‌نویس</h3><p>عنوان و توضیح سئو از متن ساخته می‌شوند؛ مقدار اختصاصی شما اولویت دارد. هنگام نوشتن، نسخه موقت در همین تب مرورگر نگهداری می‌شود.</p></article>
                       <article><h3>زمان اعمال در سایت</h3><p>ذخیره در پنل فوری است؛ نمایش عمومی پس از کامل‌شدن چرخه انتشار سایت به‌روز می‌شود.</p></article>
-                      <article><h3>حذف مستقیم در کانال <span class="badge gray" id="channelDeleteState">نیازمند اتصال رویداد حذف</span></h3><p id="channelDeleteHelp">اتصال فعلی ربات پیام جدید و ویرایش را می‌گیرد. تلگرام در Bot API رویداد حذف پست کانال نمی‌فرستد؛ همگام‌سازی حذف به اتصال MTProto نیاز دارد. حذف از پنل همیشه قابل بازگردانی است.</p><button class="btn btn-line" id="checkTelegramConnection" type="button" style="margin-top:12px">بررسی اتصال فعلی ربات</button><p id="telegramConnectionState" role="status"></p></article>
+                      <article><h3>حذف مستقیم در کانال <span class="badge gray" id="channelDeleteState">نیازمند اتصال منبع‌خوان</span></h3><p id="channelDeleteHelp">همگام‌سازی حذف کانال هنوز فعال نیست. تا فعال‌شدن اتصال، حذف مطلب را از همین پنل انجام دهید؛ حذف سایت قابل بازگردانی است.</p><button class="btn btn-line" id="checkTelegramConnection" type="button" style="margin-top:12px">بررسی اتصال فعلی ربات</button><p id="telegramConnectionState" role="status"></p></article>
                     </div></section>
                   </div>
                 </section>
@@ -1728,6 +1728,18 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
           : textPassesPublicationPolicy(text, collectPublicationPolicy()) ? 'مجاز: حداقل یک هشتگ مورد قبول دارد.' : 'متوقف: هشتگ مجاز ندارد و در سایت منتشر نمی‌شود.';
       }
 
+      function renderChannelDeleteStatus(status) {
+        const state = document.getElementById('channelDeleteState');
+        const help = document.getElementById('channelDeleteHelp');
+        const active = status?.available === true;
+        state.textContent = active ? 'همگام‌سازی فعال' : 'نیازمند اتصال منبع‌خوان';
+        state.className = active ? 'badge green' : 'badge gray';
+        help.textContent = active ? 'حذف کانال به‌صورت دوره‌ای بررسی و به حذف قابل بازگردانی در سایت تبدیل می‌شود. نمایش عمومی پس از چرخه انتشار به‌روز می‌شود.'
+          : 'همگام‌سازی حذف کانال فعال نیست یا اتصال نیاز به بررسی دارد. تا فعال‌شدن اتصال، حذف مطلب را از همین پنل انجام دهید.';
+        const checkedAt = new Date(status?.checked_at || '');
+        if (Number.isFinite(checkedAt.getTime())) help.textContent += ' آخرین بررسی: ' + new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', timeStyle: 'short' }).format(checkedAt);
+      }
+
       async function loadPublicationSettings(force = false) {
         if (!getToken() || publicationPolicyDirty || (activePublicationPolicy && !force)) return;
         if (publicationPolicyRequest) return publicationPolicyRequest;
@@ -1739,6 +1751,7 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
             const data = await api('/admin/publication-policy');
             if (!data.policy || !Array.isArray(data.policy.allowed_tags) || !Number.isSafeInteger(data.policy.revision)) throw new Error('قانون انتشار دریافت نشد.');
             activePublicationPolicy = data.policy;
+            renderChannelDeleteStatus(data.channel_deletion);
             document.getElementById('publicationTags').value = data.policy.allowed_tags.map(tag => '#' + tag).join('، ');
             document.getElementById('autoPublishTelegram').checked = data.policy.auto_publish;
             fields.disabled = false;
@@ -4652,7 +4665,8 @@ const LOGO_URL = "/sources/mahoon-logo.jpg";
         setButtonLoading(button, true, 'در حال بررسی…');
         try {
           const data = await api('/admin/telegram/webhook-info');
-          document.getElementById('telegramConnectionState').textContent = data.readiness?.ready ? 'اتصال ربات و کانال تأیید شد. دریافت رویداد حذف مستقیم همچنان به MTProto نیاز دارد.' : 'اتصال نیازمند بررسی است؛ پاسخ سرور آماده‌بودن کامل را تأیید نکرد.';
+          document.getElementById('telegramConnectionState').textContent = data.readiness?.ready ? 'اتصال ربات و کانال تأیید شد.' : 'اتصال نیازمند بررسی است؛ پاسخ سرور آماده‌بودن کامل را تأیید نکرد.';
+          renderChannelDeleteStatus((await api('/admin/publication-policy')).channel_deletion);
         } catch (error) { document.getElementById('telegramConnectionState').textContent = userFriendlyError(error, 'بررسی اتصال انجام نشد.'); }
         finally { setButtonLoading(button, false); }
       });

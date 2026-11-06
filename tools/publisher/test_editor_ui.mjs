@@ -14,6 +14,7 @@ let settingsFailure = false;
 let holdSettingsRead = false;
 let releaseSettingsRead;
 let policy = { revision: 0, allowed_tags: ['هنر', 'کتاب', 'شعر'], auto_publish: true };
+let channelSyncAvailable = false;
 const post = { id: 24, slug: 'editor-fixture', text: 'روایت آزمایشی هنر\nمتن بلند برای بررسی ویرایش و سئوی خودکار ماهون. #هنر', created_at: '2026-11-05T10:00:00Z', is_published: 1, seo_title: '', seo_description: '', admin_note: '' };
 const mediaPost = { ...post, id: 25, slug: 'media-fixture', text: 'روایت تصویر و هنر\nشرح تصویر نمونه برای بررسی کتابخانه رسانه. #کتاب', media_type: 'photo', media_file_id: 'fixture-photo', media_url: origin + '/sources/mahoon-logo.jpg' };
 const deletedPost = { ...post, id: 31, slug: 'deleted-fixture', text: 'مطلب حذف‌شده قابل بازگردانی #شعر', deleted_at: '2026-11-05T12:00:00Z', is_published: 0 };
@@ -33,7 +34,7 @@ const server = createServer(async (req, res) => {
       if (req.method !== 'GET') { mutations.push({ path: url.pathname, method: req.method, body: JSON.parse(body || '{}') }); }
       if (url.pathname.endsWith('/admin/publication-policy')) {
         if (req.method === 'PATCH') policy = { ...JSON.parse(body).policy, revision: policy.revision + 1 };
-        res.end(JSON.stringify({ ok: true, policy, affected_count: 1, unpublished_count: 1 })); return;
+        res.end(JSON.stringify({ ok: true, policy, affected_count: 1, unpublished_count: 1, channel_deletion: { available: channelSyncAvailable, checked_at: channelSyncAvailable ? new Date().toISOString() : null } })); return;
       }
       if (url.pathname.endsWith('/admin/telegram/webhook-info')) { res.end(JSON.stringify({ ok: true, readiness: { ready: true } })); return; }
       if (url.pathname.endsWith('/analytics/report-v5')) {
@@ -177,6 +178,13 @@ else {
     assert.equal(policy.revision, 1); assert.deepEqual(policy.allowed_tags, ['شعر']);
     await page.locator('#checkTelegramConnection').click();
     await page.waitForFunction(() => document.querySelector('#telegramConnectionState').textContent.includes('تأیید شد'));
+    assert.match(await page.locator('#channelDeleteState').textContent(), /نیازمند/);
+    channelSyncAvailable = true;
+    await page.locator('#checkTelegramConnection').click();
+    await page.waitForFunction(() => document.querySelector('#channelDeleteState').textContent.includes('همگام‌سازی فعال'));
+    channelSyncAvailable = false;
+    await page.locator('#checkTelegramConnection').click();
+    await page.waitForFunction(() => document.querySelector('#channelDeleteState').textContent.includes('نیازمند'));
     await page.screenshot({ animations: 'disabled', path: fileURLToPath(new URL('automation-light.png', output)) });
     await page.locator('#themeToggle').click();
     assert.equal(await page.locator('html').getAttribute('data-admin-theme'), 'dark');
