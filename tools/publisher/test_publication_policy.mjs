@@ -57,6 +57,14 @@ try {
   assert.equal((await request('/admin/posts/3', 'PATCH', { text: '#کتاب', is_published: 1 })).status, 404);
   assert.equal((await request('/admin/posts/bulk', 'POST', { ids: [1, 6], action: 'publish' })).status, 422);
   assert.equal((await request('/admin/posts/bulk', 'POST', { ids: [3], action: 'publish' })).status, 409);
+  assert.equal((await request('/admin/posts/bulk', 'POST', { ids: [1, '۱', 1], action: 'publish' })).status, 200, 'Deduplicate stable database IDs before counting selected posts');
+  const beforeOversizedBulk = await db.prepare('SELECT id,is_published,deleted_at FROM posts ORDER BY id').all();
+  for (const action of ['publish', 'draft', 'delete']) {
+    assert.equal((await request('/admin/posts/bulk', 'POST', { ids: Array.from({ length: 101 }, (_, i) => i + 1), action })).status, 400);
+  }
+  assert.deepEqual(await db.prepare('SELECT id,is_published,deleted_at FROM posts ORDER BY id').all(), beforeOversizedBulk, 'Oversized requests must not change any post');
+  assert.equal((await request('/admin/posts/bulk', 'POST', { ids: [Number.MAX_SAFE_INTEGER + 1], action: 'delete' })).status, 400);
+
   assert.equal((await db.prepare('SELECT deleted_at FROM posts WHERE id=3').first()).deleted_at, '2026-01-01');
   assert.equal((await request('/admin/posts/3/restore', 'POST', {})).status, 200);
   const policy = { allowed_tags: ['شعر'], auto_publish: false };

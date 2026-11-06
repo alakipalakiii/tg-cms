@@ -1518,9 +1518,9 @@ async function ensureUniqueSlug(env, slug, currentId = null) {
 function normalizeIds(ids) {
   if (!Array.isArray(ids)) return [];
 
-  return ids
+  return [...new Set(ids
     .map(id => Number(normalizeDigits(id)))
-    .filter(id => Number.isInteger(id) && id > 0);
+    .filter(id => Number.isSafeInteger(id) && id > 0))];
 }
 
 function mediaFromBody(body) {
@@ -4014,6 +4014,8 @@ export default {
               error: "No post selected"
             }, 400);
           }
+
+          if (ids.length > 100) return json({ ok: false, error: 'در هر نوبت حداکثر ۱۰۰ مطلب انتخاب کنید.' }, 400);
 
           const placeholders = ids.map(() => "?").join(", ");
 
