@@ -132,6 +132,7 @@ import { ClientRouter } from "astro:transitions";
     {Astro.props.noindex && <meta name="robots" content="noindex, follow" />}
     <meta name="theme-color" content="#4b0d0d" />
     <link rel="canonical" href={canonicalUrl} />
+    <link rel="describedby" href={`${SITE.url}/llms.txt`} />
     <link rel="icon" href={SITE.logo} />
     <link rel="alternate" type="application/rss+xml" title={SITE.name} href={`${SITE.url}/rss.xml`} />
 

@@ -387,7 +387,7 @@ const metaDescription = post
   : isNotFound
     ? "مطلب مورد نظر در مجله هنری ماهون پیدا نشد."
     : "دریافت این مطلب موقتاً امکان‌پذیر نیست.";
-const canonicalUrl = `${siteUrl}/post/${encodeURIComponent(slug)}`;
+const canonicalUrl = `${siteUrl}/post/${encodeURIComponent(post?.slug || slug)}`;
 const metaImage = post?.photo_url || post?.thumbnail_url || (post?.media_type === "photo" ? post?.media_url : "") || SITE.defaultImage;
 const postCategory = post ? getPostCategory(post) : "";
 const postMediaLabel = post ? mediaLabel(post.media_type) : "";
@@ -432,8 +432,12 @@ const displayTextBlocks =
     ? textBlocks.slice(1)
     : textBlocks;
 
+const sameCategory = IS_LOCKED_SNAPSHOT_BUILD && postCategory
+  ? lockedSnapshotPosts(postCategory).slice(0, 6).map(normalizePost).filter((item): item is PublicPost => Boolean(item))
+  : [];
+const sameCategoryIds = new Set(sameCategory.map((item) => item.id));
 const relatedPosts = post
-  ? dedupePublicListingPosts(relatedCandidates)
+  ? [...sameCategory, ...dedupePublicListingPosts(relatedCandidates).filter((item) => !sameCategoryIds.has(item.id))]
       .filter((item) => item.id !== post.id && item.slug !== post.slug)
       .slice(0, 5)
   : [];

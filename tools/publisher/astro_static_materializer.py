@@ -327,7 +327,9 @@ def build(out: Path) -> dict:
     state_path = ROOT / os.environ.get("MAHOON_ROUTE_MANIFEST", "publisher-state/current-accepted-route-manifest.json")
     if not snapshot_path.is_file():
         raise RuntimeError("PUBLISHER_SNAPSHOT_MISSING")
-    routes = sorted(set(json.loads(state_path.read_text(encoding="utf-8"))["routes"]))
+    route_manifest = json.loads(state_path.read_text(encoding="utf-8"))
+    routes = sorted(set(route_manifest["routes"]))
+    post_aliases = route_manifest.get("canonical_post_aliases", {})
     _write_locked_snapshot_module(snapshot_path)
     build_env["PUBLIC_MAHOON_SNAPSHOT_BINDING"] = "1"
     build_command = [npm, "run", "build"]
@@ -361,7 +363,7 @@ def build(out: Path) -> dict:
         media_lock = threading.Lock()
         resolver = PublishedMediaResolver()
         def materialize(route: str) -> tuple[str, str]:
-            html = _rewrite_canonical(_strip_runtime_api_scripts(renderer.render(_source_route(route)), route), route)
+            html = _rewrite_canonical(_strip_runtime_api_scripts(renderer.render(_source_route(route)), route), post_aliases.get(route, route))
             return route, _materialize_media(html, out, media_manifest, media_cache, media_lock, resolver)
 
         from concurrent.futures import ThreadPoolExecutor

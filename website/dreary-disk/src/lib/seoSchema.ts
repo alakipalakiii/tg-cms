@@ -44,8 +44,8 @@ function cleanText(value?: string | null, maxLength = 500): string {
     .trim();
 }
 
-function toIsoDate(value?: string | null): string | undefined {
-  if (!value) return undefined;
+export function toSeoIsoDate(value?: string | null): string | undefined {
+  if (!value?.trim()) return undefined;
 
   const source = String(value).trim().replace(" ", "T");
   const parsed = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(source) ? source : source + "Z");
@@ -122,8 +122,8 @@ export function makeArticleSchema(input: ArticleSchemaInput): SchemaObject {
     headline: title,
     description,
     image: imageUrl ? [imageUrl] : undefined,
-    datePublished: toIsoDate(input.datePublished),
-    dateModified: toIsoDate(input.dateModified || input.datePublished),
+    datePublished: toSeoIsoDate(input.datePublished),
+    dateModified: toSeoIsoDate(input.dateModified) || toSeoIsoDate(input.datePublished),
     author: {
       "@id": baseUrl() + "/#organization"
     },

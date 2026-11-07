@@ -32,6 +32,16 @@ def snapshot_routes(posts: list[dict]) -> set[str]:
     return routes
 
 
+def snapshot_post_aliases(posts: list[dict]) -> dict[str, str]:
+    aliases = {}
+    for post in posts:
+        post_id = str(post.get("id") or "").strip()
+        slug = str(post.get("slug") or "").strip()
+        if post_id.isdigit() and slug and slug != post_id:
+            aliases[f"/post/{post_id}"] = f"/post/{slug}"
+    return aliases
+
+
 def snapshot_tag_routes(posts: list[dict]) -> set[str]:
     tags = {
         match.group(2)
@@ -79,6 +89,7 @@ def build_candidate_route_manifest(posts: list[dict], accepted_path: Path, outpu
         "baseline_route_count": len(old_routes),
         "snapshot_derived_route_count": len(snapshot_derived_routes),
         "snapshot_post_route_count": len(current_routes),
+        "canonical_post_aliases": snapshot_post_aliases(posts),
         "snapshot_tag_route_count": len(current_tag_routes),
         "snapshot_pagination_route_count": len(current_pagination_routes),
         "required_category_routes": sorted(REQUIRED_CATEGORY_ROUTES),

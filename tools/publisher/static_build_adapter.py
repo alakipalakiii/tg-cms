@@ -59,6 +59,7 @@ def validate(out: Path) -> dict:
     checked_js_assets = set()
     broken_internal = set()
     strict_candidate = manifest_payload and manifest_payload.get("contract") == "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1"
+    post_aliases = (manifest_payload or {}).get("canonical_post_aliases", {})
     for route in expected:
         rel = unquote(route.lstrip("/"))
         candidate = out / ("index.html" if not rel else rel)
@@ -120,12 +121,15 @@ def validate(out: Path) -> dict:
         if match:
             canonical[route] = match.group(1)
         expected_canonical = "https://mahoonartmagazine.ir" + quote(
-            route.rstrip("/") or "/",
+            post_aliases.get(route, route).rstrip("/") or "/",
             safe="/%:@!$&'()*+,;=-._~",
         )
         if strict_candidate and match and match.group(1) != expected_canonical:
             canonical_mismatches.append(route)
-    canonical_for_duplicate = canonical if strict_candidate else {route: value for route, value in canonical.items() if not route.startswith("/post/")}
+    canonical_for_duplicate = {
+        route: value for route, value in canonical.items()
+        if (route not in post_aliases if strict_candidate else not route.startswith("/post/"))
+    }
     duplicate = len(canonical_for_duplicate) - len(set(canonical_for_duplicate.values()))
     static_media_missing = []
     if strict_candidate:

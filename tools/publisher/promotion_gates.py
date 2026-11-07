@@ -11,11 +11,13 @@ from urllib.parse import quote, unquote, urlsplit
 import xml.etree.ElementTree as ET
 
 try:
+    from .candidate_route_manifest import snapshot_post_aliases
     from .content_taxonomy import CATEGORY_DEFINITIONS, canonical_category
     from .media_bootstrap import signature_mime, source_identifiers
     from .public_listing_dedupe import dedupe_public_listing_posts
     from .pagination_contract import PAGE_SIZE
 except ImportError:
+    from candidate_route_manifest import snapshot_post_aliases
     from content_taxonomy import CATEGORY_DEFINITIONS, canonical_category
     from media_bootstrap import signature_mime, source_identifiers
     from public_listing_dedupe import dedupe_public_listing_posts
@@ -457,6 +459,8 @@ def latest_parity(snapshot: dict, root: Path, manifest: dict) -> dict:
 def seo_gate(snapshot: dict, root: Path, manifest: dict) -> dict:
     posts = _posts(snapshot)
     routes = _routes(manifest)
+    aliases = snapshot_post_aliases(posts)
+    post_paths = {"/post/" + str(post["slug"]).strip() for post in posts if post.get("slug")}
     post_failures = 0
     canonical_duplicates = 0
     workers_dev = 0
@@ -469,12 +473,14 @@ def seo_gate(snapshot: dict, root: Path, manifest: dict) -> dict:
         facts = _facts(text)
         url_flags = _url_evidence(text, facts)
         workers_dev += int(url_flags["workers_dev"])
-        if facts.canonicals:
+        if route in aliases:
+            post_failures += int(facts.canonicals != [_canonical_url(aliases[route])])
+        elif facts.canonicals:
             canonical = facts.canonicals[0]
             if canonical in canonical_seen and canonical_seen[canonical] != route:
                 canonical_duplicates += 1
             canonical_seen[canonical] = route
-        if route.startswith("/post/") and any(str(post.get("slug")) == unquote(route.removeprefix("/post/").rstrip("/")) for post in posts):
+        if unquote(route).rstrip("/") in post_paths:
             post_failures += int(not facts.titles or not facts.titles[0].strip())
             post_failures += int(not facts.descriptions or not facts.descriptions[0].strip())
             post_failures += int(not facts.h1s or not facts.h1s[0].strip())
@@ -485,20 +491,29 @@ def seo_gate(snapshot: dict, root: Path, manifest: dict) -> dict:
     sitemap_path = root / "sitemap.xml"
     robots = robots_path.read_text(encoding="utf-8") if robots_path.is_file() else ""
     robots_ok = bool(re.search(r"(?im)^\s*Sitemap:\s*" + re.escape(SITE + "/sitemap.xml") + r"\s*$", robots))
-    sitemap_values: set[str] = set()
+    sitemap_values: list[str] = []
+    invalid_sitemap_urls = 0
+    site_host = urlsplit(SITE).netloc.lower()
     try:
         tree = ET.parse(sitemap_path)
         for node in tree.iter():
             if node.tag.endswith("loc") and node.text:
                 parsed = urlsplit(node.text.strip())
-                sitemap_values.add((parsed.netloc.lower(), unquote(parsed.path).rstrip("/")))
+                path = unquote(parsed.path).rstrip("/") or "/"
+                if (parsed.scheme != "https" or parsed.netloc.lower() != site_host or parsed.query or parsed.fragment
+                        or path.startswith("/admin") or (path.startswith("/post/") and path not in post_paths)):
+                    invalid_sitemap_urls += 1
+                sitemap_values.append(path)
     except (ET.ParseError, OSError):
-        sitemap_values = set()
-    missing_sitemap_posts = sum((urlsplit(SITE).netloc.lower(), "/post/" + str(post.get("slug")).strip("/")) not in sitemap_values for post in posts if post.get("slug"))
+        invalid_sitemap_urls += 1
+    sitemap_paths = set(sitemap_values)
+    invalid_sitemap_urls += len(sitemap_values) - len(sitemap_paths)
+    missing_sitemap_posts = len(post_paths - sitemap_paths)
     return {"measured": True, "post_seo_failures": post_failures,
             "duplicate_canonicals": canonical_duplicates, "workers_dev_leaks": workers_dev,
             "robots_sitemap_directive": robots_ok, "missing_sitemap_posts": missing_sitemap_posts,
-            "PASS": not any((post_failures, canonical_duplicates, workers_dev, missing_sitemap_posts)) and robots_ok}
+            "invalid_sitemap_urls": invalid_sitemap_urls,
+            "PASS": not any((post_failures, canonical_duplicates, workers_dev, missing_sitemap_posts, invalid_sitemap_urls)) and robots_ok}
 
 
 def media_gate(snapshot: dict, root: Path, manifest: dict, media_manifest: dict) -> dict:

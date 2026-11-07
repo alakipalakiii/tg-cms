@@ -49,6 +49,7 @@ def _fixture(with_media=False):
     (root / "search/search-index.json").write_text(json.dumps({"contract": "STATIC_SEARCH_CONTRACT_V2", "records": expected}), encoding="utf-8")
 
     def page(route, cards=(), title="Fixture", jsonld=False, media_url=None, latest_rows=()):
+        route = {f"/post/{post['id']}": f"/post/{post['slug']}" for post in posts}.get(route, route)
         canonical = "https://mahoonartmagazine.ir" + ("/" if not route.strip("/") else "/" + route.strip("/"))
         links = "".join(f'<article class="mahoon-archive-card"><a href="/post/{slug}">{slug}</a></article>' for slug in cards)
         latest = "".join(f'<a class="m-list-row" href="/post/{slug}">{slug}</a>' for slug in latest_rows)
@@ -478,6 +479,28 @@ class PromotionGateTests(unittest.TestCase):
             import shutil
             shutil.rmtree(root)
 
+    def test_numeric_alias_uses_the_slug_canonical_and_is_excluded_from_sitemap(self):
+        root, snapshot, manifest, _ = _fixture()
+        try:
+            self.assertTrue(seo_gate(snapshot, root, manifest)["PASS"])
+            alias = root / "post/2/index.html"
+            body = alias.read_text(encoding="utf-8")
+            alias.write_text(body.replace('/post/new-post"', '/post/2"'), encoding="utf-8")
+            _read_page.cache_clear()
+            self.assertEqual(seo_gate(snapshot, root, manifest)["post_seo_failures"], 1)
+            alias.write_text(body, encoding="utf-8")
+            _read_page.cache_clear()
+            sitemap = root / "sitemap.xml"
+            sitemap.write_text(sitemap.read_text(encoding="utf-8").replace(
+                "</urlset>", "<url><loc>https://mahoonartmagazine.ir/post/2</loc></url></urlset>"
+            ), encoding="utf-8")
+            result = seo_gate(snapshot, root, manifest)
+            self.assertFalse(result["PASS"])
+            self.assertEqual(result["invalid_sitemap_urls"], 1)
+        finally:
+            _read_page.cache_clear()
+            shutil.rmtree(root)
+
     @unittest.skipUnless(os.environ.get("MAHOON_RUN_BROWSER_TESTS") == "1", "browser fixture runs in browser-enabled CI stage")
     def test_real_browser_visual_and_zero_origin_fixtures_pass_and_fail(self):
         result = subprocess.run(["node", "tools/publisher/prepromotion_browser_gate.mjs", "--self-test"],
@@ -488,7 +511,6 @@ class PromotionGateTests(unittest.TestCase):
         self.assertTrue(proof["visual_broken_fixture"])
         self.assertTrue(proof["zero_origin_healthy_fixture"])
         self.assertTrue(proof["zero_origin_broken_fixture"])
-
 
 if __name__ == "__main__":
     unittest.main()

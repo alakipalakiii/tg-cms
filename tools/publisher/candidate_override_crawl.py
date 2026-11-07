@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urljoin, urlsplit
 
 try:
+    from .candidate_route_manifest import snapshot_post_aliases
     from .content_taxonomy import CATEGORY_DEFINITIONS, canonical_category
     from .promotion_gates import _expected_posts, _id_for_href, _posts, _url_evidence
     from .remote_proof_harness import (
@@ -19,6 +20,7 @@ try:
         is_worker_first_route, link_contract_fails, request_with_version_pinning,
     )
 except ImportError:
+    from candidate_route_manifest import snapshot_post_aliases
     from content_taxonomy import CATEGORY_DEFINITIONS, canonical_category
     from promotion_gates import _expected_posts, _id_for_href, _posts, _url_evidence
     from remote_proof_harness import (
@@ -280,13 +282,14 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
     html = {path: state["routes"].get(path, {}) for path in html_routes}
     html_failures = [path for path in html_routes if html[path].get("http_status") != 200 or html[path].get("is_html") is not True]
     post_route_failures = [path for path in post_source_routes if state["routes"].get(path, {}).get("http_status") != 200]
-    canonical_by_route = {path: value.get("canonical") for path, value in html.items() if value.get("canonical")}
+    aliases = snapshot_post_aliases(posts)
+    canonical_by_route = {path: value.get("canonical") for path, value in html.items() if path not in aliases and value.get("canonical")}
     duplicate_canonicals = len(canonical_by_route) - len(set(canonical_by_route.values()))
     workers_dev = sum(int(bool(value.get("workers_dev"))) for value in html.values())
     preview_leaks = sum(int(bool(value.get("preview_url"))) for value in html.values())
     reader_media = sum(int(bool(value.get("remote_media"))) for value in html.values())
     post_seo_failures = 0
-    canonical_failures = 0
+    canonical_failures = sum(html.get(path, {}).get("canonical") != _url(target) for path, target in aliases.items())
     for post in posts:
         route = f"/post/{post.get('slug')}"
         value = html.get(route, {})
@@ -382,7 +385,9 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
     robots = state["routes"].get("/robots.txt", {}).get("robots_sitemap", False)
     sitemap_urls = state["routes"].get("/sitemap.xml", {}).get("sitemap_posts", [])
     sitemap_paths = set(sitemap_urls)
-    missing_sitemap_posts = sum(f"/post/{post.get('slug')}" not in sitemap_paths for post in posts if post.get("slug"))
+    sitemap_post_paths = {f"/post/{post['slug']}" for post in posts if post.get("slug")}
+    missing_sitemap_posts = len(sitemap_post_paths - sitemap_paths)
+    sitemap_aliases = len((set(aliases) - sitemap_post_paths) & sitemap_paths)
     media_records = media_manifest.get("records", []) if isinstance(media_manifest, dict) else []
     media_specs = {
         str(item.get("immutable_path")): item for item in media_records
@@ -438,7 +443,7 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
     content_pass = route_parity and canonical_failures == 0 and search_parity_failures == 0 and search_duplicate == 0
     listing_pass = not any((duplicate_card_ids, search_duplicate, overlap, category_overlap, orphan_posts, coverage_failures))
     category_pass = not any((category_wrong, category_missing, category_extra, category_multi, category_overlap))
-    seo_pass = not any((post_seo_failures, duplicate_canonicals, canonical_failures, workers_dev, missing_sitemap_posts)) and robots
+    seo_pass = not any((post_seo_failures, duplicate_canonicals, canonical_failures, workers_dev, missing_sitemap_posts, sitemap_aliases)) and robots
     media_pass = (
         media_unresolved == 0
         and media_proof_http_failures == 0
@@ -479,6 +484,7 @@ def _measure(route_list: list[str], state: dict, snapshot: dict, search_result: 
         "search_index_ids": len(search_ids), "search_index_duplicate_ids": search_duplicate,
         "search_index_parity_failures": search_parity_failures,
         "robots_sitemap_directive": bool(robots), "missing_sitemap_posts": missing_sitemap_posts,
+        "sitemap_aliases": sitemap_aliases,
         "required_remote_media_objects": len(media_paths), "remote_media_http_failures": media_http_failures,
         "remote_media_proof_http_failures": media_proof_http_failures,
         "remote_media_proof_version_mismatches": media_proof_version_mismatches,

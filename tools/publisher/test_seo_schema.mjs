@@ -12,6 +12,7 @@ assert.equal('dateModified' in missing, false);
 assert.equal('datePublished' in makeArticleSchema({ datePublished: 'invalid' }), false);
 assert.equal(makeArticleSchema({ datePublished: '2026-11-05 10:00:00' }).datePublished, '2026-11-05T10:00:00.000Z');
 assert.equal(makeArticleSchema({ datePublished: '2026-11-05T10:00:00Z' }).dateModified, '2026-11-05T10:00:00.000Z');
+assert.equal(makeArticleSchema({ datePublished: '2026-11-05 10:00:00', dateModified: 'invalid' }).dateModified, '2026-11-05T10:00:00.000Z');
 assert.equal(makeArticleSchema({ datePublished: '2026-11-05 10:00:00+03:30' }).datePublished, '2026-11-05T06:30:00.000Z');
 assert.equal(stringifySchema({ text: '</script><script>alert(1)</script>' }).includes('</script>'), false);
 console.log('SEO schema checks passed: deterministic UTC/offset dates, no fake freshness, safe JSON-LD.');
