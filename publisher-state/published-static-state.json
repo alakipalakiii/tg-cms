@@ -1,8 +1,8 @@
 {
-  "current_version": "6c2be241-716f-407c-9566-9222ad7a0fd3",
-  "previous_version": "81fa4131-1d04-4fd9-a7fb-11f511625680",
+  "current_version": "c0bd5f65-be93-4d73-9378-b975c5275e22",
+  "previous_version": "6c2be241-716f-407c-9566-9222ad7a0fd3",
   "current_version_type": "STATIC",
-  "deployment_id": "c3ceacf2-5d86-4372-8065-889a9e337c0f",
-  "artifact_seal": "97ecbc401bfc0e8787a0c1189a9a57c1a9f545fc97f1a25da3b1f3fb76115919",
+  "deployment_id": "d6a2a288-b9bc-4bdc-8d71-2c5ded611f0d",
+  "artifact_seal": "706db33eb979513749f5fa7da0824589d642a99b4fef91029b9539aa15f33b5b",
   "content_fingerprint": "e8be4ea48a4b9c1323a8a735a381ef2b32411d0abadb2f1bad75a225d5361a73"
 }
