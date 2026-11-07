@@ -113,6 +113,17 @@ class StaticRedirectPolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "CANDIDATE_REDIRECT_SHADOWS_MATERIALIZED_ROUTE"):
                 validate_candidate_redirects(candidate, [slug], root)
 
+    def test_withdrawn_post_proxy_is_removed_only_when_both_routes_are_absent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            historical = self._history_fixture(root, (32,))
+            candidate = root / "_redirects"
+            proof = generate_candidate_redirects(historical, candidate, ["/about"], root)
+            self.assertEqual(proof["retired_post_proxy_rules_removed"], 1)
+            self.assertNotIn("/post/32", candidate.read_text(encoding="utf-8"))
+            with self.assertRaisesRegex(ValueError, "NON_SHADOWING_REDIRECT_REQUIRES_COMPATIBILITY_REASON"):
+                generate_candidate_redirects(historical, candidate, ["/post/32"], root)
+
     def test_allowlisted_non_shadowing_compatibility_rule_is_retained_and_classified(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -109,6 +109,14 @@ def _matching_routes(source: str, routes: set[str]) -> set[str]:
     return {route for route in routes if _source_matches(source, route)}
 
 
+def _is_legacy_post_proxy(rule: RedirectRule) -> bool:
+    return (
+        rule.status == 200
+        and re.fullmatch(r"/post/[^/:*]+", normalize_route(rule.source), re.I) is not None
+        and re.fullmatch(r"/post/[0-9]+/?", rule.destination, re.I) is not None
+    )
+
+
 def _validate_text(
     text: str,
     routes: list[str] | set[str],
@@ -175,6 +183,7 @@ def generate_candidate_redirects(
     }
     output_rules: list[str] = []
     removed = 0
+    retired = 0
     compatibility_count = 0
     for rule in rules:
         matched = _matching_routes(rule.source, manifest_routes)
@@ -183,6 +192,9 @@ def generate_candidate_redirects(
             if matched - direct_html_routes:
                 raise ValueError(f"REDIRECT_PATTERN_MIXES_MATERIALIZED_AND_COMPATIBILITY_ROUTES:{rule.source}")
             removed += 1
+            continue
+        if not matched and _is_legacy_post_proxy(rule) and normalize_route(rule.destination) not in manifest_routes:
+            retired += 1
             continue
         if _policy_entry(compatibility_policy, rule) is None:
             raise ValueError(f"NON_SHADOWING_REDIRECT_REQUIRES_COMPATIBILITY_REASON:{rule.source}")
@@ -201,12 +213,8 @@ def generate_candidate_redirects(
     candidate_path.write_text(generated, encoding="utf-8", newline="\n")
     return {
         "historical_redirect_rules_total": len(rules),
-        "legacy_post_proxy_rules": sum(
-            rule.status == 200
-            and re.fullmatch(r"/post/[^/:*]+", normalize_route(rule.source), re.I) is not None
-            and re.fullmatch(r"/post/[0-9]+/?", rule.destination, re.I) is not None
-            for rule in rules
-        ),
+        "legacy_post_proxy_rules": sum(_is_legacy_post_proxy(rule) for rule in rules),
+        "retired_post_proxy_rules_removed": retired,
         "shadowing_proxy_rules_removed": removed,
         "shadowing_proxy_rules_remaining": proof["candidate_shadowing_redirect_rules"],
         "compatibility_rules_classified": compatibility_count,

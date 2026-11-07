@@ -1,17 +1,17 @@
-"""Derive a route manifest from the locked snapshot without losing old routes."""
+"""Derive snapshot routes while preserving independent site routes."""
 from __future__ import annotations
 
 import json
 import re
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 try:
-    from .content_taxonomy import CATEGORY_DEFINITIONS, canonical_category
+    from .content_taxonomy import CATEGORY_DEFINITIONS, canonical_category, normalize_tag
     from .pagination_contract import PAGE_SIZE, page_count
     from .public_listing_dedupe import dedupe_public_listing_posts
 except ImportError:
-    from content_taxonomy import CATEGORY_DEFINITIONS, canonical_category
+    from content_taxonomy import CATEGORY_DEFINITIONS, canonical_category, normalize_tag
     from pagination_contract import PAGE_SIZE, page_count
     from public_listing_dedupe import dedupe_public_listing_posts
 
@@ -63,8 +63,14 @@ def build_candidate_route_manifest(posts: list[dict], accepted_path: Path, outpu
     current_pagination_routes = snapshot_pagination_routes(posts)
     snapshot_derived_routes = current_routes | current_tag_routes | current_pagination_routes
     required_routes = REQUIRED_CATEGORY_ROUTES | REQUIRED_CONTROL_ROUTES
-    candidate_routes = sorted(old_routes | snapshot_derived_routes | required_routes)
-    old_only = sorted(old_routes - snapshot_derived_routes - required_routes)
+    active_tags = {normalize_tag(unquote(route.removeprefix("/tag/"))) for route in current_tag_routes}
+    retired_routes = {
+        route for route in old_routes - snapshot_derived_routes
+        if route.startswith("/post/")
+        or (route.startswith("/tag/") and normalize_tag(unquote(route.removeprefix("/tag/").rstrip("/"))) not in active_tags)
+    }
+    candidate_routes = sorted((old_routes - retired_routes) | snapshot_derived_routes | required_routes)
+    old_only = sorted(old_routes - retired_routes - snapshot_derived_routes - required_routes)
     new_routes = sorted(current_routes - old_routes)
     payload = {
         "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
@@ -78,8 +84,9 @@ def build_candidate_route_manifest(posts: list[dict], accepted_path: Path, outpu
         "required_category_routes": sorted(REQUIRED_CATEGORY_ROUTES),
         "required_control_routes": sorted(REQUIRED_CONTROL_ROUTES),
         "control_route_count": len(REQUIRED_CONTROL_ROUTES),
-        "old_accepted_manifest_role": "NO_ROUTE_LOSS_BASELINE",
-        "old_routes_missing_from_candidate": sorted(old_routes - set(candidate_routes)),
+        "old_accepted_manifest_role": "NON_SNAPSHOT_ROUTE_BASELINE",
+        "old_routes_missing_from_candidate": sorted(old_routes - set(candidate_routes) - retired_routes),
+        "retired_snapshot_routes": sorted(retired_routes),
         "new_current_post_routes_included": sorted(current_routes & set(candidate_routes)),
         "new_snapshot_routes_missing_from_candidate": sorted(current_routes - set(candidate_routes)),
         "new_snapshot_tag_routes": sorted(current_tag_routes - old_routes),
