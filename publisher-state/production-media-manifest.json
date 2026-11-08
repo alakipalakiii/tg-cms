@@ -4959,6 +4959,30 @@
       "detected_mime": "image/jpeg"
     },
     {
+      "source_identifier": "AgACAgQAAyEFAASOdxB-AAIG8mrwVuhxfFRwLe-jfKJKrBzxMMDPAALtEGsbpKh4UxVQ8FwFeuJVAQADAgADeQADPQQ",
+      "immutable_path": "/media/09/09ee453bfd9ccc8358fe2905bfe182a16f1246af15349f9f23499bf07ba2a349.jpg",
+      "sha256": "09ee453bfd9ccc8358fe2905bfe182a16f1246af15349f9f23499bf07ba2a349",
+      "mime": "image/jpeg",
+      "media_type": "photo",
+      "fallback": false,
+      "post_ids": [
+        2012
+      ],
+      "detected_mime": "image/jpeg"
+    },
+    {
+      "source_identifier": "AgACAgQAAyEFAASOdxB-AAIG9WrwdE4TeF5kFWkby55WiOBi-gABzwACDa0xG-jYmVNbI725mq5xwgEAAwIAA3gAAz0E",
+      "immutable_path": "/media/1c/1ca269ba54a407a5d2d709af145ad88f7ff86865af086d732d5d912c5268b52f.jpg",
+      "sha256": "1ca269ba54a407a5d2d709af145ad88f7ff86865af086d732d5d912c5268b52f",
+      "mime": "image/jpeg",
+      "media_type": "photo",
+      "fallback": false,
+      "post_ids": [
+        2014
+      ],
+      "detected_mime": "image/jpeg"
+    },
+    {
       "source_identifier": "AgACAgQAAyEFAASOdxB-AAIGAmqW_9JV4Q4_fRMoZoNYKrTVu0M1AALupzEbNZdRUDStTxOR-YgTAQADAgADeQADPQQ",
       "immutable_path": "/media/59/595bd87f71bf38c3d0c192bef4c0e205656cc33073c5d492c08c4e62d6e46cf5.jpg",
       "sha256": "595bd87f71bf38c3d0c192bef4c0e205656cc33073c5d492c08c4e62d6e46cf5",
@@ -8450,9 +8474,9 @@
   ],
   "stats": {
     "mode": "REQUIRED_SET_ONLY",
-    "required_distinct": 654,
+    "required_distinct": 656,
     "published": 636,
-    "new": 0,
+    "new": 2,
     "fallback": 18,
     "unresolved": 0,
     "source_redownloads": 0,
@@ -13705,6 +13729,22 @@
     "size": 185592,
     "mime": "image/jpeg",
     "source": "https://api.mahoonartmagazine.ir/media/AgACAgQAAyEFAASOdxB-AAIG7Wru4ZFvDD9uZEmqHgwzpEL0ihl3AALGDWsbpKhwU-1oa0V3IREpAQADAgADeQADPQQ",
+    "readiness": "PASS"
+  },
+  "/media/1c/1ca269ba54a407a5d2d709af145ad88f7ff86865af086d732d5d912c5268b52f.jpg": {
+    "mahoon_sha256": "1ca269ba54a407a5d2d709af145ad88f7ff86865af086d732d5d912c5268b52f",
+    "cloudflare_hash": "1ca269ba54a407a5d2d709af145ad88f",
+    "size": 115465,
+    "mime": "image/jpeg",
+    "source": "https://api.mahoonartmagazine.ir/media/AgACAgQAAyEFAASOdxB-AAIG9WrwdE4TeF5kFWkby55WiOBi-gABzwACDa0xG-jYmVNbI725mq5xwgEAAwIAA3gAAz0E",
+    "readiness": "PASS"
+  },
+  "/media/09/09ee453bfd9ccc8358fe2905bfe182a16f1246af15349f9f23499bf07ba2a349.jpg": {
+    "mahoon_sha256": "09ee453bfd9ccc8358fe2905bfe182a16f1246af15349f9f23499bf07ba2a349",
+    "cloudflare_hash": "09ee453bfd9ccc8358fe2905bfe182a1",
+    "size": 149256,
+    "mime": "image/jpeg",
+    "source": "https://api.mahoonartmagazine.ir/media/AgACAgQAAyEFAASOdxB-AAIG8mrwVuhxfFRwLe-jfKJKrBzxMMDPAALtEGsbpKh4UxVQ8FwFeuJVAQADAgADeQADPQQ",
     "readiness": "PASS"
   }
 }
