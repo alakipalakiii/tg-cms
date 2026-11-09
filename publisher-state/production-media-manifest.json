@@ -4779,6 +4779,18 @@
       "detected_mime": "image/jpeg"
     },
     {
+      "source_identifier": "AgACAgQAAyEFAASOdxB-AAIG-WrxhJE0k-kKoOoXxIoaUNWg3CPVAALhD2sb-oOAU33QH4kI9u-BAQADAgADeQADPQQ",
+      "immutable_path": "/media/80/80351177e51aebd6d8b18d54f2aea4377b06b65c56bd7b7a0bc23d747f240231.jpg",
+      "sha256": "80351177e51aebd6d8b18d54f2aea4377b06b65c56bd7b7a0bc23d747f240231",
+      "mime": "image/jpeg",
+      "media_type": "photo",
+      "fallback": false,
+      "post_ids": [
+        2018
+      ],
+      "detected_mime": "image/jpeg"
+    },
+    {
       "source_identifier": "AgACAgQAAyEFAASOdxB-AAIG02rkqfFFKMUTpbyKkwte19ObA17pAALLEWsb7CcYU5ic3HCNH3XMAQADAgADeQADPQQ",
       "immutable_path": "/media/45/45f00101f18c3c51ac846422c8ebff11255cb275056cb5acfae1c1c6d32b2ca0.jpg",
       "sha256": "45f00101f18c3c51ac846422c8ebff11255cb275056cb5acfae1c1c6d32b2ca0",
@@ -8498,9 +8510,9 @@
   ],
   "stats": {
     "mode": "REQUIRED_SET_ONLY",
-    "required_distinct": 658,
-    "published": 638,
-    "new": 2,
+    "required_distinct": 659,
+    "published": 640,
+    "new": 1,
     "fallback": 18,
     "unresolved": 0,
     "source_redownloads": 0,
@@ -13777,6 +13789,14 @@
     "size": 8285252,
     "mime": "audio/mpeg",
     "source": "https://api.mahoonartmagazine.ir/media/CQACAgQAAyEFAASOdxB-AAIG92rw0yjEbQUHmCiRgVyuLQABBfAGOAACwCEAAvqDiFPA2kIrCh7Qlj0E",
+    "readiness": "PASS"
+  },
+  "/media/80/80351177e51aebd6d8b18d54f2aea4377b06b65c56bd7b7a0bc23d747f240231.jpg": {
+    "mahoon_sha256": "80351177e51aebd6d8b18d54f2aea4377b06b65c56bd7b7a0bc23d747f240231",
+    "cloudflare_hash": "80351177e51aebd6d8b18d54f2aea437",
+    "size": 53773,
+    "mime": "image/jpeg",
+    "source": "https://api.mahoonartmagazine.ir/media/AgACAgQAAyEFAASOdxB-AAIG-WrxhJE0k-kKoOoXxIoaUNWg3CPVAALhD2sb-oOAU33QH4kI9u-BAQADAgADeQADPQQ",
     "readiness": "PASS"
   }
 }
