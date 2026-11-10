@@ -1,150 +1,7 @@
 {
-  "active": {
-    "build_bundle_sha256": "372fce78c0a91a24b03f1567aba97c7b00f8854cc911ead8fef0aa54d439940a",
-    "content_revision": 440,
-    "created_at": "2026-11-10T11:14:43.053626+00:00",
-    "execution_attempts": [
-      {
-        "attempt_id": "1",
-        "run_id": "42805767822",
-        "source": "schedule",
-        "timestamp": "2026-11-10T11:14:43.053626+00:00"
-      }
-    ],
-    "logical_transaction_id": "753335028f8b0f3be5955e15cb7800420bda2fbd999333c47deeed7f6ceb1f3e",
-    "operations": {
-      "deploy_zero_percent": {
-        "attempts": [
-          {
-            "attempt_id": "8aa0dcf2-342c-44a9-9e26-3256c295b545",
-            "attempt_number": 1,
-            "evidence": {
-              "reference": "99fc754bd8f7c2bb3a8698ac60b0be269a788921eadf4083e0dbd6356f47f113",
-              "sha256": "e77fc670a8aad44e90a59400387b1c4dfa32e998caa7aa3e8ee726f088ef8e1b",
-              "type": "mutation_result_artifact"
-            },
-            "intent_artifact_sha256": "8abc4126871ecb43b2c9d3f9a4bb9090cfe2e9814e0062c7b6f69afcdc7bef52",
-            "intent_at": "2026-11-10T11:36:53.841496+00:00",
-            "intent_state": "RECORDED",
-            "result_at": "2026-11-10T11:37:48.223363+00:00",
-            "result_digest": "2fcdc9ef5954c41d6caf228384885c51929b73c72757187a17ac288eb03220a9",
-            "result_state": "APPLIED"
-          }
-        ],
-        "intent_state": "RECORDED",
-        "operation_id": "d6309e546ce4525468a0d454abd73618a982984a148b3f081dcb933eeb26330d",
-        "result_state": "APPLIED"
-      },
-      "promote": {
-        "attempts": [
-          {
-            "attempt_id": "4eb606e1-7e03-46b7-8c19-a3a89ca97bed",
-            "attempt_number": 1,
-            "evidence": {
-              "reference": "f0bf1943167bcfbe47598e5f5aac92217fb198297e1d20b77f965a2f3c1e0667",
-              "sha256": "eb79bfff7e100d4e105ec459ddcbd165ab9ac240b566155560539284c9321ea5",
-              "type": "mutation_result_artifact"
-            },
-            "intent_artifact_sha256": "61c7434299459fb8ad49c10c3923b9d1c466116007a777061790c63171585d50",
-            "intent_at": "2026-11-10T12:17:52.224341+00:00",
-            "intent_state": "RECORDED",
-            "result_at": "2026-11-10T12:19:24.301425+00:00",
-            "result_digest": "21b9bab01c6985d476e2fad1ec9af1cfd46ad60e9663d0d1211824ac4a7feca2",
-            "result_state": "APPLIED"
-          }
-        ],
-        "intent_state": "RECORDED",
-        "operation_id": "79092b72af64d21744f118a11ebc64a8a688a789474200d3c53463fcae694e34",
-        "result_state": "APPLIED"
-      },
-      "rollback": {
-        "attempts": [],
-        "intent_state": "NOT_STARTED",
-        "operation_id": "c3db256d48b8fe0018df2ccfa3357164932c6d01fb09449c4534dce99faff181",
-        "result_state": "NOT_REPORTED"
-      },
-      "upload_version": {
-        "attempts": [
-          {
-            "attempt_id": "29d5a622-3e25-49eb-b8f9-ad1ec1a6a229",
-            "attempt_number": 1,
-            "evidence": {
-              "reference": "befc8f3071b4abb1b3bc9aa0d7b1c55772a482e4bc2075d6d25df1b780992e36",
-              "sha256": "dd5587247a699785d75d306cd1cf304319ddff8f2c91677af05f659c2c35645b",
-              "type": "mutation_result_artifact"
-            },
-            "intent_artifact_sha256": "94e5f882e3c0de51c2ff33d85a152a6b47b8b4eb928866df8fbace1948bd4872",
-            "intent_at": "2026-11-10T11:34:53.656035+00:00",
-            "intent_state": "RECORDED",
-            "result_at": "2026-11-10T11:36:07.216398+00:00",
-            "result_digest": "ba64b1edb8c3da3c76483d63c9c0ba43e7ab678374951f7a28d7796bb35f73eb",
-            "result_state": "APPLIED"
-          }
-        ],
-        "intent_state": "RECORDED",
-        "operation_id": "dccb61981fbdb148ee604cb7df23ff84059dda57543224239e53ead90c9bc7fa",
-        "result_state": "APPLIED"
-      }
-    },
-    "proof_evidence_sha256": "77684b335a6fb875c577f92105355dacfd23ad3a798c36ee9acb4b11782ded97",
-    "recovery_status": "NONE",
-    "state": "ready_to_persist",
-    "state_commit_sha": null,
-    "transitions": [
-      {
-        "from": null,
-        "timestamp": "2026-11-10T11:14:43.053626+00:00",
-        "to": "admitted"
-      },
-      {
-        "from": "admitted",
-        "timestamp": "2026-11-10T11:33:56.163742+00:00",
-        "to": "build_ready"
-      },
-      {
-        "from": "build_ready",
-        "timestamp": "2026-11-10T11:34:53.656053+00:00",
-        "to": "intent_recorded"
-      },
-      {
-        "from": "intent_recorded",
-        "timestamp": "2026-11-10T11:36:07.216418+00:00",
-        "to": "operation_reported"
-      },
-      {
-        "from": "operation_reported",
-        "timestamp": "2026-11-10T11:36:53.841515+00:00",
-        "to": "intent_recorded"
-      },
-      {
-        "from": "intent_recorded",
-        "timestamp": "2026-11-10T11:37:48.223383+00:00",
-        "to": "operation_reported"
-      },
-      {
-        "from": "operation_reported",
-        "timestamp": "2026-11-10T12:17:52.224365+00:00",
-        "to": "intent_recorded"
-      },
-      {
-        "from": "intent_recorded",
-        "timestamp": "2026-11-10T12:19:24.301454+00:00",
-        "to": "operation_reported"
-      },
-      {
-        "from": "operation_reported",
-        "timestamp": "2026-11-10T12:45:47.308187+00:00",
-        "to": "ready_to_persist"
-      }
-    ],
-    "trigger_sources": [
-      "schedule"
-    ],
-    "updated_at": "2026-11-10T12:45:47.308204+00:00",
-    "worker": "mahoon-art-magazine"
-  },
+  "active": null,
   "contract": "MAHOON_PUBLISHER_TRANSACTION_JOURNAL_V2",
-  "generation": 474,
+  "generation": 475,
   "history": [
     {
       "build_bundle_sha256": null,
@@ -6523,6 +6380,155 @@
         "schedule"
       ],
       "updated_at": "2026-11-09T22:24:15.991118+00:00",
+      "worker": "mahoon-art-magazine"
+    },
+    {
+      "build_bundle_sha256": "372fce78c0a91a24b03f1567aba97c7b00f8854cc911ead8fef0aa54d439940a",
+      "content_revision": 440,
+      "created_at": "2026-11-10T11:14:43.053626+00:00",
+      "execution_attempts": [
+        {
+          "attempt_id": "1",
+          "run_id": "42805767822",
+          "source": "schedule",
+          "timestamp": "2026-11-10T11:14:43.053626+00:00"
+        }
+      ],
+      "logical_transaction_id": "753335028f8b0f3be5955e15cb7800420bda2fbd999333c47deeed7f6ceb1f3e",
+      "operations": {
+        "deploy_zero_percent": {
+          "attempts": [
+            {
+              "attempt_id": "8aa0dcf2-342c-44a9-9e26-3256c295b545",
+              "attempt_number": 1,
+              "evidence": {
+                "reference": "99fc754bd8f7c2bb3a8698ac60b0be269a788921eadf4083e0dbd6356f47f113",
+                "sha256": "e77fc670a8aad44e90a59400387b1c4dfa32e998caa7aa3e8ee726f088ef8e1b",
+                "type": "mutation_result_artifact"
+              },
+              "intent_artifact_sha256": "8abc4126871ecb43b2c9d3f9a4bb9090cfe2e9814e0062c7b6f69afcdc7bef52",
+              "intent_at": "2026-11-10T11:36:53.841496+00:00",
+              "intent_state": "RECORDED",
+              "result_at": "2026-11-10T11:37:48.223363+00:00",
+              "result_digest": "2fcdc9ef5954c41d6caf228384885c51929b73c72757187a17ac288eb03220a9",
+              "result_state": "APPLIED"
+            }
+          ],
+          "intent_state": "RECORDED",
+          "operation_id": "d6309e546ce4525468a0d454abd73618a982984a148b3f081dcb933eeb26330d",
+          "result_state": "APPLIED"
+        },
+        "promote": {
+          "attempts": [
+            {
+              "attempt_id": "4eb606e1-7e03-46b7-8c19-a3a89ca97bed",
+              "attempt_number": 1,
+              "evidence": {
+                "reference": "f0bf1943167bcfbe47598e5f5aac92217fb198297e1d20b77f965a2f3c1e0667",
+                "sha256": "eb79bfff7e100d4e105ec459ddcbd165ab9ac240b566155560539284c9321ea5",
+                "type": "mutation_result_artifact"
+              },
+              "intent_artifact_sha256": "61c7434299459fb8ad49c10c3923b9d1c466116007a777061790c63171585d50",
+              "intent_at": "2026-11-10T12:17:52.224341+00:00",
+              "intent_state": "RECORDED",
+              "result_at": "2026-11-10T12:19:24.301425+00:00",
+              "result_digest": "21b9bab01c6985d476e2fad1ec9af1cfd46ad60e9663d0d1211824ac4a7feca2",
+              "result_state": "APPLIED"
+            }
+          ],
+          "intent_state": "RECORDED",
+          "operation_id": "79092b72af64d21744f118a11ebc64a8a688a789474200d3c53463fcae694e34",
+          "result_state": "APPLIED"
+        },
+        "rollback": {
+          "attempts": [],
+          "intent_state": "NOT_STARTED",
+          "operation_id": "c3db256d48b8fe0018df2ccfa3357164932c6d01fb09449c4534dce99faff181",
+          "result_state": "NOT_REPORTED"
+        },
+        "upload_version": {
+          "attempts": [
+            {
+              "attempt_id": "29d5a622-3e25-49eb-b8f9-ad1ec1a6a229",
+              "attempt_number": 1,
+              "evidence": {
+                "reference": "befc8f3071b4abb1b3bc9aa0d7b1c55772a482e4bc2075d6d25df1b780992e36",
+                "sha256": "dd5587247a699785d75d306cd1cf304319ddff8f2c91677af05f659c2c35645b",
+                "type": "mutation_result_artifact"
+              },
+              "intent_artifact_sha256": "94e5f882e3c0de51c2ff33d85a152a6b47b8b4eb928866df8fbace1948bd4872",
+              "intent_at": "2026-11-10T11:34:53.656035+00:00",
+              "intent_state": "RECORDED",
+              "result_at": "2026-11-10T11:36:07.216398+00:00",
+              "result_digest": "ba64b1edb8c3da3c76483d63c9c0ba43e7ab678374951f7a28d7796bb35f73eb",
+              "result_state": "APPLIED"
+            }
+          ],
+          "intent_state": "RECORDED",
+          "operation_id": "dccb61981fbdb148ee604cb7df23ff84059dda57543224239e53ead90c9bc7fa",
+          "result_state": "APPLIED"
+        }
+      },
+      "proof_evidence_sha256": "77684b335a6fb875c577f92105355dacfd23ad3a798c36ee9acb4b11782ded97",
+      "recovery_status": "NONE",
+      "state": "completed",
+      "state_commit_sha": "2dc31e4095672c2fb68614d72f42844000e1ab17",
+      "transitions": [
+        {
+          "from": null,
+          "timestamp": "2026-11-10T11:14:43.053626+00:00",
+          "to": "admitted"
+        },
+        {
+          "from": "admitted",
+          "timestamp": "2026-11-10T11:33:56.163742+00:00",
+          "to": "build_ready"
+        },
+        {
+          "from": "build_ready",
+          "timestamp": "2026-11-10T11:34:53.656053+00:00",
+          "to": "intent_recorded"
+        },
+        {
+          "from": "intent_recorded",
+          "timestamp": "2026-11-10T11:36:07.216418+00:00",
+          "to": "operation_reported"
+        },
+        {
+          "from": "operation_reported",
+          "timestamp": "2026-11-10T11:36:53.841515+00:00",
+          "to": "intent_recorded"
+        },
+        {
+          "from": "intent_recorded",
+          "timestamp": "2026-11-10T11:37:48.223383+00:00",
+          "to": "operation_reported"
+        },
+        {
+          "from": "operation_reported",
+          "timestamp": "2026-11-10T12:17:52.224365+00:00",
+          "to": "intent_recorded"
+        },
+        {
+          "from": "intent_recorded",
+          "timestamp": "2026-11-10T12:19:24.301454+00:00",
+          "to": "operation_reported"
+        },
+        {
+          "from": "operation_reported",
+          "timestamp": "2026-11-10T12:45:47.308187+00:00",
+          "to": "ready_to_persist"
+        },
+        {
+          "from": "ready_to_persist",
+          "timestamp": "2026-11-10T12:45:52.375065+00:00",
+          "to": "completed"
+        }
+      ],
+      "trigger_sources": [
+        "schedule"
+      ],
+      "updated_at": "2026-11-10T12:45:52.375079+00:00",
       "worker": "mahoon-art-magazine"
     }
   ],
