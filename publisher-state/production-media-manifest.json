@@ -4791,7 +4791,7 @@
       "detected_mime": "image/jpeg"
     },
     {
-      "source_identifier": "AgACAgQAAyEFAASOdxB-AAIG-mrx2PH8Yny0J7UehAdCM2byM0guAAIBEGsb-oOAU0YpZajc3OQcAQADAgADeQADPQQ",
+      "source_identifier": "AgACAgQAAyEFAASOdxB-AAIG-mry2kbAPbVe511WRd8tRWS7kQ04AAIBEGsb-oOAU0YpZajc3OQcAQADAgADeQADPQQ",
       "immutable_path": "/media/e3/e3ab70a88a5e5ae290b4a0448c08d832f70928383e973e5c62856436533bdc5a.jpg",
       "sha256": "e3ab70a88a5e5ae290b4a0448c08d832f70928383e973e5c62856436533bdc5a",
       "mime": "image/jpeg",
@@ -6511,6 +6511,18 @@
       "fallback": false,
       "post_ids": [
         1873
+      ],
+      "detected_mime": "image/jpeg"
+    },
+    {
+      "source_identifier": "AgACAgQAAyEFAASOdxB-AAIG_Gry1hGh-MbGcZ76zfvq8im2x9X8AAJgDWsb0LaRUzH0x2qJQArMAQADAgADeQADPQQ",
+      "immutable_path": "/media/0f/0fcb78e9a7f2118611abdaeb36316f07bce5dc3b4c10f4d538d0fc0e4f259cf3.jpg",
+      "sha256": "0fcb78e9a7f2118611abdaeb36316f07bce5dc3b4c10f4d538d0fc0e4f259cf3",
+      "mime": "image/jpeg",
+      "media_type": "photo",
+      "fallback": false,
+      "post_ids": [
+        2021
       ],
       "detected_mime": "image/jpeg"
     },
@@ -8522,9 +8534,9 @@
   ],
   "stats": {
     "mode": "REQUIRED_SET_ONLY",
-    "required_distinct": 660,
+    "required_distinct": 661,
     "published": 641,
-    "new": 1,
+    "new": 2,
     "fallback": 18,
     "unresolved": 0,
     "source_redownloads": 0,
@@ -13816,7 +13828,15 @@
     "cloudflare_hash": "e3ab70a88a5e5ae290b4a0448c08d832",
     "size": 136558,
     "mime": "image/jpeg",
-    "source": "https://api.mahoonartmagazine.ir/media/AgACAgQAAyEFAASOdxB-AAIG-mrx2PH8Yny0J7UehAdCM2byM0guAAIBEGsb-oOAU0YpZajc3OQcAQADAgADeQADPQQ",
+    "source": "https://api.mahoonartmagazine.ir/media/AgACAgQAAyEFAASOdxB-AAIG-mry2kbAPbVe511WRd8tRWS7kQ04AAIBEGsb-oOAU0YpZajc3OQcAQADAgADeQADPQQ",
+    "readiness": "PASS"
+  },
+  "/media/0f/0fcb78e9a7f2118611abdaeb36316f07bce5dc3b4c10f4d538d0fc0e4f259cf3.jpg": {
+    "mahoon_sha256": "0fcb78e9a7f2118611abdaeb36316f07bce5dc3b4c10f4d538d0fc0e4f259cf3",
+    "cloudflare_hash": "0fcb78e9a7f2118611abdaeb36316f07",
+    "size": 182515,
+    "mime": "image/jpeg",
+    "source": "https://api.mahoonartmagazine.ir/media/AgACAgQAAyEFAASOdxB-AAIG_Gry1hGh-MbGcZ76zfvq8im2x9X8AAJgDWsb0LaRUzH0x2qJQArMAQADAgADeQADPQQ",
     "readiness": "PASS"
   }
 }
