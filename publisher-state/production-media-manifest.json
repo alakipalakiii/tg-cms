@@ -8535,8 +8535,8 @@
   "stats": {
     "mode": "REQUIRED_SET_ONLY",
     "required_distinct": 661,
-    "published": 641,
-    "new": 2,
+    "published": 643,
+    "new": 0,
     "fallback": 18,
     "unresolved": 0,
     "source_redownloads": 0,
