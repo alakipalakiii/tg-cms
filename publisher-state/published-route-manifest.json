@@ -1,6 +1,6 @@
 {
   "contract": "CURRENT_CANDIDATE_SEALED_ROUTE_MANIFEST_V1",
-  "route_count": 4410,
+  "route_count": 4413,
   "routes": [
     "/",
     "/about",
@@ -1193,6 +1193,7 @@
     "/post/2020",
     "/post/2021",
     "/post/2022",
+    "/post/2023",
     "/post/203",
     "/post/204",
     "/post/205",
@@ -2634,6 +2635,7 @@
     "/post/خیلی-وحشتناکه-که-آدم-تنها-باشه-1783485447825",
     "/post/خیلی-وقتها-یاد-میگیریم-احساساتمون-رو-سرکوب-کنیم؛-فکر-میکنیم-اگه-بهشون--1783494238753",
     "/post/دارم-فکر-میکنم-چه-خوب-است-پیدا-کردن-1783485908594",
+    "/post/دانش-چیزى-نیست-که-از-کسى-1794385809379",
     "/post/در-آخر-فقط-سه-چیز-اهمیت-دارد-1783489297292",
     "/post/در-انبوهِ-سخت-گیریِ-لحظه-ها،-1783488247248",
     "/post/در-اندکِ-من-تویی-فراوان-1783462039888",
@@ -4195,6 +4197,7 @@
     "/tag/%D8%B3%D9%88%D9%81%DB%8C%D8%A7_%D9%84%D9%88%D8%B1%D9%86",
     "/tag/%D8%B3%D9%88%DB%8C_%D8%AE%D8%A7%D9%86%D9%87_%D8%B3%D9%88%D8%A7%D9%86",
     "/tag/%D8%B3%DB%8C%D8%A7%D9%85%DA%A9_%DA%AF%D9%84%D8%B4%DB%8C%D8%B1%D9%89",
+    "/tag/%D8%B3%DB%8C%D8%B0%D8%A7%D8%B1%D8%AA%D8%A7",
     "/tag/%D8%B3%DB%8C%E2%80%8C%D9%88%D9%86%D9%87%E2%80%8C_%D9%BE%D9%84%D9%87",
     "/tag/%D8%B4%D8%A7%D8%B2%D8%AF%D9%87_%DA%A9%D9%88%DA%86%D9%88%D9%84%D9%88",
     "/tag/%D8%B4%D8%A7%D8%B2%D8%AF%D9%87_%E2%80%8C%DA%A9%D9%88%DA%86%D9%88%D9%84%D9%88",
@@ -4414,8 +4417,8 @@
     "/tag/Stephen_William_Hawking"
   ],
   "baseline_route_count": 4410,
-  "snapshot_derived_route_count": 4332,
-  "snapshot_post_route_count": 3826,
+  "snapshot_derived_route_count": 4335,
+  "snapshot_post_route_count": 3828,
   "canonical_post_aliases": {
     "/post/32": "/post/قدرت-از-آن-کسی-است-که-1783018145261",
     "/post/33": "/post/از-چه-میترسید؟-1783021260541",
@@ -6329,9 +6332,10 @@
     "/post/2019": "/post/میمیرند-1794234609306",
     "/post/2020": "/post/گاهی-میان-آدمها،-1794241809215",
     "/post/2021": "/post/با-هیچکس-نباید-بیش-1794299409252",
-    "/post/2022": "/post/وقتی-کلمات-در-دهانمان-گره-میخورند-1794328209226"
+    "/post/2022": "/post/وقتی-کلمات-در-دهانمان-گره-میخورند-1794328209226",
+    "/post/2023": "/post/دانش-چیزى-نیست-که-از-کسى-1794385809379"
   },
-  "snapshot_tag_route_count": 403,
+  "snapshot_tag_route_count": 404,
   "snapshot_pagination_route_count": 103,
   "required_category_routes": [
     "/category/دیالوگ ها",
@@ -7447,6 +7451,7 @@
     "/post/2020",
     "/post/2021",
     "/post/2022",
+    "/post/2023",
     "/post/203",
     "/post/204",
     "/post/205",
@@ -8888,6 +8893,7 @@
     "/post/خیلی-وحشتناکه-که-آدم-تنها-باشه-1783485447825",
     "/post/خیلی-وقتها-یاد-میگیریم-احساساتمون-رو-سرکوب-کنیم؛-فکر-میکنیم-اگه-بهشون--1783494238753",
     "/post/دارم-فکر-میکنم-چه-خوب-است-پیدا-کردن-1783485908594",
+    "/post/دانش-چیزى-نیست-که-از-کسى-1794385809379",
     "/post/در-آخر-فقط-سه-چیز-اهمیت-دارد-1783489297292",
     "/post/در-انبوهِ-سخت-گیریِ-لحظه-ها،-1783488247248",
     "/post/در-اندکِ-من-تویی-فراوان-1783462039888",
@@ -10177,7 +10183,9 @@
     "/post/۷-تکنیک-ژاپنی-برای-مقابله-با-تنبلی-1783486077683"
   ],
   "new_snapshot_routes_missing_from_candidate": [],
-  "new_snapshot_tag_routes": [],
+  "new_snapshot_tag_routes": [
+    "/tag/%D8%B3%DB%8C%D8%B0%D8%A7%D8%B1%D8%AA%D8%A7"
+  ],
   "new_snapshot_tag_routes_missing_from_candidate": [],
   "new_snapshot_pagination_routes": [],
   "new_snapshot_pagination_routes_missing_from_candidate": [],
@@ -10259,6 +10267,9 @@
     "/search",
     "/sitemap.xml"
   ],
-  "new_snapshot_routes": [],
+  "new_snapshot_routes": [
+    "/post/2023",
+    "/post/دانش-چیزى-نیست-که-از-کسى-1794385809379"
+  ],
   "new_control_routes": []
 }
