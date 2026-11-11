@@ -4413,7 +4413,7 @@
     "/tag/Osho",
     "/tag/Stephen_William_Hawking"
   ],
-  "baseline_route_count": 4408,
+  "baseline_route_count": 4410,
   "snapshot_derived_route_count": 4332,
   "snapshot_post_route_count": 3826,
   "canonical_post_aliases": {
@@ -10259,9 +10259,6 @@
     "/search",
     "/sitemap.xml"
   ],
-  "new_snapshot_routes": [
-    "/post/2022",
-    "/post/وقتی-کلمات-در-دهانمان-گره-میخورند-1794328209226"
-  ],
+  "new_snapshot_routes": [],
   "new_control_routes": []
 }
